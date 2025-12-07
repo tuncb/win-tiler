@@ -478,4 +478,121 @@ namespace wintiler
     std::cout << "===== End AppState =====" << std::endl;
   }
 
+  bool validateState(const AppState &state)
+  {
+    bool ok = true;
+
+    // Basic container/root invariants.
+    if (!state.rootIndex.has_value())
+    {
+      std::cout << "[validate] ERROR: rootIndex is null" << std::endl;
+      ok = false;
+    }
+    else if (*state.rootIndex < 0 || static_cast<std::size_t>(*state.rootIndex) >= state.cells.size())
+    {
+      std::cout << "[validate] ERROR: rootIndex out of range: " << *state.rootIndex << std::endl;
+      ok = false;
+    }
+
+    // Track how many times each index is referenced as a child or parent.
+    std::vector<int> parentRefCount(state.cells.size(), 0);
+    std::vector<int> childRefCount(state.cells.size(), 0);
+
+    for (int i = 0; i < static_cast<int>(state.cells.size()); ++i)
+    {
+      const Cell &c = state.cells[static_cast<std::size_t>(i)];
+
+      // Parent index validity.
+      if (c.parent.has_value())
+      {
+        int p = *c.parent;
+        if (p < 0 || static_cast<std::size_t>(p) >= state.cells.size())
+        {
+          std::cout << "[validate] ERROR: cell " << i << " has out-of-range parent index " << p << std::endl;
+          ok = false;
+        }
+        else
+        {
+          parentRefCount[static_cast<std::size_t>(i)]++;
+        }
+      }
+
+      // Child index validity and kind invariants.
+      if (c.kind == CellKind::Leaf)
+      {
+        if (c.firstChild.has_value() || c.secondChild.has_value())
+        {
+          std::cout << "[validate] ERROR: leaf cell " << i << " has children" << std::endl;
+          ok = false;
+        }
+      }
+      else // Split
+      {
+        if (!c.firstChild.has_value() || !c.secondChild.has_value())
+        {
+          std::cout << "[validate] ERROR: split cell " << i << " is missing children" << std::endl;
+          ok = false;
+        }
+      }
+
+      auto checkChild = [&](const std::optional<int> &childOpt, const char *label)
+      {
+        if (!childOpt.has_value())
+        {
+          return;
+        }
+
+        int child = *childOpt;
+        if (child < 0 || static_cast<std::size_t>(child) >= state.cells.size())
+        {
+          std::cout << "[validate] ERROR: cell " << i << " has out-of-range " << label << " index " << child << std::endl;
+          ok = false;
+          return;
+        }
+
+        const Cell &cc = state.cells[static_cast<std::size_t>(child)];
+        if (!cc.parent.has_value() || *cc.parent != i)
+        {
+          std::cout << "[validate] ERROR: cell " << i << "'s " << label << " (" << child
+                    << ") does not point back to parent " << i << std::endl;
+          ok = false;
+        }
+
+        childRefCount[static_cast<std::size_t>(child)]++;
+      };
+
+      checkChild(c.firstChild, "firstChild");
+      checkChild(c.secondChild, "secondChild");
+    }
+
+    // Check reference counters for anomalies.
+    for (std::size_t i = 0; i < state.cells.size(); ++i)
+    {
+      if (parentRefCount[i] > 1)
+      {
+        std::cout << "[validate] WARNING: cell " << i << " has parent set more than once ("
+                  << parentRefCount[i] << ")" << std::endl;
+        ok = false;
+      }
+
+      if (childRefCount[i] > 2)
+      {
+        std::cout << "[validate] WARNING: cell " << i << " is referenced as a child more than twice ("
+                  << childRefCount[i] << ")" << std::endl;
+        ok = false;
+      }
+    }
+
+    if (ok)
+    {
+      std::cout << "[validate] State OK (" << state.cells.size() << " cells)" << std::endl;
+    }
+    else
+    {
+      std::cout << "[validate] State has anomalies" << std::endl;
+    }
+
+    return ok;
+  }
+
 } // namespace wintiler

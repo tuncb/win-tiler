@@ -55,6 +55,12 @@ int main(void)
       debugPrintState(appState);
     }
 
+    if (IsKeyPressed(KEY_C))
+    {
+      // Validate internal invariants of the state and print result.
+      validateState(appState);
+    }
+
     if (IsKeyPressed(KEY_LEFT))
     {
       moveSelection(appState, Direction::Left);

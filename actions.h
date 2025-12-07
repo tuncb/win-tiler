@@ -49,4 +49,8 @@ namespace wintiler
   // Debug: print the entire AppState to stdout.
   void debugPrintState(const AppState &state);
 
+  // Validate internal invariants of the AppState and print any
+  // anomalies to stdout. Returns true if the state is valid.
+  bool validateState(const AppState &state);
+
 } // namespace wintiler
