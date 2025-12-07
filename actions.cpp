@@ -349,8 +349,12 @@ namespace wintiler
     int firstIndex = addCell(state, firstChild);
     int secondIndex = addCell(state, secondChild);
 
-    leaf.firstChild = firstIndex;
-    leaf.secondChild = secondIndex;
+    // Re-fetch parent by index after possible reallocation.
+    {
+      Cell &parent = state.cells[static_cast<std::size_t>(selected)];
+      parent.firstChild = firstIndex;
+      parent.secondChild = secondIndex;
+    }
 
     // Select the first child by default
     state.selectedIndex = firstIndex;
