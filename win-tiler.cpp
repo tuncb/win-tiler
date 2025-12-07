@@ -21,20 +21,12 @@ int main(void)
     // Input handling
     if (IsKeyPressed(KEY_H))
     {
-      if (appState.selectedIndex.has_value() && isLeaf(appState, *appState.selectedIndex))
-      {
-        Cell &cell = appState.cells[*appState.selectedIndex];
-        cell.splitDir = SplitDir::Horizontal;
-      }
+      appState.globalSplitDir = SplitDir::Horizontal;
     }
 
     if (IsKeyPressed(KEY_V))
     {
-      if (appState.selectedIndex.has_value() && isLeaf(appState, *appState.selectedIndex))
-      {
-        Cell &cell = appState.cells[*appState.selectedIndex];
-        cell.splitDir = SplitDir::Vertical;
-      }
+      appState.globalSplitDir = SplitDir::Vertical;
     }
 
     if (IsKeyPressed(KEY_T))
