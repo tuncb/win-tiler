@@ -31,6 +31,8 @@ namespace wintiler
     CellKind kind;
     SplitDir splitDir;
 
+    bool isDead = false;
+
     std::optional<int> parent;      // empty for root
     std::optional<int> firstChild;  // empty if none (leaf)
     std::optional<int> secondChild; // empty if none (leaf)

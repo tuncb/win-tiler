@@ -17,6 +17,7 @@ namespace wintiler
     root.kind = CellKind::Leaf;
     // The root leaf starts with the current global split direction.
     root.splitDir = state.globalSplitDir;
+    root.isDead = false;
     root.parent = std::nullopt;
     root.firstChild = std::nullopt;
     root.secondChild = std::nullopt;
@@ -37,6 +38,11 @@ namespace wintiler
     }
 
     const Cell &cell = state.cells[static_cast<std::size_t>(cellIndex)];
+    if (cell.isDead)
+    {
+      return false;
+    }
+
     return !cell.firstChild.has_value() && !cell.secondChild.has_value();
   }
 
@@ -49,6 +55,11 @@ namespace wintiler
   static void recomputeChildrenRects(AppState &state, int nodeIndex)
   {
     Cell &node = state.cells[static_cast<std::size_t>(nodeIndex)];
+
+    if (node.isDead)
+    {
+      return;
+    }
 
     if (!node.firstChild.has_value() || !node.secondChild.has_value())
     {
@@ -90,6 +101,11 @@ namespace wintiler
 
     Cell &node = state.cells[static_cast<std::size_t>(nodeIndex)];
 
+    if (node.isDead)
+    {
+      return;
+    }
+
     // If this is a split node, first update its immediate children based on its rect.
     if (node.firstChild.has_value() && node.secondChild.has_value())
     {
@@ -120,6 +136,10 @@ namespace wintiler
     }
 
     Cell &selectedCell = state.cells[static_cast<std::size_t>(selected)];
+    if (selectedCell.isDead)
+    {
+      return false;
+    }
     if (!selectedCell.parent.has_value())
     {
       return false;
@@ -127,6 +147,11 @@ namespace wintiler
 
     int parentIndex = *selectedCell.parent;
     Cell &parent = state.cells[static_cast<std::size_t>(parentIndex)];
+
+    if (parent.isDead)
+    {
+      return false;
+    }
 
     if (!parent.firstChild.has_value() || !parent.secondChild.has_value())
     {
@@ -139,6 +164,10 @@ namespace wintiler
 
     // Promote sibling into the parent's slot by copying it over.
     Cell &sibling = state.cells[static_cast<std::size_t>(siblingIndex)];
+    if (sibling.isDead)
+    {
+      return false;
+    }
 
     // Capture the parent's rect before we overwrite the parent cell.
     Rect newRect = parent.rect;
@@ -165,12 +194,11 @@ namespace wintiler
     // Recompute the layout for the promoted subtree.
     recomputeSubtreeRects(state, parentIndex);
 
-    // Mark the deleted leaf as unreachable by clearing its parent.
+    // Mark the deleted leaf and its sibling as dead.
+    selectedCell.isDead = true;
+    sibling.isDead = true;
     selectedCell.parent.reset();
-
-    // If needed later, we could also clear sibling.parent to mark it as dead,
-    // but since its data has been copied into parentIndex, the original index
-    // is effectively unused.
+    sibling.parent.reset();
 
     // Ensure selectedIndex ends up on a leaf under parentIndex.
     int current = parentIndex;
@@ -239,7 +267,8 @@ namespace wintiler
       return std::nullopt;
     }
 
-    if (!isLeaf(state, currentIndex))
+    const Cell &currentCell = state.cells[static_cast<std::size_t>(currentIndex)];
+    if (currentCell.isDead || !isLeaf(state, currentIndex))
     {
       return std::nullopt;
     }
@@ -261,7 +290,13 @@ namespace wintiler
         continue;
       }
 
-      const Rect &candidateRect = state.cells[static_cast<std::size_t>(i)].rect;
+      const Cell &candidateCell = state.cells[static_cast<std::size_t>(i)];
+      if (candidateCell.isDead)
+      {
+        continue;
+      }
+
+      const Rect &candidateRect = candidateCell.rect;
 
       if (!isInDirection(currentRect, candidateRect, dir))
       {
@@ -285,8 +320,16 @@ namespace wintiler
     {
       return false;
     }
-
     int current = *state.selectedIndex;
+    if (current < 0 || static_cast<std::size_t>(current) >= state.cells.size())
+    {
+      return false;
+    }
+
+    if (state.cells[static_cast<std::size_t>(current)].isDead)
+    {
+      return false;
+    }
     std::optional<int> next = findNextLeafInDirection(state, current, dir);
     if (!next.has_value())
     {
@@ -311,6 +354,10 @@ namespace wintiler
     }
 
     Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
+    if (leaf.isDead)
+    {
+      return false;
+    }
     Rect r = leaf.rect;
 
     // Create two child cells based on the *global* split direction,
@@ -340,6 +387,7 @@ namespace wintiler
     firstChild.kind = CellKind::Leaf;
     // Use global split direction for new leaves, so future splits alternate.
     firstChild.splitDir = state.globalSplitDir;
+    firstChild.isDead = false;
     firstChild.parent = selected;
     firstChild.firstChild = std::nullopt;
     firstChild.secondChild = std::nullopt;
@@ -349,6 +397,7 @@ namespace wintiler
     secondChild.kind = CellKind::Leaf;
     // Use global split direction for new leaves.
     secondChild.splitDir = state.globalSplitDir;
+    secondChild.isDead = false;
     secondChild.parent = selected;
     secondChild.firstChild = std::nullopt;
     secondChild.secondChild = std::nullopt;
@@ -389,6 +438,10 @@ namespace wintiler
     }
 
     Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
+    if (leaf.isDead)
+    {
+      return false;
+    }
 
     // Find the parent split node and its sibling leaf.
     if (!leaf.parent.has_value())
@@ -398,6 +451,11 @@ namespace wintiler
 
     int parentIndex = *leaf.parent;
     Cell &parent = state.cells[static_cast<std::size_t>(parentIndex)];
+
+    if (parent.isDead)
+    {
+      return false;
+    }
 
     if (!parent.firstChild.has_value() || !parent.secondChild.has_value())
     {
@@ -414,6 +472,10 @@ namespace wintiler
     }
 
     Cell &sibling = state.cells[static_cast<std::size_t>(siblingIndex)];
+    if (sibling.isDead)
+    {
+      return false;
+    }
 
     // Flip the parent split direction (horizontal <-> vertical).
     parent.splitDir = (parent.splitDir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
@@ -455,6 +517,10 @@ namespace wintiler
     for (std::size_t i = 0; i < state.cells.size(); ++i)
     {
       const Cell &c = state.cells[i];
+      if (c.isDead)
+      {
+        continue;
+      }
       std::cout << "-- Cell " << i << " --" << std::endl;
       std::cout << "  kind = " << (c.kind == CellKind::Leaf ? "Leaf" : "Split") << std::endl;
       std::cout << "  splitDir = " << (c.splitDir == SplitDir::Vertical ? "Vertical" : "Horizontal") << std::endl;
@@ -514,6 +580,13 @@ namespace wintiler
     {
       const Cell &c = state.cells[static_cast<std::size_t>(i)];
 
+      if (c.isDead)
+      {
+        // Dead cells are allowed to have arbitrary parent/children; they are ignored
+        // by all operations. We just skip structural checks for them.
+        continue;
+      }
+
       // Parent index validity.
       if (c.parent.has_value())
       {
@@ -529,7 +602,7 @@ namespace wintiler
         }
       }
 
-      // Child index validity and kind invariants.
+      // Child index validity and kind invariants (live cells only).
       if (c.kind == CellKind::Leaf)
       {
         if (c.firstChild.has_value() || c.secondChild.has_value())
@@ -563,6 +636,14 @@ namespace wintiler
         }
 
         const Cell &cc = state.cells[static_cast<std::size_t>(child)];
+        if (cc.isDead)
+        {
+          // Live cell pointing to a dead child is suspicious but not fatal;
+          // log it and continue.
+          std::cout << "[validate] WARNING: cell " << i << "'s " << label << " (" << child
+                    << ") is dead" << std::endl;
+          ok = false;
+        }
         if (!cc.parent.has_value() || *cc.parent != i)
         {
           std::cout << "[validate] ERROR: cell " << i << "'s " << label << " (" << child

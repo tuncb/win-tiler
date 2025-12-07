@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="win-tiler.vcxproj" />
+  <Project Path="win-tiler.vcxproj" Id="6096c6a5-a927-432e-95d1-dc64579103f3" />
 </Solution>
