@@ -38,4 +38,12 @@ namespace wintiler
   // selection changed.
   bool moveSelection(AppState &state, Direction dir);
 
+  // Split the currently selected leaf cell into two children according
+  // to its splitDir. Returns true if the split was performed.
+  bool splitSelectedLeaf(AppState &state);
+
+  // Toggle the splitDir of the currently selected leaf between Vertical
+  // and Horizontal. Returns true if toggled.
+  bool toggleSelectedSplitDir(AppState &state);
+
 } // namespace wintiler

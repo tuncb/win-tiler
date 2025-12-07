@@ -8,9 +8,13 @@ namespace wintiler
     AppState state;
     state.cells.clear();
 
+    // Start global split direction as Vertical, as requested.
+    state.globalSplitDir = SplitDir::Vertical;
+
     Cell root{};
     root.kind = CellKind::Leaf;
-    root.splitDir = SplitDir::Vertical; // first division is vertical by default
+    // The root leaf starts with the current global split direction.
+    root.splitDir = state.globalSplitDir;
     root.parent = std::nullopt;
     root.firstChild = std::nullopt;
     root.secondChild = std::nullopt;
@@ -280,6 +284,130 @@ namespace wintiler
     }
 
     state.selectedIndex = *next;
+    return true;
+  }
+
+  bool splitSelectedLeaf(AppState &state)
+  {
+    if (!state.selectedIndex.has_value())
+    {
+      return false;
+    }
+
+    int selected = *state.selectedIndex;
+    if (!isLeaf(state, selected))
+    {
+      return false;
+    }
+
+    Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
+    Rect r = leaf.rect;
+
+    // Create two child cells based on the leaf's splitDir
+    Rect firstRect{};
+    Rect secondRect{};
+
+    if (leaf.splitDir == SplitDir::Vertical)
+    {
+      float halfWidth = r.width * 0.5f;
+      firstRect = Rect{r.x, r.y, halfWidth, r.height};
+      secondRect = Rect{r.x + halfWidth, r.y, halfWidth, r.height};
+    }
+    else // Horizontal
+    {
+      float halfHeight = r.height * 0.5f;
+      firstRect = Rect{r.x, r.y, r.width, halfHeight};
+      secondRect = Rect{r.x, r.y + halfHeight, r.width, halfHeight};
+    }
+
+    // Convert leaf into a split node
+    leaf.kind = CellKind::Split;
+
+    Cell firstChild{};
+    firstChild.kind = CellKind::Leaf;
+    // Use global split direction for new leaves, so future splits alternate.
+    firstChild.splitDir = state.globalSplitDir;
+    firstChild.parent = selected;
+    firstChild.firstChild = std::nullopt;
+    firstChild.secondChild = std::nullopt;
+    firstChild.rect = firstRect;
+
+    Cell secondChild{};
+    secondChild.kind = CellKind::Leaf;
+    // Use global split direction for new leaves.
+    secondChild.splitDir = state.globalSplitDir;
+    secondChild.parent = selected;
+    secondChild.firstChild = std::nullopt;
+    secondChild.secondChild = std::nullopt;
+    secondChild.rect = secondRect;
+
+    int firstIndex = addCell(state, firstChild);
+    int secondIndex = addCell(state, secondChild);
+
+    leaf.firstChild = firstIndex;
+    leaf.secondChild = secondIndex;
+
+    // Select the first child by default
+    state.selectedIndex = firstIndex;
+
+    // Alternate the global split direction once per split operation.
+    state.globalSplitDir = (state.globalSplitDir == SplitDir::Vertical)
+                               ? SplitDir::Horizontal
+                               : SplitDir::Vertical;
+
+    return true;
+  }
+
+  bool toggleSelectedSplitDir(AppState &state)
+  {
+    if (!state.selectedIndex.has_value())
+    {
+      return false;
+    }
+
+    int selected = *state.selectedIndex;
+    if (!isLeaf(state, selected))
+    {
+      return false;
+    }
+
+    Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
+
+    // Find the parent split node and its sibling leaf.
+    if (!leaf.parent.has_value())
+    {
+      return false;
+    }
+
+    int parentIndex = *leaf.parent;
+    Cell &parent = state.cells[static_cast<std::size_t>(parentIndex)];
+
+    if (!parent.firstChild.has_value() || !parent.secondChild.has_value())
+    {
+      return false;
+    }
+
+    int firstIdx = *parent.firstChild;
+    int secondIdx = *parent.secondChild;
+    int siblingIndex = (selected == firstIdx) ? secondIdx : firstIdx;
+
+    if (!isLeaf(state, siblingIndex))
+    {
+      return false;
+    }
+
+    Cell &sibling = state.cells[static_cast<std::size_t>(siblingIndex)];
+
+    // Flip the parent split direction (horizontal <-> vertical).
+    parent.splitDir = (parent.splitDir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+
+    // Recompute rectangles for this subtree so the two children are
+    // repositioned according to the new split orientation.
+    recomputeSubtreeRects(state, parentIndex);
+
+    // Keep the selected leaf index; visual layout is updated.
+    (void)sibling; // sibling is not modified logically, only layout changes.
+
     return true;
   }
 
