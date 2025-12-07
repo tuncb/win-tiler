@@ -26,9 +26,9 @@ A cell is a rectangle on the screen.
   - **Split cells**: internal nodes that store a split orientation and have exactly two children.
 - The root node always represents the whole window.
 
-### Core data structures (C++ / raylib-oriented)
+### Core data structures (C++ / wintiler)
 
-- **Cell kind enum**
+- **Cell kind enum** (in namespace `wintiler`)
   - `enum class CellKind { Leaf, Split };`
   - `Leaf`: visible, selectable cell with no children.
   - `Split`: internal node that has two children and a split orientation; never directly selectable.
@@ -40,18 +40,23 @@ A cell is a rectangle on the screen.
   - For a **leaf** cell: stores the preferred direction when that leaf is split next (changed by `h`, `v`, `t`).
   - For a **split** cell: stores the orientation currently used to divide its rectangle.
 
+- **Rectangle type (no raylib dependency)**
+  - `struct Rect { float x; float y; float width; float height; };`
+  - Used everywhere in the state instead of raylib's `Rectangle`.
+
 - **Cell struct (tree node)**
   - `CellKind kind;` — whether this node is a `Leaf` or `Split`.
   - `SplitDir splitDir;` — preferred/actual split orientation (see above).
-  - `int parent;` — index of the parent in a `std::vector<Cell>`, or `-1` for root.
-  - `int firstChild;` — index of first child (for `Split`), `-1` for leaves.
-  - `int secondChild;` — index of second child (for `Split`), `-1` for leaves.
-  - `Rectangle rect;` — screen-space rectangle for this node (raylib type).
+  - `std::optional<int> parent;` — index of the parent in `std::vector<Cell>`, empty for root.
+  - `std::optional<int> firstChild;` — index of first child (for `Split`), empty for leaves.
+  - `std::optional<int> secondChild;` — index of second child (for `Split`), empty for leaves.
+  - `Rect rect;` — logical rectangle for this node in window coordinates.
+  - We **do not remove** cells from the vector; instead, we can later add a flag (e.g. `bool alive`) or a special `CellKind` value to mark dead cells if needed.
 
 - **Global/app state**
-  - `std::vector<Cell> cells;` — storage for all nodes (leaves and splits).
-  - `int rootIndex;` — index of the root node (usually `0`).
-  - `int selectedIndex;` — index of the currently selected **leaf** node.
+  - `std::vector<Cell> cells;` — storage for all nodes (live and dead, leaves and splits).
+  - `std::optional<int> rootIndex;` — index of the root node when initialized.
+  - `std::optional<int> selectedIndex;` — index of the currently selected **leaf** node.
 
 ### Operations
 
@@ -59,18 +64,20 @@ A cell is a rectangle on the screen.
   - Create a single root cell:
     - `kind = CellKind::Leaf`
     - `splitDir = SplitDir::Vertical` (first division is vertical).
-    - `parent = -1`
-    - `rect = {0, 0, (float)screenWidth, (float)screenHeight}`
-  - Set `rootIndex = 0`, `selectedIndex = 0`.
+    - `parent = std::nullopt`
+    - `firstChild = std::nullopt`
+    - `secondChild = std::nullopt`
+    - `rect = {0, 0, windowWidth, windowHeight}` using `wintiler::Rect` floats.
+  - Push this cell into `cells`, then set `rootIndex` and `selectedIndex` to its index (typically `0`).
 
 - **Split selected leaf**
-  - Works only if `selectedIndex` is a `Leaf`.
+  - Works only if `selectedIndex` is set and points to a `Leaf`.
   - Read the leaf’s `splitDir` to decide between vertical or horizontal split.
-  - Compute two child rectangles by cutting the leaf’s `rect` into two halves.
+  - Compute two child `Rect`s by cutting the leaf’s `rect` into two halves.
   - Turn the leaf into a `Split` node:
     - Keep its `rect` and `splitDir`.
     - Allocate two new `Leaf` cells as children with the computed rectangles and `parent = selectedIndex`.
-    - Set `firstChild` and `secondChild` to these new indices.
+    - Set `firstChild` and `secondChild` to `std::optional<int>` values holding the new indices.
   - Update selection: move `selectedIndex` to one of the new leaf children.
 
 - **Toggle direction with `t`**
@@ -79,9 +86,10 @@ A cell is a rectangle on the screen.
   - This only changes how it will be split the next time; it does not change existing geometry.
 
 - **Delete selected leaf with `d`**
-  - Works only if `selectedIndex` is a `Leaf` and not the root.
-  - Let `p` be the parent index; let `sibling` be the other child of `p`.
+  - Works only if `selectedIndex` is set, points to a `Leaf`, and that leaf is not the root.
+  - Let `p` be the parent index; let `sibling` be the other child index of `p`.
   - Promote `sibling` into `p`’s place (copy over fields, fix parent links if needed).
+  - Mark the deleted leaf (and possibly the old sibling node if its data was moved) as **dead** rather than erasing it from `cells` (e.g., via a future `alive` flag).
   - After promotion, ensure `selectedIndex` points to a **leaf**:
     - If the promoted node is a leaf, select it.
     - If it is a split, select one of its leaf descendants (e.g., left/topmost).
