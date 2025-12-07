@@ -139,7 +139,12 @@ namespace wintiler
 
     // Promote sibling into the parent's slot by copying it over.
     Cell &sibling = state.cells[static_cast<std::size_t>(siblingIndex)];
+
+    // Capture the parent's rect before we overwrite the parent cell.
+    Rect newRect = parent.rect;
+
     Cell promoted = sibling;         // copy
+    promoted.rect = newRect;         // Adopt parent's geometry
     promoted.parent = parent.parent; // take over parent's parent
 
     // If promoted node has children, fix their parent pointers to point to this node index (parentIndex).
@@ -156,6 +161,9 @@ namespace wintiler
 
     // Overwrite the parent cell with the promoted one.
     state.cells[static_cast<std::size_t>(parentIndex)] = promoted;
+
+    // Recompute the layout for the promoted subtree.
+    recomputeSubtreeRects(state, parentIndex);
 
     // Mark the deleted leaf as unreachable by clearing its parent.
     selectedCell.parent.reset();
