@@ -42,6 +42,11 @@ int main(void)
       toggleSelectedSplitDir(appState);
     }
 
+    if (IsKeyPressed(KEY_R))
+    {
+      appState = createInitialState((float)screenWidth, (float)screenHeight);
+    }
+
     if (IsKeyPressed(KEY_SPACE))
     {
       splitSelectedLeaf(appState);
