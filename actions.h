@@ -46,4 +46,7 @@ namespace wintiler
   // and Horizontal. Returns true if toggled.
   bool toggleSelectedSplitDir(AppState &state);
 
+  // Debug: print the entire AppState to stdout.
+  void debugPrintState(const AppState &state);
+
 } // namespace wintiler

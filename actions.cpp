@@ -1,5 +1,7 @@
 #include "actions.h"
 
+#include <iostream>
+
 namespace wintiler
 {
 
@@ -409,6 +411,68 @@ namespace wintiler
     (void)sibling; // sibling is not modified logically, only layout changes.
 
     return true;
+  }
+
+  // Debug helper: print a human-readable snapshot of the state.
+  void debugPrintState(const AppState &state)
+  {
+    std::cout << "===== AppState =====" << std::endl;
+
+    std::cout << "cells.size = " << state.cells.size() << std::endl;
+    std::cout << "rootIndex = ";
+    if (state.rootIndex.has_value())
+      std::cout << *state.rootIndex;
+    else
+      std::cout << "null";
+    std::cout << std::endl;
+
+    std::cout << "selectedIndex = ";
+    if (state.selectedIndex.has_value())
+      std::cout << *state.selectedIndex;
+    else
+      std::cout << "null";
+    std::cout << std::endl;
+
+    std::cout << "globalSplitDir = "
+              << (state.globalSplitDir == SplitDir::Vertical ? "Vertical" : "Horizontal")
+              << std::endl;
+
+    for (std::size_t i = 0; i < state.cells.size(); ++i)
+    {
+      const Cell &c = state.cells[i];
+      std::cout << "-- Cell " << i << " --" << std::endl;
+      std::cout << "  kind = " << (c.kind == CellKind::Leaf ? "Leaf" : "Split") << std::endl;
+      std::cout << "  splitDir = " << (c.splitDir == SplitDir::Vertical ? "Vertical" : "Horizontal") << std::endl;
+
+      std::cout << "  parent = ";
+      if (c.parent.has_value())
+        std::cout << *c.parent;
+      else
+        std::cout << "null";
+      std::cout << std::endl;
+
+      std::cout << "  firstChild = ";
+      if (c.firstChild.has_value())
+        std::cout << *c.firstChild;
+      else
+        std::cout << "null";
+      std::cout << std::endl;
+
+      std::cout << "  secondChild = ";
+      if (c.secondChild.has_value())
+        std::cout << *c.secondChild;
+      else
+        std::cout << "null";
+      std::cout << std::endl;
+
+      std::cout << "  rect = { x=" << c.rect.x
+                << ", y=" << c.rect.y
+                << ", w=" << c.rect.width
+                << ", h=" << c.rect.height
+                << " }" << std::endl;
+    }
+
+    std::cout << "===== End AppState =====" << std::endl;
   }
 
 } // namespace wintiler

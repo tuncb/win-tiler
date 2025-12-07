@@ -57,6 +57,12 @@ int main(void)
       deleteSelectedLeaf(appState);
     }
 
+    if (IsKeyPressed(KEY_I))
+    {
+      // Debug dump of the whole state to the console.
+      debugPrintState(appState);
+    }
+
     if (IsKeyPressed(KEY_LEFT))
     {
       moveSelection(appState, Direction::Left);
