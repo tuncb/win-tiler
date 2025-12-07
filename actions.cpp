@@ -305,11 +305,12 @@ namespace wintiler
     Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
     Rect r = leaf.rect;
 
-    // Create two child cells based on the leaf's splitDir
+    // Create two child cells based on the *global* split direction,
+    // independent of the leaf's stored splitDir.
     Rect firstRect{};
     Rect secondRect{};
 
-    if (leaf.splitDir == SplitDir::Vertical)
+    if (state.globalSplitDir == SplitDir::Vertical)
     {
       float halfWidth = r.width * 0.5f;
       firstRect = Rect{r.x, r.y, halfWidth, r.height};
@@ -322,8 +323,10 @@ namespace wintiler
       secondRect = Rect{r.x, r.y + halfHeight, r.width, halfHeight};
     }
 
-    // Convert leaf into a split node
+    // Convert leaf into a split node. Its kind becomes Split, and its
+    // own splitDir is now the direction used for this split (global).
     leaf.kind = CellKind::Split;
+    leaf.splitDir = state.globalSplitDir;
 
     Cell firstChild{};
     firstChild.kind = CellKind::Leaf;
