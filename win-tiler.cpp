@@ -16,9 +16,35 @@ int main(void)
 
   SetTargetFPS(60);
 
+  auto centerMouseOnSelection = [&appState]()
+  {
+    if (appState.selectedIndex.has_value())
+    {
+      const Cell &cell = appState.cells[*appState.selectedIndex];
+      SetMousePosition((int)(cell.rect.x + cell.rect.width / 2), (int)(cell.rect.y + cell.rect.height / 2));
+    }
+  };
+
   while (!WindowShouldClose())
   {
-    // Input handling
+    Vector2 mousePos = GetMousePosition();
+    for (int i = 0; i < static_cast<int>(appState.cells.size()); ++i)
+    {
+      if (!isLeaf(appState, i))
+      {
+        continue;
+      }
+
+      const Cell &cell = appState.cells[static_cast<std::size_t>(i)];
+      Rectangle rr{cell.rect.x, cell.rect.y, cell.rect.width, cell.rect.height};
+
+      if (CheckCollisionPointRec(mousePos, rr))
+      {
+        appState.selectedIndex = i;
+        break;
+      }
+    }
+
     if (IsKeyPressed(KEY_H))
     {
       appState.globalSplitDir = SplitDir::Horizontal;
@@ -63,19 +89,31 @@ int main(void)
 
     if (IsKeyPressed(KEY_LEFT))
     {
-      moveSelection(appState, Direction::Left);
+      if (moveSelection(appState, Direction::Left))
+      {
+        centerMouseOnSelection();
+      }
     }
     if (IsKeyPressed(KEY_RIGHT))
     {
-      moveSelection(appState, Direction::Right);
+      if (moveSelection(appState, Direction::Right))
+      {
+        centerMouseOnSelection();
+      }
     }
     if (IsKeyPressed(KEY_UP))
     {
-      moveSelection(appState, Direction::Up);
+      if (moveSelection(appState, Direction::Up))
+      {
+        centerMouseOnSelection();
+      }
     }
     if (IsKeyPressed(KEY_DOWN))
     {
-      moveSelection(appState, Direction::Down);
+      if (moveSelection(appState, Direction::Down))
+      {
+        centerMouseOnSelection();
+      }
     }
 
     BeginDrawing();
