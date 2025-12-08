@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{6096c6a5-a927-432e-95d1-dc64579103f3}</ProjectGuid>
-    <RootNamespace>wintiler</RootNamespace>
+    <ProjectGuid>{cbfa0750-74fb-4312-99de-db2e3c11462f}</ProjectGuid>
+    <RootNamespace>wintiletester</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -108,7 +108,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>./inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -124,7 +124,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>./inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,15 +132,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="vcpkg.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="src\actions.cpp" />
-    <ClCompile Include="src\win-tiler.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="inc\actions.h" />
-    <ClInclude Include="inc\state.h" />
+    <ClCompile Include="..\src\actions.cpp" />
+    <ClCompile Include="win-tile-tester.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

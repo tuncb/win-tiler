@@ -15,22 +15,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="vcpkg.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="src\actions.cpp">
+    <ClCompile Include="win-tile-tester.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\win-tiler.cpp">
+    <ClCompile Include="..\src\actions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="inc\actions.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="inc\state.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>
