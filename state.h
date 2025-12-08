@@ -48,6 +48,9 @@ namespace wintiler
 
     // Global split direction that alternates on each cell creation.
     SplitDir globalSplitDir;
+
+    float gapHorizontal;
+    float gapVertical;
   };
 
 } // namespace wintiler

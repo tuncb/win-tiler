@@ -12,6 +12,8 @@ namespace wintiler
 
     // Start global split direction as Vertical, as requested.
     state.globalSplitDir = SplitDir::Vertical;
+    state.gapHorizontal = 10.0f;
+    state.gapVertical = 10.0f;
 
     Cell root{};
     root.kind = CellKind::Leaf;
@@ -21,7 +23,14 @@ namespace wintiler
     root.parent = std::nullopt;
     root.firstChild = std::nullopt;
     root.secondChild = std::nullopt;
-    root.rect = Rect{0.0f, 0.0f, width, height};
+
+    float rootW = width - 2.0f * state.gapHorizontal;
+    float rootH = height - 2.0f * state.gapVertical;
+    root.rect = Rect{
+        state.gapHorizontal,
+        state.gapVertical,
+        rootW > 0.0f ? rootW : 0.0f,
+        rootH > 0.0f ? rootH : 0.0f};
 
     int index = addCell(state, root);
     state.rootIndex = index;
@@ -74,15 +83,17 @@ namespace wintiler
 
     if (node.splitDir == SplitDir::Vertical)
     {
-      float halfWidth = parentRect.width * 0.5f;
-      first = Rect{parentRect.x, parentRect.y, halfWidth, parentRect.height};
-      second = Rect{parentRect.x + halfWidth, parentRect.y, halfWidth, parentRect.height};
+      float availableWidth = parentRect.width - state.gapHorizontal;
+      float childWidth = availableWidth > 0.0f ? availableWidth * 0.5f : 0.0f;
+      first = Rect{parentRect.x, parentRect.y, childWidth, parentRect.height};
+      second = Rect{parentRect.x + childWidth + state.gapHorizontal, parentRect.y, childWidth, parentRect.height};
     }
     else // Horizontal
     {
-      float halfHeight = parentRect.height * 0.5f;
-      first = Rect{parentRect.x, parentRect.y, parentRect.width, halfHeight};
-      second = Rect{parentRect.x, parentRect.y + halfHeight, parentRect.width, halfHeight};
+      float availableHeight = parentRect.height - state.gapVertical;
+      float childHeight = availableHeight > 0.0f ? availableHeight * 0.5f : 0.0f;
+      first = Rect{parentRect.x, parentRect.y, parentRect.width, childHeight};
+      second = Rect{parentRect.x, parentRect.y + childHeight + state.gapVertical, parentRect.width, childHeight};
     }
 
     Cell &firstChild = state.cells[static_cast<std::size_t>(*node.firstChild)];
@@ -367,15 +378,17 @@ namespace wintiler
 
     if (state.globalSplitDir == SplitDir::Vertical)
     {
-      float halfWidth = r.width * 0.5f;
-      firstRect = Rect{r.x, r.y, halfWidth, r.height};
-      secondRect = Rect{r.x + halfWidth, r.y, halfWidth, r.height};
+      float availableWidth = r.width - state.gapHorizontal;
+      float childWidth = availableWidth > 0.0f ? availableWidth * 0.5f : 0.0f;
+      firstRect = Rect{r.x, r.y, childWidth, r.height};
+      secondRect = Rect{r.x + childWidth + state.gapHorizontal, r.y, childWidth, r.height};
     }
     else // Horizontal
     {
-      float halfHeight = r.height * 0.5f;
-      firstRect = Rect{r.x, r.y, r.width, halfHeight};
-      secondRect = Rect{r.x, r.y + halfHeight, r.width, halfHeight};
+      float availableHeight = r.height - state.gapVertical;
+      float childHeight = availableHeight > 0.0f ? availableHeight * 0.5f : 0.0f;
+      firstRect = Rect{r.x, r.y, r.width, childHeight};
+      secondRect = Rect{r.x, r.y + childHeight + state.gapVertical, r.width, childHeight};
     }
 
     // Convert leaf into a split node. Its kind becomes Split, and its
