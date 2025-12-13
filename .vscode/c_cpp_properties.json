@@ -9,7 +9,8 @@
             "defines": [
                 "_DEBUG",
                 "UNICODE",
-                "_UNICODE"
+                "_UNICODE",
+                "DOCTEST_CONFIG_DISABLE"
             ],
             "windowsSdkVersion": "10.0.26100.0",
             "compilerPath": "cl.exe",
