@@ -45,7 +45,6 @@ namespace wintiler
   struct WindowState
   {
     std::vector<Cell> cells;
-    std::optional<int> rootIndex;     // empty until initialized
     std::optional<int> selectedIndex; // always holds a Leaf index when set
 
     // Global split direction that alternates on each cell creation.

@@ -24,7 +24,6 @@ namespace wintiler
 
     // Do not create any cells yet. The first call to splitSelectedLeaf
     // on an empty state will create the initial root leaf.
-    state.rootIndex = std::nullopt;
     state.selectedIndex = std::nullopt;
 
     return state;
@@ -131,7 +130,7 @@ namespace wintiler
     {
       return false; // only leaves can be deleted
     }
-    if (!state.rootIndex.has_value())
+    if (state.cells.empty())
     {
       return false;
     }
@@ -143,12 +142,11 @@ namespace wintiler
     }
 
     // Allow deleting the root leaf when it is the only live cell.
-    if (selected == *state.rootIndex)
+    if (selected == 0)
     {
       // Root is a leaf here, so by construction it is the only live
       // node in the tree. Transition back to an empty layout.
       state.cells.clear();
-      state.rootIndex.reset();
       state.selectedIndex.reset();
       return true;
     }
@@ -380,7 +378,6 @@ namespace wintiler
             rootH > 0.0f ? rootH : 0.0f};
 
         int index = addCell(state, root);
-        state.rootIndex = index;
         state.selectedIndex = index;
 
         return root.leafId;
@@ -548,12 +545,6 @@ namespace wintiler
     std::cout << "===== WindowState =====" << std::endl;
 
     std::cout << "cells.size = " << state.cells.size() << std::endl;
-    std::cout << "rootIndex = ";
-    if (state.rootIndex.has_value())
-      std::cout << *state.rootIndex;
-    else
-      std::cout << "null";
-    std::cout << std::endl;
 
     std::cout << "selectedIndex = ";
     if (state.selectedIndex.has_value())
@@ -612,15 +603,10 @@ namespace wintiler
   {
     bool ok = true;
 
-    // Handle the empty-state case explicitly: no cells means rootIndex
-    // and selectedIndex should both be empty, which is a valid state.
+    // Handle the empty-state case explicitly: no cells means
+    // selectedIndex should be empty, which is a valid state.
     if (state.cells.empty())
     {
-      if (state.rootIndex.has_value())
-      {
-        std::cout << "[validate] ERROR: empty state has non-null rootIndex" << std::endl;
-        ok = false;
-      }
       if (state.selectedIndex.has_value())
       {
         std::cout << "[validate] ERROR: empty state has non-null selectedIndex" << std::endl;
@@ -640,14 +626,10 @@ namespace wintiler
     }
 
     // Basic container/root invariants for non-empty states.
-    if (!state.rootIndex.has_value())
+    // Root is implicitly index 0.
+    if (state.cells[0].parent.has_value())
     {
-      std::cout << "[validate] ERROR: rootIndex is null" << std::endl;
-      ok = false;
-    }
-    else if (*state.rootIndex < 0 || static_cast<std::size_t>(*state.rootIndex) >= state.cells.size())
-    {
-      std::cout << "[validate] ERROR: rootIndex out of range: " << *state.rootIndex << std::endl;
+      std::cout << "[validate] ERROR: root cell (index 0) has a parent" << std::endl;
       ok = false;
     }
 
