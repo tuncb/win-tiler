@@ -194,6 +194,7 @@
     <ClCompile Include="src\cells.cpp" />
     <ClCompile Include="src\process.cpp" />
     <ClCompile Include="src\test_cells.cpp" />
+    <ClCompile Include="src\test_process.cpp" />
     <ClCompile Include="src\win-tiler.cpp" />
   </ItemGroup>
   <ItemGroup>
