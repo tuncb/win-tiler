@@ -69,14 +69,7 @@ if /I "%ACTION%"=="build" (
 )
 
 REM Determine output EXE path (adjust if your project path/config differs)
-set OUTDIR=
-if /I "%CONFIG%"=="Debug" (
-    set OUTDIR=x64\Debug
-) else if /I "%CONFIG%"=="Test-Debug" (
-    set OUTDIR=x64\Test-Debug
-) else (
-    set OUTDIR=x64\Release
-)
+set OUTDIR=x64\%CONFIG%
 
 set EXE_PATH=%OUTDIR%\win-tiler.exe
 
