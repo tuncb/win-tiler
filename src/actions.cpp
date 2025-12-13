@@ -1,6 +1,7 @@
 #include <actions.h>
 
 #include <iostream>
+#include <algorithm>
 
 namespace wintiler
 {
@@ -9,6 +10,7 @@ namespace wintiler
   {
     AppState state;
     state.cells.clear();
+    state.nextLeafId = 1;
 
     // Start global split direction as Vertical, as requested.
     state.globalSplitDir = SplitDir::Vertical;
@@ -23,6 +25,7 @@ namespace wintiler
     root.parent = std::nullopt;
     root.firstChild = std::nullopt;
     root.secondChild = std::nullopt;
+    root.leafId = state.nextLeafId++;
 
     float rootW = width - 2.0f * state.gapHorizontal;
     float rootH = height - 2.0f * state.gapVertical;
@@ -183,7 +186,7 @@ namespace wintiler
     // Capture the parent's rect before we overwrite the parent cell.
     Rect newRect = parent.rect;
 
-    Cell promoted = sibling;         // copy
+    Cell promoted = sibling;         // copy (includes leafId)
     promoted.rect = newRect;         // Adopt parent's geometry
     promoted.parent = parent.parent; // take over parent's parent
 
@@ -371,6 +374,9 @@ namespace wintiler
     }
     Rect r = leaf.rect;
 
+    // Store the parent's leafId before converting to Split node.
+    size_t parentLeafId = *leaf.leafId;
+
     // Create two child cells based on the *global* split direction,
     // independent of the leaf's stored splitDir.
     Rect firstRect{};
@@ -395,6 +401,7 @@ namespace wintiler
     // own splitDir is now the direction used for this split (global).
     leaf.kind = CellKind::Split;
     leaf.splitDir = state.globalSplitDir;
+    leaf.leafId = std::nullopt; // Split nodes don't have leafId
 
     Cell firstChild{};
     firstChild.kind = CellKind::Leaf;
@@ -405,6 +412,7 @@ namespace wintiler
     firstChild.firstChild = std::nullopt;
     firstChild.secondChild = std::nullopt;
     firstChild.rect = firstRect;
+    firstChild.leafId = parentLeafId; // Reuse parent's ID
 
     Cell secondChild{};
     secondChild.kind = CellKind::Leaf;
@@ -415,6 +423,7 @@ namespace wintiler
     secondChild.firstChild = std::nullopt;
     secondChild.secondChild = std::nullopt;
     secondChild.rect = secondRect;
+    secondChild.leafId = state.nextLeafId++; // Generate new ID
 
     int firstIndex = addCell(state, firstChild);
     int secondIndex = addCell(state, secondChild);
@@ -623,12 +632,24 @@ namespace wintiler
           std::cout << "[validate] ERROR: leaf cell " << i << " has children" << std::endl;
           ok = false;
         }
+        // Leaf cells must have a leafId
+        if (!c.leafId.has_value())
+        {
+          std::cout << "[validate] ERROR: leaf cell " << i << " does not have a leafId" << std::endl;
+          ok = false;
+        }
       }
       else // Split
       {
         if (!c.firstChild.has_value() || !c.secondChild.has_value())
         {
           std::cout << "[validate] ERROR: split cell " << i << " is missing children" << std::endl;
+          ok = false;
+        }
+        // Split cells must NOT have a leafId
+        if (c.leafId.has_value())
+        {
+          std::cout << "[validate] ERROR: split cell " << i << " has a leafId (should be null)" << std::endl;
           ok = false;
         }
       }
@@ -685,6 +706,32 @@ namespace wintiler
       {
         std::cout << "[validate] WARNING: cell " << i << " is referenced as a child more than twice ("
                   << childRefCount[i] << ")" << std::endl;
+        ok = false;
+      }
+    }
+
+    // Check for duplicate leafIds among leaf cells.
+    std::vector<size_t> leafIds;
+    for (int i = 0; i < static_cast<int>(state.cells.size()); ++i)
+    {
+      const Cell &c = state.cells[static_cast<std::size_t>(i)];
+      if (c.isDead)
+      {
+        continue;
+      }
+      if (c.kind == CellKind::Leaf && c.leafId.has_value())
+      {
+        leafIds.push_back(*c.leafId);
+      }
+    }
+
+    // Sort and check for duplicates
+    std::sort(leafIds.begin(), leafIds.end());
+    for (std::size_t i = 1; i < leafIds.size(); ++i)
+    {
+      if (leafIds[i] == leafIds[i - 1])
+      {
+        std::cout << "[validate] ERROR: duplicate leafId " << leafIds[i] << " found" << std::endl;
         ok = false;
       }
     }

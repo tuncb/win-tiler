@@ -38,6 +38,8 @@ namespace wintiler
     std::optional<int> secondChild; // empty if none (leaf)
 
     Rect rect; // logical rectangle in window coordinates
+
+    std::optional<size_t> leafId; // unique ID for leaf cells only
   };
 
   struct AppState
@@ -51,6 +53,8 @@ namespace wintiler
 
     float gapHorizontal;
     float gapVertical;
+
+    size_t nextLeafId = 1; // Counter for unique leaf IDs
   };
 
 } // namespace wintiler

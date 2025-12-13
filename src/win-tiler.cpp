@@ -3,6 +3,10 @@
 #include "actions.h"
 #include "state.h"
 
+#include <string>
+#include <vector>
+#include <algorithm>
+
 using namespace wintiler;
 
 int main(void)
@@ -134,6 +138,20 @@ int main(void)
       Color borderColor = isSelected ? RED : BLACK;
 
       DrawRectangleLinesEx(rr, isSelected ? 3.0f : 1.0f, borderColor);
+
+      if (cell.leafId.has_value())
+      {
+        std::string labelText = std::to_string(*cell.leafId);
+        float fontSize = std::min(cell.rect.width, cell.rect.height) * 0.5f;
+        if (fontSize < 10.0f)
+          fontSize = 10.0f;
+
+        int textWidth = MeasureText(labelText.c_str(), (int)fontSize);
+        int textX = (int)(cell.rect.x + (cell.rect.width - textWidth) / 2);
+        int textY = (int)(cell.rect.y + (cell.rect.height - fontSize) / 2);
+
+        DrawText(labelText.c_str(), textX, textY, (int)fontSize, BLACK);
+      }
     }
 
     EndDrawing();
