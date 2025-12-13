@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cells.h>
-
 #include <cstddef>
 #include <unordered_map>
 #include <vector>
+
+#include "cells.h"
 
 namespace wintiler {
 namespace process_logic {

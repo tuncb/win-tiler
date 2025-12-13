@@ -2,7 +2,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #endif // !DOCTEST_CONFIG_DISABLE
 
-#include <cells.h>
+#include "cells.h"
 #include <doctest/doctest.h>
 
 #include <cmath>

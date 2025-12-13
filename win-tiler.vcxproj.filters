@@ -32,10 +32,10 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\cells.h">
+    <ClInclude Include="src\cells.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="inc\process.h">
+    <ClInclude Include="src\process.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,13 +1,12 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
-#include <cells.h>
-#include <process.h>
-
 #include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "cells.h"
+#include "process.h"
 #include "raylib.h"
 
 using namespace wintiler;
