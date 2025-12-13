@@ -8,6 +8,7 @@
 #include "cells.h"
 #include "process.h"
 #include "raylib.h"
+#include "winapi.h"
 
 using namespace wintiler;
 
@@ -83,6 +84,10 @@ int main(void) {
     if (IsKeyPressed(KEY_C)) {
       // Validate internal invariants of the state and print result.
       validateState(appState.CellCluster);
+    }
+
+    if (IsKeyPressed(KEY_M)) {
+      winapi::log_windows_per_monitor();
     }
 
     if (IsKeyPressed(KEY_LEFT)) {

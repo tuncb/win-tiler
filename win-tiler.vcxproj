@@ -196,10 +196,12 @@
     <ClCompile Include="src\test_cells.cpp" />
     <ClCompile Include="src\test_process.cpp" />
     <ClCompile Include="src\win-tiler.cpp" />
+    <ClCompile Include="src\winapi.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\cells.h" />
     <ClInclude Include="src\process.h" />
+    <ClInclude Include="src\winapi.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
