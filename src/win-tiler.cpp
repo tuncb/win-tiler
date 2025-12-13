@@ -107,6 +107,17 @@ int main(void) {
       }
     }
 
+    for (int k = KEY_ONE; k <= KEY_NINE; ++k) {
+      if (IsKeyPressed(k)) {
+        int count = k - KEY_ONE + 1;
+        std::vector<size_t> ids;
+        for (int i = 0; i < count; ++i) {
+          ids.push_back(10 + i);
+        }
+        process_logic::updateProcesses(appState, ids);
+      }
+    }
+
     BeginDrawing();
     ClearBackground(RAYWHITE);
 

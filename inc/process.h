@@ -16,6 +16,7 @@ struct AppState {
 };
 
 void addNewProcess(AppState& appState, size_t& nextProcessId);
+void updateProcesses(AppState& appState, const std::vector<size_t>& currentProcessIds);
 void deleteSelectedCellsProcess(AppState& appState);
 void resetAppState(AppState& appState, float width, float height);
 
