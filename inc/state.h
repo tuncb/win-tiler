@@ -42,7 +42,7 @@ namespace wintiler
     std::optional<size_t> leafId; // unique ID for leaf cells only
   };
 
-  struct AppState
+  struct WindowState
   {
     std::vector<Cell> cells;
     std::optional<int> rootIndex;     // empty until initialized
@@ -53,6 +53,11 @@ namespace wintiler
 
     float gapHorizontal;
     float gapVertical;
+
+    // Logical window size used to derive the initial root cell rect
+    // when the first cell is created lazily on a split.
+    float windowWidth = 0.0f;
+    float windowHeight = 0.0f;
 
     size_t nextLeafId = 1; // Counter for unique leaf IDs
   };

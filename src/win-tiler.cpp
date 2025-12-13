@@ -1,30 +1,96 @@
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+
 #include "raylib.h"
 
 #include "actions.h"
 #include "state.h"
 
-#include <string>
-#include <vector>
-#include <algorithm>
-
 using namespace wintiler;
+
+const size_t PROCESS_ID_START = 10;
+
+struct AppState
+{
+  WindowState windowState;
+  size_t nextProcessId = PROCESS_ID_START;
+  std::unordered_map<size_t, size_t> processToLeafIdMap;
+  std::unordered_map<size_t, size_t> leafIdToProcessMap;
+};
+
+void addNewProcess(AppState &appState)
+{
+  auto newLeafIdOpt = splitSelectedLeaf(appState.windowState);
+  if (!newLeafIdOpt.has_value())
+  {
+    return;
+  }
+
+  size_t processId = appState.nextProcessId++;
+  size_t leafId = *newLeafIdOpt;
+  appState.processToLeafIdMap[processId] = leafId;
+  appState.leafIdToProcessMap[leafId] = processId;
+}
+
+void deleteSelectedCellsProcess(AppState &appState)
+{
+  auto selectedCell = appState.windowState.selectedIndex;
+  if (!selectedCell.has_value())
+  {
+    return;
+  }
+
+  auto processIt = appState.leafIdToProcessMap.find(
+      appState.windowState.cells[static_cast<std::size_t>(*selectedCell)].leafId.value());
+  if (processIt == appState.leafIdToProcessMap.end())
+  {
+    return;
+  }
+
+  size_t selectedProcessId = processIt->second;
+
+  if (!deleteSelectedLeaf(appState.windowState))
+  {
+    return;
+  }
+
+  auto it = appState.processToLeafIdMap.find(selectedProcessId);
+  if (it != appState.processToLeafIdMap.end())
+  {
+    size_t leafId = it->second;
+    appState.processToLeafIdMap.erase(it);
+    appState.leafIdToProcessMap.erase(leafId);
+  }
+}
+
+void resetAppState(AppState &appState, float width, float height)
+{
+  appState.windowState = createInitialState(width, height);
+  appState.nextProcessId = PROCESS_ID_START;
+  appState.processToLeafIdMap.clear();
+  appState.leafIdToProcessMap.clear();
+}
 
 int main(void)
 {
+  AppState appState;
+
   const int screenWidth = 1600;
   const int screenHeight = 900;
 
   InitWindow(screenWidth, screenHeight, "win-tiler");
 
-  AppState appState = createInitialState((float)screenWidth, (float)screenHeight);
+  resetAppState(appState, (float)screenWidth, (float)screenHeight);
 
   SetTargetFPS(60);
 
   auto centerMouseOnSelection = [&appState]()
   {
-    if (appState.selectedIndex.has_value())
+    if (appState.windowState.selectedIndex.has_value())
     {
-      const Cell &cell = appState.cells[*appState.selectedIndex];
+      const Cell &cell = appState.windowState.cells[*appState.windowState.selectedIndex];
       SetMousePosition((int)(cell.rect.x + cell.rect.width / 2), (int)(cell.rect.y + cell.rect.height / 2));
     }
   };
@@ -32,89 +98,89 @@ int main(void)
   while (!WindowShouldClose())
   {
     Vector2 mousePos = GetMousePosition();
-    for (int i = 0; i < static_cast<int>(appState.cells.size()); ++i)
+    for (int i = 0; i < static_cast<int>(appState.windowState.cells.size()); ++i)
     {
-      if (!isLeaf(appState, i))
+      if (!isLeaf(appState.windowState, i))
       {
         continue;
       }
 
-      const Cell &cell = appState.cells[static_cast<std::size_t>(i)];
+      const Cell &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
       Rectangle rr{cell.rect.x, cell.rect.y, cell.rect.width, cell.rect.height};
 
       if (CheckCollisionPointRec(mousePos, rr))
       {
-        appState.selectedIndex = i;
+        appState.windowState.selectedIndex = i;
         break;
       }
     }
 
     if (IsKeyPressed(KEY_H))
     {
-      appState.globalSplitDir = SplitDir::Horizontal;
+      appState.windowState.globalSplitDir = SplitDir::Horizontal;
     }
 
     if (IsKeyPressed(KEY_V))
     {
-      appState.globalSplitDir = SplitDir::Vertical;
+      appState.windowState.globalSplitDir = SplitDir::Vertical;
     }
 
     if (IsKeyPressed(KEY_T))
     {
-      toggleSelectedSplitDir(appState);
+      toggleSelectedSplitDir(appState.windowState);
     }
 
     if (IsKeyPressed(KEY_R))
     {
-      appState = createInitialState((float)screenWidth, (float)screenHeight);
+      resetAppState(appState, (float)screenWidth, (float)screenHeight);
     }
 
     if (IsKeyPressed(KEY_SPACE))
     {
-      splitSelectedLeaf(appState);
+      addNewProcess(appState);
     }
 
     if (IsKeyPressed(KEY_D))
     {
-      deleteSelectedLeaf(appState);
+      deleteSelectedCellsProcess(appState);
     }
 
     if (IsKeyPressed(KEY_I))
     {
       // Debug dump of the whole state to the console.
-      debugPrintState(appState);
+      debugPrintState(appState.windowState);
     }
 
     if (IsKeyPressed(KEY_C))
     {
       // Validate internal invariants of the state and print result.
-      validateState(appState);
+      validateState(appState.windowState);
     }
 
     if (IsKeyPressed(KEY_LEFT))
     {
-      if (moveSelection(appState, Direction::Left))
+      if (moveSelection(appState.windowState, Direction::Left))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_RIGHT))
     {
-      if (moveSelection(appState, Direction::Right))
+      if (moveSelection(appState.windowState, Direction::Right))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_UP))
     {
-      if (moveSelection(appState, Direction::Up))
+      if (moveSelection(appState.windowState, Direction::Up))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_DOWN))
     {
-      if (moveSelection(appState, Direction::Down))
+      if (moveSelection(appState.windowState, Direction::Down))
       {
         centerMouseOnSelection();
       }
@@ -123,34 +189,39 @@ int main(void)
     BeginDrawing();
     ClearBackground(RAYWHITE);
 
-    for (int i = 0; i < static_cast<int>(appState.cells.size()); ++i)
+    for (int i = 0; i < static_cast<int>(appState.windowState.cells.size()); ++i)
     {
-      if (!isLeaf(appState, i))
+      if (!isLeaf(appState.windowState, i))
       {
         continue;
       }
 
-      const Cell &cell = appState.cells[static_cast<std::size_t>(i)];
+      const Cell &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
       const Rect &r = cell.rect;
       Rectangle rr{r.x, r.y, r.width, r.height};
 
-      bool isSelected = appState.selectedIndex.has_value() && *appState.selectedIndex == i;
+      bool isSelected = appState.windowState.selectedIndex.has_value() && *appState.windowState.selectedIndex == i;
       Color borderColor = isSelected ? RED : BLACK;
 
       DrawRectangleLinesEx(rr, isSelected ? 3.0f : 1.0f, borderColor);
 
       if (cell.leafId.has_value())
       {
-        std::string labelText = std::to_string(*cell.leafId);
-        float fontSize = std::min(cell.rect.width, cell.rect.height) * 0.5f;
-        if (fontSize < 10.0f)
-          fontSize = 10.0f;
+        auto processIt = appState.leafIdToProcessMap.find(*cell.leafId);
+        if (processIt != appState.leafIdToProcessMap.end())
+        {
+          size_t processId = processIt->second;
+          std::string labelText = "P:" + std::to_string(processId);
+          float fontSize = std::min(cell.rect.width, cell.rect.height) * 0.3f;
+          if (fontSize < 10.0f)
+            fontSize = 10.0f;
 
-        int textWidth = MeasureText(labelText.c_str(), (int)fontSize);
-        int textX = (int)(cell.rect.x + (cell.rect.width - textWidth) / 2);
-        int textY = (int)(cell.rect.y + (cell.rect.height - fontSize) / 2);
+          int textWidth = MeasureText(labelText.c_str(), (int)fontSize);
+          int textX = (int)(cell.rect.x + (cell.rect.width - textWidth) / 2);
+          int textY = (int)(cell.rect.y + (cell.rect.height - fontSize) / 2) - 10;
 
-        DrawText(labelText.c_str(), textX, textY, (int)fontSize, BLACK);
+          DrawText(labelText.c_str(), textX, textY, (int)fontSize, DARKGRAY);
+        }
       }
     }
 

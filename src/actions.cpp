@@ -6,43 +6,31 @@
 namespace wintiler
 {
 
-  AppState createInitialState(float width, float height)
+  WindowState createInitialState(float width, float height)
   {
-    AppState state;
+    WindowState state{};
+
     state.cells.clear();
     state.nextLeafId = 1;
+
+    // Store the logical window size for lazy creation of the first cell.
+    state.windowWidth = width;
+    state.windowHeight = height;
 
     // Start global split direction as Vertical, as requested.
     state.globalSplitDir = SplitDir::Vertical;
     state.gapHorizontal = 10.0f;
     state.gapVertical = 10.0f;
 
-    Cell root{};
-    root.kind = CellKind::Leaf;
-    // The root leaf starts with the current global split direction.
-    root.splitDir = state.globalSplitDir;
-    root.isDead = false;
-    root.parent = std::nullopt;
-    root.firstChild = std::nullopt;
-    root.secondChild = std::nullopt;
-    root.leafId = state.nextLeafId++;
-
-    float rootW = width - 2.0f * state.gapHorizontal;
-    float rootH = height - 2.0f * state.gapVertical;
-    root.rect = Rect{
-        state.gapHorizontal,
-        state.gapVertical,
-        rootW > 0.0f ? rootW : 0.0f,
-        rootH > 0.0f ? rootH : 0.0f};
-
-    int index = addCell(state, root);
-    state.rootIndex = index;
-    state.selectedIndex = index;
+    // Do not create any cells yet. The first call to splitSelectedLeaf
+    // on an empty state will create the initial root leaf.
+    state.rootIndex = std::nullopt;
+    state.selectedIndex = std::nullopt;
 
     return state;
   }
 
-  bool isLeaf(const AppState &state, int cellIndex)
+  bool isLeaf(const WindowState &state, int cellIndex)
   {
     if (cellIndex < 0 || static_cast<std::size_t>(cellIndex) >= state.cells.size())
     {
@@ -58,13 +46,13 @@ namespace wintiler
     return !cell.firstChild.has_value() && !cell.secondChild.has_value();
   }
 
-  int addCell(AppState &state, const Cell &cell)
+  int addCell(WindowState &state, const Cell &cell)
   {
     state.cells.push_back(cell);
     return static_cast<int>(state.cells.size() - 1);
   }
 
-  static void recomputeChildrenRects(AppState &state, int nodeIndex)
+  static void recomputeChildrenRects(WindowState &state, int nodeIndex)
   {
     Cell &node = state.cells[static_cast<std::size_t>(nodeIndex)];
 
@@ -106,7 +94,7 @@ namespace wintiler
     secondChild.rect = second;
   }
 
-  void recomputeSubtreeRects(AppState &state, int nodeIndex)
+  void recomputeSubtreeRects(WindowState &state, int nodeIndex)
   {
     if (nodeIndex < 0 || static_cast<std::size_t>(nodeIndex) >= state.cells.size())
     {
@@ -131,7 +119,7 @@ namespace wintiler
     }
   }
 
-  bool deleteSelectedLeaf(AppState &state)
+  bool deleteSelectedLeaf(WindowState &state)
   {
     if (!state.selectedIndex.has_value())
     {
@@ -143,10 +131,9 @@ namespace wintiler
     {
       return false; // only leaves can be deleted
     }
-
-    if (!state.rootIndex.has_value() || selected == *state.rootIndex)
+    if (!state.rootIndex.has_value())
     {
-      return false; // do not delete the root
+      return false;
     }
 
     Cell &selectedCell = state.cells[static_cast<std::size_t>(selected)];
@@ -154,6 +141,18 @@ namespace wintiler
     {
       return false;
     }
+
+    // Allow deleting the root leaf when it is the only live cell.
+    if (selected == *state.rootIndex)
+    {
+      // Root is a leaf here, so by construction it is the only live
+      // node in the tree. Transition back to an empty layout.
+      state.cells.clear();
+      state.rootIndex.reset();
+      state.selectedIndex.reset();
+      return true;
+    }
+
     if (!selectedCell.parent.has_value())
     {
       return false;
@@ -274,7 +273,7 @@ namespace wintiler
     }
   }
 
-  std::optional<int> findNextLeafInDirection(const AppState &state, int currentIndex, Direction dir)
+  std::optional<int> findNextLeafInDirection(const WindowState &state, int currentIndex, Direction dir)
   {
     if (currentIndex < 0 || static_cast<std::size_t>(currentIndex) >= state.cells.size())
     {
@@ -328,7 +327,7 @@ namespace wintiler
     return bestIndex;
   }
 
-  bool moveSelection(AppState &state, Direction dir)
+  bool moveSelection(WindowState &state, Direction dir)
   {
     if (!state.selectedIndex.has_value())
     {
@@ -354,23 +353,54 @@ namespace wintiler
     return true;
   }
 
-  bool splitSelectedLeaf(AppState &state)
+  std::optional<size_t> splitSelectedLeaf(WindowState &state)
   {
+    // Special case: if there is no selection and the state has no
+    // cells yet, lazily create the initial root leaf covering the
+    // window. This mirrors the old eager initialization behavior.
     if (!state.selectedIndex.has_value())
     {
-      return false;
+      if (state.cells.empty())
+      {
+        Cell root{};
+        root.kind = CellKind::Leaf;
+        root.splitDir = state.globalSplitDir;
+        root.isDead = false;
+        root.parent = std::nullopt;
+        root.firstChild = std::nullopt;
+        root.secondChild = std::nullopt;
+        root.leafId = state.nextLeafId++;
+
+        float rootW = state.windowWidth - 2.0f * state.gapHorizontal;
+        float rootH = state.windowHeight - 2.0f * state.gapVertical;
+        root.rect = Rect{
+            state.gapHorizontal,
+            state.gapVertical,
+            rootW > 0.0f ? rootW : 0.0f,
+            rootH > 0.0f ? rootH : 0.0f};
+
+        int index = addCell(state, root);
+        state.rootIndex = index;
+        state.selectedIndex = index;
+
+        return root.leafId;
+      }
+
+      // No selection but we do have cells; we cannot determine which
+      // leaf to split, so do nothing.
+      return std::nullopt;
     }
 
     int selected = *state.selectedIndex;
     if (!isLeaf(state, selected))
     {
-      return false;
+      return std::nullopt;
     }
 
     Cell &leaf = state.cells[static_cast<std::size_t>(selected)];
     if (leaf.isDead)
     {
-      return false;
+      return std::nullopt;
     }
     Rect r = leaf.rect;
 
@@ -443,10 +473,10 @@ namespace wintiler
                                ? SplitDir::Horizontal
                                : SplitDir::Vertical;
 
-    return true;
+    return secondChild.leafId;
   }
 
-  bool toggleSelectedSplitDir(AppState &state)
+  bool toggleSelectedSplitDir(WindowState &state)
   {
     if (!state.selectedIndex.has_value())
     {
@@ -513,9 +543,9 @@ namespace wintiler
   }
 
   // Debug helper: print a human-readable snapshot of the state.
-  void debugPrintState(const AppState &state)
+  void debugPrintState(const WindowState &state)
   {
-    std::cout << "===== AppState =====" << std::endl;
+    std::cout << "===== WindowState =====" << std::endl;
 
     std::cout << "cells.size = " << state.cells.size() << std::endl;
     std::cout << "rootIndex = ";
@@ -575,14 +605,41 @@ namespace wintiler
                 << " }" << std::endl;
     }
 
-    std::cout << "===== End AppState =====" << std::endl;
+    std::cout << "===== End WindowState =====" << std::endl;
   }
 
-  bool validateState(const AppState &state)
+  bool validateState(const WindowState &state)
   {
     bool ok = true;
 
-    // Basic container/root invariants.
+    // Handle the empty-state case explicitly: no cells means rootIndex
+    // and selectedIndex should both be empty, which is a valid state.
+    if (state.cells.empty())
+    {
+      if (state.rootIndex.has_value())
+      {
+        std::cout << "[validate] ERROR: empty state has non-null rootIndex" << std::endl;
+        ok = false;
+      }
+      if (state.selectedIndex.has_value())
+      {
+        std::cout << "[validate] ERROR: empty state has non-null selectedIndex" << std::endl;
+        ok = false;
+      }
+
+      if (ok)
+      {
+        std::cout << "[validate] State OK (empty)" << std::endl;
+      }
+      else
+      {
+        std::cout << "[validate] State has anomalies (empty)" << std::endl;
+      }
+
+      return ok;
+    }
+
+    // Basic container/root invariants for non-empty states.
     if (!state.rootIndex.has_value())
     {
       std::cout << "[validate] ERROR: rootIndex is null" << std::endl;
