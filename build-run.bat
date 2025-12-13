@@ -9,17 +9,16 @@ REM Parse arguments
 :parse_args
 if "%~1"=="" goto after_parse
 
-if /I "%~1"=="build" (
+set ARG=%~1
+if /I "!ARG!"=="build" (
     set ACTION=build
-) else if /I "%~1"=="build-run" (
+) else if /I "!ARG!"=="build-run" (
     set ACTION=build-run
-) else if /I "%~1"=="--debug" (
-    set CONFIG=Debug
-) else if /I "%~1"=="--release" (
-    set CONFIG=Release
+) else if "!ARG:~0,2!"=="--" (
+    set CONFIG=!ARG:~2!
 ) else (
-    echo Unknown argument: %~1
-    echo Usage: %~nx0 [build^|build-run] [--debug^|--release]
+    echo Unknown argument: !ARG!
+    echo Usage: %~nx0 [build^|build-run] [--Configuration]
     exit /b 1
 )
 shift
@@ -28,7 +27,7 @@ goto parse_args
 :after_parse
 if "%ACTION%"=="" (
     echo You must specify "build" or "build-run".
-    echo Usage: %~nx0 [build^|build-run] [--debug^|--release]
+    echo Usage: %~nx0 [build^|build-run] [--Configuration]
     exit /b 1
 )
 
@@ -73,6 +72,8 @@ REM Determine output EXE path (adjust if your project path/config differs)
 set OUTDIR=
 if /I "%CONFIG%"=="Debug" (
     set OUTDIR=x64\Debug
+) else if /I "%CONFIG%"=="Test-Debug" (
+    set OUTDIR=x64\Test-Debug
 ) else (
     set OUTDIR=x64\Release
 )

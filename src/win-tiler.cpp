@@ -1,3 +1,5 @@
+#ifdef DOCTEST_CONFIG_DISABLE
+
 #include <cells.h>
 
 #include <algorithm>
@@ -197,3 +199,5 @@ int main(void) {
 
   return 0;
 }
+
+#endif 

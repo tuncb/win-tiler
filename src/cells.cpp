@@ -319,10 +319,9 @@ std::optional<size_t> splitSelectedLeaf(CellCluster& state) {
       root.secondChild = std::nullopt;
       root.leafId = state.nextLeafId++;
 
-      float rootW = state.windowWidth - 2.0f * state.gapHorizontal;
-      float rootH = state.windowHeight - 2.0f * state.gapVertical;
-      root.rect = Rect{state.gapHorizontal, state.gapVertical, rootW > 0.0f ? rootW : 0.0f,
-                       rootH > 0.0f ? rootH : 0.0f};
+      float rootW = state.windowWidth;
+      float rootH = state.windowHeight;
+      root.rect = Rect{0.0f, 0.0f, rootW > 0.0f ? rootW : 0.0f, rootH > 0.0f ? rootH : 0.0f};
 
       int index = addCell(state, root);
       state.selectedIndex = index;
