@@ -1,6 +1,7 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
 #include <algorithm>
+#include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,7 +15,7 @@ using namespace wintiler;
 
 const size_t PROCESS_ID_START = 10;
 
-int main(void) {
+void runRaylibUI() {
   process_logic::AppState appState;
   size_t nextProcessId = PROCESS_ID_START;
 
@@ -162,7 +163,22 @@ int main(void) {
   }
 
   CloseWindow();
+}
 
+int main(int argc, char* argv[]) {
+  bool runTests = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "tests") {
+      runTests = true;
+      break;
+    }
+  }
+
+  if (runTests) {
+    runRaylibUI();
+  } else {
+    winapi::log_windows_per_monitor();
+  }
   return 0;
 }
 
