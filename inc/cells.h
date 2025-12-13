@@ -54,7 +54,7 @@ struct CellCluster {
 CellCluster createInitialState(float width, float height);
 
 // Returns true if the cell at cellIndex exists and has no children.
-bool isLeaf(const CellCluster& state, int cellIndex);
+[[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
 // Append a cell to the state's cell array and return its index.
 int addCell(CellCluster& state, const Cell& cell);
@@ -76,8 +76,8 @@ enum class Direction {
 
 // Find the next leaf cell in the given direction relative to currentIndex.
 // Returns empty optional if no suitable neighbor is found.
-std::optional<int> findNextLeafInDirection(const CellCluster& state, int currentIndex,
-                                           Direction dir);
+[[nodiscard]] std::optional<int> findNextLeafInDirection(const CellCluster& state, int currentIndex,
+                                                         Direction dir);
 
 // Move the selection in the given direction. Returns true if the
 // selection changed.
