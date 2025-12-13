@@ -1,6 +1,7 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
 #include <cells.h>
+#include <process.h>
 
 #include <algorithm>
 #include <string>
@@ -13,67 +14,16 @@ using namespace wintiler;
 
 const size_t PROCESS_ID_START = 10;
 
-struct AppState {
-  cell_logic::CellCluster CellCluster;
-  size_t nextProcessId = PROCESS_ID_START;
-  std::unordered_map<size_t, size_t> processToLeafIdMap;
-  std::unordered_map<size_t, size_t> leafIdToProcessMap;
-};
-
-void addNewProcess(AppState& appState) {
-  auto newLeafIdOpt = cell_logic::splitSelectedLeaf(appState.CellCluster);
-  if (!newLeafIdOpt.has_value()) {
-    return;
-  }
-
-  size_t processId = appState.nextProcessId++;
-  size_t leafId = *newLeafIdOpt;
-  appState.processToLeafIdMap[processId] = leafId;
-  appState.leafIdToProcessMap[leafId] = processId;
-}
-
-void deleteSelectedCellsProcess(AppState& appState) {
-  auto selectedCell = appState.CellCluster.selectedIndex;
-  if (!selectedCell.has_value()) {
-    return;
-  }
-
-  auto processIt = appState.leafIdToProcessMap.find(
-      appState.CellCluster.cells[static_cast<std::size_t>(*selectedCell)].leafId.value());
-  if (processIt == appState.leafIdToProcessMap.end()) {
-    return;
-  }
-
-  size_t selectedProcessId = processIt->second;
-
-  if (!deleteSelectedLeaf(appState.CellCluster)) {
-    return;
-  }
-
-  auto it = appState.processToLeafIdMap.find(selectedProcessId);
-  if (it != appState.processToLeafIdMap.end()) {
-    size_t leafId = it->second;
-    appState.processToLeafIdMap.erase(it);
-    appState.leafIdToProcessMap.erase(leafId);
-  }
-}
-
-void resetAppState(AppState& appState, float width, float height) {
-  appState.CellCluster = cell_logic::createInitialState(width, height);
-  appState.nextProcessId = PROCESS_ID_START;
-  appState.processToLeafIdMap.clear();
-  appState.leafIdToProcessMap.clear();
-}
-
 int main(void) {
-  AppState appState;
+  process_logic::AppState appState;
+  size_t nextProcessId = PROCESS_ID_START;
 
   const int screenWidth = 1600;
   const int screenHeight = 900;
 
   InitWindow(screenWidth, screenHeight, "win-tiler");
 
-  resetAppState(appState, (float)screenWidth, (float)screenHeight);
+  process_logic::resetAppState(appState, (float)screenWidth, (float)screenHeight);
 
   SetTargetFPS(60);
 
@@ -115,10 +65,11 @@ int main(void) {
 
     if (IsKeyPressed(KEY_R)) {
       resetAppState(appState, (float)screenWidth, (float)screenHeight);
+      nextProcessId = PROCESS_ID_START;
     }
 
     if (IsKeyPressed(KEY_SPACE)) {
-      addNewProcess(appState);
+      addNewProcess(appState, nextProcessId);
     }
 
     if (IsKeyPressed(KEY_D)) {
@@ -200,4 +151,4 @@ int main(void) {
   return 0;
 }
 
-#endif 
+#endif
