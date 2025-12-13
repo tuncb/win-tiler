@@ -5,8 +5,7 @@
 
 #include "raylib.h"
 
-#include "actions.h"
-#include "state.h"
+#include <cells.h>
 
 using namespace wintiler;
 
@@ -14,7 +13,7 @@ const size_t PROCESS_ID_START = 10;
 
 struct AppState
 {
-  WindowState windowState;
+  cell_logic::WindowState windowState;
   size_t nextProcessId = PROCESS_ID_START;
   std::unordered_map<size_t, size_t> processToLeafIdMap;
   std::unordered_map<size_t, size_t> leafIdToProcessMap;
@@ -22,7 +21,7 @@ struct AppState
 
 void addNewProcess(AppState &appState)
 {
-  auto newLeafIdOpt = splitSelectedLeaf(appState.windowState);
+  auto newLeafIdOpt = cell_logic::splitSelectedLeaf(appState.windowState);
   if (!newLeafIdOpt.has_value())
   {
     return;
@@ -67,7 +66,7 @@ void deleteSelectedCellsProcess(AppState &appState)
 
 void resetAppState(AppState &appState, float width, float height)
 {
-  appState.windowState = createInitialState(width, height);
+  appState.windowState = cell_logic::reateInitialState(width, height);
   appState.nextProcessId = PROCESS_ID_START;
   appState.processToLeafIdMap.clear();
   appState.leafIdToProcessMap.clear();
@@ -90,7 +89,7 @@ int main(void)
   {
     if (appState.windowState.selectedIndex.has_value())
     {
-      const Cell &cell = appState.windowState.cells[*appState.windowState.selectedIndex];
+      const auto &cell = appState.windowState.cells[*appState.windowState.selectedIndex];
       SetMousePosition((int)(cell.rect.x + cell.rect.width / 2), (int)(cell.rect.y + cell.rect.height / 2));
     }
   };
@@ -105,7 +104,7 @@ int main(void)
         continue;
       }
 
-      const Cell &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
+      const auto &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
       Rectangle rr{cell.rect.x, cell.rect.y, cell.rect.width, cell.rect.height};
 
       if (CheckCollisionPointRec(mousePos, rr))
@@ -117,12 +116,12 @@ int main(void)
 
     if (IsKeyPressed(KEY_H))
     {
-      appState.windowState.globalSplitDir = SplitDir::Horizontal;
+      appState.windowState.globalSplitDir = cell_logic::SplitDir::Horizontal;
     }
 
     if (IsKeyPressed(KEY_V))
     {
-      appState.windowState.globalSplitDir = SplitDir::Vertical;
+      appState.windowState.globalSplitDir = cell_logic::SplitDir::Vertical;
     }
 
     if (IsKeyPressed(KEY_T))
@@ -159,28 +158,28 @@ int main(void)
 
     if (IsKeyPressed(KEY_LEFT))
     {
-      if (moveSelection(appState.windowState, Direction::Left))
+      if (moveSelection(appState.windowState, cell_logic::Direction::Left))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_RIGHT))
     {
-      if (moveSelection(appState.windowState, Direction::Right))
+      if (moveSelection(appState.windowState, cell_logic::Direction::Right))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_UP))
     {
-      if (moveSelection(appState.windowState, Direction::Up))
+      if (moveSelection(appState.windowState, cell_logic::Direction::Up))
       {
         centerMouseOnSelection();
       }
     }
     if (IsKeyPressed(KEY_DOWN))
     {
-      if (moveSelection(appState.windowState, Direction::Down))
+      if (moveSelection(appState.windowState, cell_logic::Direction::Down))
       {
         centerMouseOnSelection();
       }
@@ -196,8 +195,8 @@ int main(void)
         continue;
       }
 
-      const Cell &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
-      const Rect &r = cell.rect;
+      const auto &cell = appState.windowState.cells[static_cast<std::size_t>(i)];
+      const auto &r = cell.rect;
       Rectangle rr{r.x, r.y, r.width, r.height};
 
       bool isSelected = appState.windowState.selectedIndex.has_value() && *appState.windowState.selectedIndex == i;
