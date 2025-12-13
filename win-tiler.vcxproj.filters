@@ -18,18 +18,15 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\actions.cpp">
+    <ClCompile Include="src\win-tiler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\win-tiler.cpp">
+    <ClCompile Include="src\cells.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\actions.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="inc\state.h">
+    <ClInclude Include="inc\cells.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

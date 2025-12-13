@@ -8,12 +8,6 @@ namespace wintiler
   namespace cell_logic
   {
 
-    enum class CellKind
-    {
-      Leaf,
-      Split,
-    };
-
     enum class SplitDir
     {
       Vertical,
@@ -30,7 +24,6 @@ namespace wintiler
 
     struct Cell
     {
-      CellKind kind;
       SplitDir splitDir;
 
       bool isDead = false;

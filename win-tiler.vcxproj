@@ -135,12 +135,11 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\actions.cpp" />
+    <ClCompile Include="src\cells.cpp" />
     <ClCompile Include="src\win-tiler.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\actions.h" />
-    <ClInclude Include="inc\state.h" />
+    <ClInclude Include="inc\cells.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

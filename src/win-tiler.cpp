@@ -66,7 +66,7 @@ void deleteSelectedCellsProcess(AppState &appState)
 
 void resetAppState(AppState &appState, float width, float height)
 {
-  appState.windowState = cell_logic::reateInitialState(width, height);
+  appState.windowState = cell_logic::createInitialState(width, height);
   appState.nextProcessId = PROCESS_ID_START;
   appState.processToLeafIdMap.clear();
   appState.leafIdToProcessMap.clear();

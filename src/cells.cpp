@@ -363,7 +363,6 @@ namespace wintiler
         if (state.cells.empty())
         {
           Cell root{};
-          root.kind = CellKind::Leaf;
           root.splitDir = state.globalSplitDir;
           root.isDead = false;
           root.parent = std::nullopt;
@@ -426,14 +425,12 @@ namespace wintiler
         secondRect = Rect{r.x, r.y + childHeight + state.gapVertical, r.width, childHeight};
       }
 
-      // Convert leaf into a split node. Its kind becomes Split, and its
-      // own splitDir is now the direction used for this split (global).
-      leaf.kind = CellKind::Split;
+      // Convert leaf into a split node. Its splitDir is now the direction
+      // used for this split (global).
       leaf.splitDir = state.globalSplitDir;
       leaf.leafId = std::nullopt; // Split nodes don't have leafId
 
       Cell firstChild{};
-      firstChild.kind = CellKind::Leaf;
       // Use global split direction for new leaves, so future splits alternate.
       firstChild.splitDir = state.globalSplitDir;
       firstChild.isDead = false;
@@ -444,7 +441,6 @@ namespace wintiler
       firstChild.leafId = parentLeafId; // Reuse parent's ID
 
       Cell secondChild{};
-      secondChild.kind = CellKind::Leaf;
       // Use global split direction for new leaves.
       secondChild.splitDir = state.globalSplitDir;
       secondChild.isDead = false;
@@ -567,7 +563,7 @@ namespace wintiler
           continue;
         }
         std::cout << "-- Cell " << i << " --" << std::endl;
-        std::cout << "  kind = " << (c.kind == CellKind::Leaf ? "Leaf" : "Split") << std::endl;
+        std::cout << "  kind = " << (c.leafId.has_value() ? "Leaf" : "Split") << std::endl;
         std::cout << "  splitDir = " << (c.splitDir == SplitDir::Vertical ? "Vertical" : "Horizontal") << std::endl;
 
         std::cout << "  parent = ";
@@ -665,32 +661,23 @@ namespace wintiler
           }
         }
 
-        // Child index validity and kind invariants (live cells only).
-        if (c.kind == CellKind::Leaf)
+        // Child index validity and structural invariants (live cells only).
+        // Leaf cells have leafId and no children; split cells have children and no leafId.
+        if (c.leafId.has_value())
         {
+          // This is a leaf cell
           if (c.firstChild.has_value() || c.secondChild.has_value())
           {
             std::cout << "[validate] ERROR: leaf cell " << i << " has children" << std::endl;
             ok = false;
           }
-          // Leaf cells must have a leafId
-          if (!c.leafId.has_value())
-          {
-            std::cout << "[validate] ERROR: leaf cell " << i << " does not have a leafId" << std::endl;
-            ok = false;
-          }
         }
-        else // Split
+        else
         {
+          // This is a split cell
           if (!c.firstChild.has_value() || !c.secondChild.has_value())
           {
             std::cout << "[validate] ERROR: split cell " << i << " is missing children" << std::endl;
-            ok = false;
-          }
-          // Split cells must NOT have a leafId
-          if (c.leafId.has_value())
-          {
-            std::cout << "[validate] ERROR: split cell " << i << " has a leafId (should be null)" << std::endl;
             ok = false;
           }
         }
@@ -760,7 +747,7 @@ namespace wintiler
         {
           continue;
         }
-        if (c.kind == CellKind::Leaf && c.leafId.has_value())
+        if (c.leafId.has_value())
         {
           leafIds.push_back(*c.leafId);
         }
