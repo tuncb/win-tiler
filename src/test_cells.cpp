@@ -2,16 +2,22 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #endif // !DOCTEST_CONFIG_DISABLE
 
-#include "cells.h"
 #include <doctest/doctest.h>
 
 #include <cmath>
 
+#include "cells.h"
+
 using namespace wintiler::cell_logic;
 
 TEST_CASE("Initial State") {
-  CellCluster state = createInitialState(1920.0f, 1080.0f);
+  Rect windowRect{0.0f, 0.0f, 1920.0f, 1080.0f};
+  CellCluster state = createInitialState(windowRect);
   CHECK(state.cells.empty());
+  CHECK(state.windowRect.x == 0.0f);
+  CHECK(state.windowRect.y == 0.0f);
+  CHECK(state.windowRect.width == 1920.0f);
+  CHECK(state.windowRect.height == 1080.0f);
   CHECK(state.windowWidth == 1920.0f);
   CHECK(state.windowHeight == 1080.0f);
   CHECK(!state.selectedIndex.has_value());
@@ -19,7 +25,8 @@ TEST_CASE("Initial State") {
 }
 
 TEST_CASE("Lazy Root Creation") {
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   auto leafId = splitSelectedLeaf(state);
 
   REQUIRE(leafId.has_value());
@@ -35,7 +42,8 @@ TEST_CASE("Lazy Root Creation") {
 }
 
 TEST_CASE("Splitting Leaf") {
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   splitSelectedLeaf(state); // Create root
 
   // Root is selected. Split it.
@@ -81,7 +89,8 @@ TEST_CASE("Splitting Leaf") {
 }
 
 TEST_CASE("Navigation") {
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   splitSelectedLeaf(state); // Root
   splitSelectedLeaf(state); // Split Vertical -> Left(0), Right(1). Selected is Left.
 
@@ -109,7 +118,8 @@ TEST_CASE("Navigation") {
 }
 
 TEST_CASE("Delete Leaf") {
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   splitSelectedLeaf(state); // Root
   splitSelectedLeaf(state); // Split Vertical -> Left, Right. Selected is Left.
 
@@ -136,7 +146,8 @@ TEST_CASE("Delete Leaf") {
 }
 
 TEST_CASE("Toggle Split Direction") {
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   splitSelectedLeaf(state); // Root
   splitSelectedLeaf(state); // Split Vertical. Selected is Left.
 
@@ -160,7 +171,8 @@ TEST_CASE("Toggle Split Direction") {
 
 TEST_CASE("Complex Scenario") {
   // Split multiple times and validate
-  CellCluster state = createInitialState(100.0f, 100.0f);
+  Rect windowRect{0.0f, 0.0f, 100.0f, 100.0f};
+  CellCluster state = createInitialState(windowRect);
   splitSelectedLeaf(state); // Root
   splitSelectedLeaf(state); // V-Split -> L, R. Sel: L
 
@@ -186,4 +198,42 @@ TEST_CASE("Complex Scenario") {
   // From L, moving Right should go to R_Top or R_Bottom (heuristic).
   moveSelection(state, Direction::Right);
   CHECK((*state.selectedIndex == 3 || *state.selectedIndex == 4));
+}
+
+TEST_CASE("Non-Zero Origin") {
+  // Test that cells are positioned relative to windowRect origin
+  Rect windowRect{100.0f, 200.0f, 800.0f, 600.0f};
+  CellCluster state = createInitialState(windowRect);
+  auto leafId = splitSelectedLeaf(state);
+
+  REQUIRE(leafId.has_value());
+  CHECK(state.cells.size() == 1);
+
+  const Cell& root = state.cells[0];
+  // Root cell should start at the windowRect origin
+  CHECK(root.rect.x == 100.0f);
+  CHECK(root.rect.y == 200.0f);
+  CHECK(root.rect.width == 800.0f);
+  CHECK(root.rect.height == 600.0f);
+
+  // Split vertically
+  splitSelectedLeaf(state);
+
+  const Cell& parent = state.cells[0];
+  REQUIRE(parent.firstChild.has_value());
+  REQUIRE(parent.secondChild.has_value());
+
+  const Cell& child1 = state.cells[*parent.firstChild];
+  const Cell& child2 = state.cells[*parent.secondChild];
+
+  // Children should maintain the windowRect origin
+  CHECK(child1.rect.x == 100.0f);
+  CHECK(child1.rect.y == 200.0f);
+
+  // Second child offset by first child width + gap
+  float expectedX2 = 100.0f + (800.0f - 10.0f) * 0.5f + 10.0f;
+  CHECK(child2.rect.x == doctest::Approx(expectedX2));
+  CHECK(child2.rect.y == 200.0f);
+
+  CHECK(validateState(state));
 }

@@ -1,5 +1,6 @@
-#include "cells.h"
 #include "process.h"
+
+#include "cells.h"
 
 namespace wintiler {
 namespace process_logic {
@@ -108,8 +109,8 @@ void deleteSelectedCellsProcess(AppState& appState) {
   }
 }
 
-void resetAppState(AppState& appState, float width, float height) {
-  appState.CellCluster = cell_logic::createInitialState(width, height);
+void resetAppState(AppState& appState, cell_logic::Rect windowRect) {
+  appState.CellCluster = cell_logic::createInitialState(windowRect);
   // nextProcessId is handled by the caller
   appState.processToLeafIdMap.clear();
   appState.leafIdToProcessMap.clear();

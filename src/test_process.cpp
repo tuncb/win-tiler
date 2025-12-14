@@ -8,7 +8,8 @@ using namespace wintiler::cell_logic;
 TEST_CASE("Process Logic") {
   AppState appState;
   size_t nextProcessId = 10;
-  resetAppState(appState, 1920.0f, 1080.0f);
+  Rect windowRect{0.0f, 0.0f, 1920.0f, 1080.0f};
+  resetAppState(appState, windowRect);
 
   SUBCASE("Initial State") {
     CHECK(appState.processToLeafIdMap.empty());

@@ -24,7 +24,8 @@ void runRaylibUI() {
 
   InitWindow(screenWidth, screenHeight, "win-tiler");
 
-  process_logic::resetAppState(appState, (float)screenWidth, (float)screenHeight);
+  cell_logic::Rect windowRect{0.0f, 0.0f, (float)screenWidth, (float)screenHeight};
+  process_logic::resetAppState(appState, windowRect);
 
   SetTargetFPS(60);
 
@@ -65,7 +66,8 @@ void runRaylibUI() {
     }
 
     if (IsKeyPressed(KEY_R)) {
-      resetAppState(appState, (float)screenWidth, (float)screenHeight);
+      cell_logic::Rect windowRect{0.0f, 0.0f, (float)screenWidth, (float)screenHeight};
+      resetAppState(appState, windowRect);
       nextProcessId = PROCESS_ID_START;
     }
 
@@ -165,6 +167,56 @@ void runRaylibUI() {
   CloseWindow();
 }
 
+void executeMainLogic() {
+  const auto windowsPerMonitor =
+      winapi::gather_windows_per_monitor(winapi::get_default_ignore_options());
+
+  for (const auto& wpm : windowsPerMonitor) {
+    process_logic::AppState appState;
+    auto left = wpm.monitor.rect.left;
+    auto top = wpm.monitor.rect.top;
+    auto width = wpm.monitor.rect.right - wpm.monitor.rect.left;
+    auto height = wpm.monitor.rect.bottom - wpm.monitor.rect.top;
+
+    // Create windowRect with monitor position as origin
+    cell_logic::Rect windowRect{static_cast<float>(left), static_cast<float>(top),
+                                static_cast<float>(width), static_cast<float>(height)};
+
+    process_logic::resetAppState(appState, windowRect);
+    std::vector<size_t> processIds;
+    for (const auto& win : wpm.windows) {
+      if (win.pid.has_value()) {
+        processIds.push_back(static_cast<size_t>(win.pid.value()));
+      }
+    }
+
+    process_logic::updateProcesses(appState, processIds);
+    for (const auto& win : wpm.windows) {
+      auto it = appState.processToLeafIdMap.find(static_cast<size_t>(win.pid.value_or(0)));
+      if (it != appState.processToLeafIdMap.end()) {
+        size_t leafId = it->second;
+        auto cellIt =
+            std::find_if(appState.CellCluster.cells.begin(), appState.CellCluster.cells.end(),
+                         [leafId](const cell_logic::Cell& cell) {
+                           return cell.leafId.has_value() && cell.leafId.value() == leafId;
+                         });
+        if (cellIt != appState.CellCluster.cells.end()) {
+          const auto& rect = cellIt->rect;
+          winapi::TileInfo tileInfo;
+          tileInfo.handle = win.handle;
+          // Cell rectangles are already in monitor coordinates
+          tileInfo.window_position.x = static_cast<int>(rect.x);
+          tileInfo.window_position.y = static_cast<int>(rect.y);
+          tileInfo.window_position.width = static_cast<int>(rect.width);
+          tileInfo.window_position.height = static_cast<int>(rect.height);
+
+          winapi::update_window_position(tileInfo);
+        }
+      }
+    }
+  }
+}
+
 int main(int argc, char* argv[]) {
   bool runTests = false;
   for (int i = 1; i < argc; ++i) {
@@ -177,7 +229,7 @@ int main(int argc, char* argv[]) {
   if (runTests) {
     runRaylibUI();
   } else {
-    winapi::log_windows_per_monitor();
+    executeMainLogic();
   }
   return 0;
 }
