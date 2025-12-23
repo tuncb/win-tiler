@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 
 // Link with Psapi.lib
@@ -12,6 +13,14 @@
 #pragma comment(lib, "Dwmapi.lib")
 
 namespace winapi {
+
+// Helper function for case-insensitive string comparison
+static bool iequals(const std::string& a, const std::string& b) {
+  if (a.size() != b.size())
+    return false;
+  return std::equal(a.begin(), a.end(), b.begin(),
+                    [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+}
 
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor,
                               LPARAM dwData) {
@@ -106,7 +115,7 @@ bool is_ignored(const IgnoreOptions& options, const WindowInfo& win) {
 
   // Check ignored process/title pairs
   for (const auto& pair : options.ignored_process_title_pairs) {
-    if (win.processName == pair.first && win.title == pair.second)
+    if (iequals(win.processName, pair.first) && iequals(win.title, pair.second))
       return true;
   }
 
