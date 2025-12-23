@@ -15,9 +15,12 @@ using namespace wintiler;
 
 const size_t PROCESS_ID_START = 10;
 
-void runRaylibUI() {
+void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
   process_logic::AppState appState;
   size_t nextProcessId = PROCESS_ID_START;
+  if (!initialProcessIds.empty()) {
+    nextProcessId = *std::max_element(initialProcessIds.begin(), initialProcessIds.end()) + 1;
+  }
 
   const int screenWidth = 1600;
   const int screenHeight = 900;
@@ -25,6 +28,9 @@ void runRaylibUI() {
   InitWindow(screenWidth, screenHeight, "win-tiler");
 
   process_logic::resetAppState(appState, (float)screenWidth, (float)screenHeight);
+  if (!initialProcessIds.empty()) {
+    process_logic::updateProcesses(appState, initialProcessIds);
+  }
 
   SetTargetFPS(60);
 
