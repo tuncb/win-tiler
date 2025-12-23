@@ -56,13 +56,6 @@ struct WindowInfo {
   std::string processName;
 };
 
-struct WindowsPerMonitor {
-  MonitorInfo monitor;
-  std::vector<WindowInfo> windows;
-};
-
-std::vector<WindowsPerMonitor> gather_windows_per_monitor(const IgnoreOptions& ignore_options);
-
 std::vector<MonitorInfo> get_monitors();
 std::optional<DWORD_T> get_window_pid(HWND_T hwnd);
 std::string get_process_name_from_pid(DWORD_T pid);

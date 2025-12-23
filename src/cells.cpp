@@ -6,18 +6,15 @@
 namespace wintiler {
 namespace cell_logic {
 
-CellCluster createInitialState(Rect windowRect) {
+CellCluster createInitialState(float width, float height) {
   CellCluster state{};
 
   state.cells.clear();
   state.nextLeafId = 1;
 
-  // Store the logical window rectangle for lazy creation of the first cell.
-  state.windowRect = windowRect;
-
-  // Also update deprecated fields for backward compatibility during migration
-  state.windowWidth = windowRect.width;
-  state.windowHeight = windowRect.height;
+  // Store the logical window size for lazy creation of the first cell.
+  state.windowWidth = width;
+  state.windowHeight = height;
 
   // Start global split direction as Vertical, as requested.
   state.globalSplitDir = SplitDir::Vertical;
@@ -322,8 +319,9 @@ std::optional<size_t> splitSelectedLeaf(CellCluster& state) {
       root.secondChild = std::nullopt;
       root.leafId = state.nextLeafId++;
 
-      // Use windowRect for both position and size
-      root.rect = state.windowRect;
+      float rootW = state.windowWidth;
+      float rootH = state.windowHeight;
+      root.rect = Rect{0.0f, 0.0f, rootW > 0.0f ? rootW : 0.0f, rootH > 0.0f ? rootH : 0.0f};
 
       int index = addCell(state, root);
       state.selectedIndex = index;

@@ -42,15 +42,16 @@ struct CellCluster {
   float gapHorizontal;
   float gapVertical;
 
-  // Logical window rectangle that defines both the size and origin
-  // of the coordinate system. All cell rectangles are relative to this.
-  Rect windowRect;
+  // Logical window size used to derive the initial root cell rect
+  // when the first cell is created lazily on a split.
+  float windowWidth = 0.0f;
+  float windowHeight = 0.0f;
 
   size_t nextLeafId = 1; // Counter for unique leaf IDs
 };
 
-// Create initial CellCluster with a single root cell covering the given rectangle.
-CellCluster createInitialState(Rect windowRect);
+// Create initial CellCluster with a single root cell covering the given width/height.
+CellCluster createInitialState(float width, float height);
 
 // Returns true if the cell at cellIndex exists and has no children.
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);

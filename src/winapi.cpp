@@ -160,26 +160,6 @@ IgnoreOptions get_default_ignore_options() {
   return options;
 }
 
-std::vector<WindowsPerMonitor> gather_windows_per_monitor(const IgnoreOptions& ignore_options) {
-  std::vector<WindowsPerMonitor> result;
-  auto monitors = get_monitors();
-  auto windows = gather_raw_window_data(ignore_options);
-
-  for (const auto& monitor : monitors) {
-    winapi::WindowsPerMonitor wpm;
-    wpm.monitor = monitor;
-
-    for (const auto& win : windows) {
-      HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
-      if (winMonitor == (HMONITOR)monitor.handle) {
-        wpm.windows.push_back(win);
-      }
-    }
-    result.push_back(wpm);
-  }
-  return result;
-}
-
 void log_windows_per_monitor() {
   auto monitors = get_monitors();
   auto options = get_default_ignore_options();
