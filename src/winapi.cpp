@@ -184,9 +184,15 @@ void log_windows_per_monitor() {
     for (const auto& win : windows) {
       HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
       if (winMonitor == (HMONITOR)monitor.handle) {
+        RECT rect;
+        GetWindowRect((HWND)win.handle, &rect);
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
         std::cout << "    Handle: " << win.handle
                   << ", PID: " << (win.pid.has_value() ? std::to_string(win.pid.value()) : "N/A")
                   << ", Process: " << win.processName << ", Title: " << win.title << "\n";
+        std::cout << "      Position: (" << rect.left << ", " << rect.top << ")"
+                  << ", Size: " << width << "x" << height << "\n";
       }
     }
     std::cout << "--------------------------------------------------\n";
