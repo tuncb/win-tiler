@@ -13,13 +13,21 @@
 
 using namespace wintiler;
 
-const size_t PROCESS_ID_START = 10;
+const size_t CELL_ID_START = 10;
 
-void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
+void runRaylibUI(const std::vector<winapi::HWND_T>& initialCellIds = {}) {
   process_logic::AppState appState;
-  size_t nextProcessId = PROCESS_ID_START;
-  if (!initialProcessIds.empty()) {
-    nextProcessId = *std::max_element(initialProcessIds.begin(), initialProcessIds.end()) + 1;
+  size_t nextCellId = CELL_ID_START;
+
+  // Convert HWNDs to size_t for internal cell ID tracking
+  std::vector<size_t> cellIds;
+  cellIds.reserve(initialCellIds.size());
+  for (const auto& hwnd : initialCellIds) {
+    cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+  }
+
+  if (!cellIds.empty()) {
+    nextCellId = *std::max_element(cellIds.begin(), cellIds.end()) + 1;
   }
 
   const int screenWidth = 1600;
@@ -28,8 +36,8 @@ void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
   InitWindow(screenWidth, screenHeight, "win-tiler");
 
   process_logic::resetAppState(appState, (float)screenWidth, (float)screenHeight);
-  if (!initialProcessIds.empty()) {
-    process_logic::updateProcesses(appState, initialProcessIds);
+  if (!cellIds.empty()) {
+    process_logic::updateProcesses(appState, cellIds);
   }
 
   SetTargetFPS(60);
@@ -72,11 +80,11 @@ void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
 
     if (IsKeyPressed(KEY_R)) {
       resetAppState(appState, (float)screenWidth, (float)screenHeight);
-      nextProcessId = PROCESS_ID_START;
+      nextCellId = CELL_ID_START;
     }
 
     if (IsKeyPressed(KEY_SPACE)) {
-      addNewProcess(appState, nextProcessId);
+      addNewProcess(appState, nextCellId);
     }
 
     if (IsKeyPressed(KEY_D)) {
@@ -182,8 +190,9 @@ int main(int argc, char* argv[]) {
 
     if (arg == "ui-test-monitor" && i + 1 < argc) {
       size_t monitorIndex = std::stoul(argv[i + 1]);
-      auto pids = winapi::get_pids_for_monitor(monitorIndex);
-      runRaylibUI(pids);
+      winapi::log_windows_per_monitor(monitorIndex);
+      auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
+      runRaylibUI(hwnds);
       return 0;
     }
   }

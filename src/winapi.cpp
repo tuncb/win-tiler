@@ -170,13 +170,24 @@ IgnoreOptions get_default_ignore_options() {
   return options;
 }
 
-void log_windows_per_monitor() {
+void log_windows_per_monitor(std::optional<size_t> monitor_index) {
   auto monitors = get_monitors();
   auto options = get_default_ignore_options();
   auto windows = gather_raw_window_data(options);
 
-  for (const auto& monitor : monitors) {
-    std::cout << "Monitor Handle: " << monitor.handle << "\n";
+  if (monitor_index.has_value() && *monitor_index >= monitors.size()) {
+    std::cerr << "Error: Monitor index " << *monitor_index << " is out of bounds. "
+              << "Available monitors: 0-" << (monitors.size() - 1) << "\n";
+    return;
+  }
+
+  for (size_t i = 0; i < monitors.size(); ++i) {
+    if (monitor_index.has_value() && i != *monitor_index) {
+      continue;
+    }
+
+    const auto& monitor = monitors[i];
+    std::cout << "Monitor " << i << " (Handle: " << monitor.handle << ")\n";
     std::cout << "  Rect: [" << monitor.rect.left << ", " << monitor.rect.top << ", "
               << monitor.rect.right << ", " << monitor.rect.bottom << "]\n";
 
@@ -205,12 +216,12 @@ void update_window_position(const TileInfo& tile_info) {
                tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-std::vector<size_t> get_pids_for_monitor(size_t monitor_index) {
-  std::vector<size_t> pids;
+std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index) {
+  std::vector<HWND_T> hwnds;
   auto monitors = get_monitors();
 
   if (monitor_index >= monitors.size()) {
-    return pids;
+    return hwnds;
   }
 
   auto options = get_default_ignore_options();
@@ -219,12 +230,12 @@ std::vector<size_t> get_pids_for_monitor(size_t monitor_index) {
 
   for (const auto& win : windows) {
     HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
-    if (winMonitor == (HMONITOR)monitor.handle && win.pid.has_value()) {
-      pids.push_back(static_cast<size_t>(win.pid.value()));
+    if (winMonitor == (HMONITOR)monitor.handle) {
+      hwnds.push_back(win.handle);
     }
   }
 
-  return pids;
+  return hwnds;
 }
 
 } // namespace winapi

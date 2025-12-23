@@ -63,8 +63,8 @@ bool is_window_maximized(HWND_T hwnd);
 std::vector<WindowInfo> get_windows_list();
 std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_options);
 IgnoreOptions get_default_ignore_options();
-void log_windows_per_monitor();
+void log_windows_per_monitor(std::optional<size_t> monitor_index = std::nullopt);
 void update_window_position(const TileInfo& tile_info);
-std::vector<size_t> get_pids_for_monitor(size_t monitor_index);
+std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index);
 
 } // namespace winapi
