@@ -159,7 +159,8 @@ std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_optio
 
 IgnoreOptions get_default_ignore_options() {
   IgnoreOptions options;
-  options.ignored_processes = {"TextInputHost.exe", "ApplicationFrameHost.exe"};
+  options.ignored_processes = {"TextInputHost.exe", "ApplicationFrameHost.exe",
+                               "Microsoft.CmdPal.UI.exe"};
   options.ignored_window_titles = {};
   options.ignored_process_title_pairs = {{"SystemSettings.exe", "Settings"},
                                          {"explorer.exe", "Program Manager"},
