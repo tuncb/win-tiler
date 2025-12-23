@@ -4,6 +4,7 @@ setlocal ENABLEDELAYEDEXPANSION
 REM Default config
 set CONFIG=Debug
 set ACTION=
+set APP_ARGS=
 
 REM Parse arguments
 :parse_args
@@ -17,9 +18,12 @@ if /I "!ARG!"=="build" (
 ) else if "!ARG:~0,2!"=="--" (
     set CONFIG=!ARG:~2!
 ) else (
-    echo Unknown argument: !ARG!
-    echo Usage: %~nx0 [build^|build-run] [--Configuration]
-    exit /b 1
+    REM Collect remaining arguments for the application
+    :collect_app_args
+    if "%~1"=="" goto after_parse
+    set APP_ARGS=!APP_ARGS! %1
+    shift
+    goto collect_app_args
 )
 shift
 goto parse_args
@@ -27,7 +31,7 @@ goto parse_args
 :after_parse
 if "%ACTION%"=="" (
     echo You must specify "build" or "build-run".
-    echo Usage: %~nx0 [build^|build-run] [--Configuration]
+    echo Usage: %~nx0 [build^|build-run] [--Configuration] [app arguments...]
     exit /b 1
 )
 
@@ -64,12 +68,22 @@ if errorlevel 1 (
 
 echo Build succeeded.
 
+REM Determine output path
+set OUTDIR=x64\%CONFIG%
+
+REM Copy required DLLs to output directory
+echo.
+echo Copying DLLs to %OUTDIR%...
+copy /Y ".dll\*.dll" "%OUTDIR%\" >nul
+if errorlevel 1 (
+    echo Warning: Failed to copy some DLLs.
+) else (
+    echo DLLs copied successfully.
+)
+
 if /I "%ACTION%"=="build" (
     exit /b 0
 )
-
-REM Determine output EXE path (adjust if your project path/config differs)
-set OUTDIR=x64\%CONFIG%
 
 set EXE_PATH=%OUTDIR%\win-tiler.exe
 
@@ -78,9 +92,9 @@ if not exist "%EXE_PATH%" (
     exit /b 1
 )
 
-echo Running "%EXE_PATH%" ...
+echo Running "%EXE_PATH%"%APP_ARGS% ...
 echo.
-"%EXE_PATH%"
+"%EXE_PATH%"%APP_ARGS%
 set RUN_EXITCODE=%ERRORLEVEL%
 
 echo.
