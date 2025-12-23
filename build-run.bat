@@ -92,11 +92,8 @@ if not exist "%EXE_PATH%" (
     exit /b 1
 )
 
-echo Running "%EXE_PATH%"%APP_ARGS% ...
+echo Starting "%EXE_PATH%"%APP_ARGS% ...
 echo.
-"%EXE_PATH%"%APP_ARGS%
-set RUN_EXITCODE=%ERRORLEVEL%
-
-echo.
-echo Program exited with code %RUN_EXITCODE%.
-exit /b %RUN_EXITCODE%
+start "" "%EXE_PATH%"%APP_ARGS%
+echo Application launched.
+exit /b 0
