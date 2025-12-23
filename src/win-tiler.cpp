@@ -152,7 +152,7 @@ void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
         if (processIt != appState.leafIdToProcessMap.end()) {
           size_t processId = processIt->second;
           std::string labelText = "P:" + std::to_string(processId);
-          float fontSize = std::min(cell.rect.width, cell.rect.height) * 0.3f;
+          float fontSize = std::min(cell.rect.width, cell.rect.height) * 0.2f;
           if (fontSize < 10.0f)
             fontSize = 10.0f;
 
@@ -172,19 +172,23 @@ void runRaylibUI(const std::vector<size_t>& initialProcessIds = {}) {
 }
 
 int main(int argc, char* argv[]) {
-  bool runTests = false;
   for (int i = 1; i < argc; ++i) {
-    if (std::string(argv[i]) == "tests") {
-      runTests = true;
-      break;
+    std::string arg = argv[i];
+
+    if (arg == "ui-test") {
+      runRaylibUI();
+      return 0;
+    }
+
+    if (arg == "ui-test-monitor" && i + 1 < argc) {
+      size_t monitorIndex = std::stoul(argv[i + 1]);
+      auto pids = winapi::get_pids_for_monitor(monitorIndex);
+      runRaylibUI(pids);
+      return 0;
     }
   }
 
-  if (runTests) {
-    runRaylibUI();
-  } else {
-    winapi::log_windows_per_monitor();
-  }
+  winapi::log_windows_per_monitor();
   return 0;
 }
 

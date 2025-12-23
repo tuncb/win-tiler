@@ -65,5 +65,6 @@ std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_optio
 IgnoreOptions get_default_ignore_options();
 void log_windows_per_monitor();
 void update_window_position(const TileInfo& tile_info);
+std::vector<size_t> get_pids_for_monitor(size_t monitor_index);
 
 } // namespace winapi

@@ -205,4 +205,26 @@ void update_window_position(const TileInfo& tile_info) {
                tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+std::vector<size_t> get_pids_for_monitor(size_t monitor_index) {
+  std::vector<size_t> pids;
+  auto monitors = get_monitors();
+
+  if (monitor_index >= monitors.size()) {
+    return pids;
+  }
+
+  auto options = get_default_ignore_options();
+  auto windows = gather_raw_window_data(options);
+  const auto& monitor = monitors[monitor_index];
+
+  for (const auto& win : windows) {
+    HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+    if (winMonitor == (HMONITOR)monitor.handle && win.pid.has_value()) {
+      pids.push_back(static_cast<size_t>(win.pid.value()));
+    }
+  }
+
+  return pids;
+}
+
 } // namespace winapi
