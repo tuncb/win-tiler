@@ -94,6 +94,6 @@ if not exist "%EXE_PATH%" (
 
 echo Starting "%EXE_PATH%"%APP_ARGS% ...
 echo.
-start "" "%EXE_PATH%"%APP_ARGS%
+start /b "" "%EXE_PATH%"%APP_ARGS%
 echo Application launched.
 exit /b 0
