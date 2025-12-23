@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(build-run.bat build --debug)"
+      "Bash(build-run.bat build --debug)",
+      "Bash(cmd /c \"C:\\\\work\\\\win-tiler\\\\build-run.bat build --debug\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\work\\\\win-tiler''; .\\\\build-run.bat build --debug\")"
     ]
   }
 }
