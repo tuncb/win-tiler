@@ -309,11 +309,6 @@ int main(int argc, char* argv[]) {
       return 0;
     }
 
-    if (arg == "ui-test") {
-      runRaylibUI();
-      return 0;
-    }
-
     if (arg == "ui-test-monitor" && i + 1 < argc) {
       size_t monitorIndex = std::stoul(argv[i + 1]);
       winapi::log_windows_per_monitor(monitorIndex);
