@@ -1,12 +1,106 @@
 #pragma once
 
-#include "cells.h"
-
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace wintiler {
+
+// ============================================================================
+// Basic Cell Types (formerly in cells.h)
+// ============================================================================
+namespace cell_logic {
+
+enum class SplitDir {
+  Vertical,
+  Horizontal,
+};
+
+struct Rect {
+  float x;
+  float y;
+  float width;
+  float height;
+};
+
+struct Cell {
+  SplitDir splitDir;
+
+  bool isDead = false;
+
+  std::optional<int> parent;      // empty for root
+  std::optional<int> firstChild;  // empty if none (leaf)
+  std::optional<int> secondChild; // empty if none (leaf)
+
+  Rect rect; // logical rectangle in window coordinates
+
+  std::optional<size_t> leafId; // unique ID for leaf cells only
+};
+
+struct CellCluster {
+  std::vector<Cell> cells;
+  std::optional<int> selectedIndex; // always holds a Leaf index when set
+
+  // Global split direction that alternates on each cell creation.
+  SplitDir globalSplitDir;
+
+  float gapHorizontal;
+  float gapVertical;
+
+  // Logical window size used to derive the initial root cell rect
+  // when the first cell is created lazily on a split.
+  float windowWidth = 0.0f;
+  float windowHeight = 0.0f;
+
+  size_t nextLeafId = 1; // Counter for unique leaf IDs
+};
+
+enum class Direction {
+  Left,
+  Right,
+  Up,
+  Down,
+};
+
+// Create initial CellCluster with given width/height (no cells yet).
+CellCluster createInitialState(float width, float height);
+
+// Returns true if the cell at cellIndex exists and has no children.
+[[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
+
+// Append a cell to the state's cell array and return its index.
+int addCell(CellCluster& state, const Cell& cell);
+
+// Recompute rectangles for the subtree rooted at nodeIndex.
+void recomputeSubtreeRects(CellCluster& state, int nodeIndex);
+
+// Delete the currently selected leaf cell. Returns true if deletion occurred.
+bool deleteSelectedLeaf(CellCluster& state);
+
+// Find the next leaf cell in the given direction relative to currentIndex.
+[[nodiscard]] std::optional<int> findNextLeafInDirection(const CellCluster& state, int currentIndex,
+                                                         Direction dir);
+
+// Move the selection in the given direction. Returns true if changed.
+bool moveSelection(CellCluster& state, Direction dir);
+
+// Split the currently selected leaf cell. Returns id of the new leaf.
+std::optional<size_t> splitSelectedLeaf(CellCluster& state);
+
+// Toggle the splitDir of the selected cell's parent.
+bool toggleSelectedSplitDir(CellCluster& state);
+
+// Debug: print the entire CellCluster to stdout.
+void debugPrintState(const CellCluster& state);
+
+// Validate internal invariants. Returns true if valid.
+bool validateState(const CellCluster& state);
+
+} // namespace cell_logic
+
+// ============================================================================
+// Multi-Cluster System
+// ============================================================================
 namespace multi_cell_logic {
 
 using ClusterId = size_t;
@@ -40,14 +134,12 @@ struct ClusterInitInfo {
 // ============================================================================
 
 // Create a multi-cluster system from cluster initialization info.
-// Each cluster will have leaves pre-created for each entry in initialCellIds.
 System createSystem(const std::vector<ClusterInitInfo>& infos);
 
 // Add a new cluster to an existing system.
 ClusterId addCluster(System& system, const ClusterInitInfo& info);
 
 // Remove a cluster from the system. Returns true if removed.
-// If the removed cluster had the selection, moves selection to another cluster.
 bool removeCluster(System& system, ClusterId id);
 
 // Get a pointer to a cluster by ID. Returns nullptr if not found.
@@ -58,10 +150,10 @@ const PositionedCluster* getCluster(const System& system, ClusterId id);
 // Coordinate Conversion
 // ============================================================================
 
-// Convert a local rect (within cluster coordinates) to global coordinates.
+// Convert a local rect to global coordinates.
 cell_logic::Rect localToGlobal(const PositionedCluster& pc, const cell_logic::Rect& localRect);
 
-// Convert a global rect to local coordinates for a specific cluster.
+// Convert a global rect to local coordinates.
 cell_logic::Rect globalToLocal(const PositionedCluster& pc, const cell_logic::Rect& globalRect);
 
 // Get the global rect of a cell in a positioned cluster.
@@ -72,13 +164,11 @@ cell_logic::Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
 // ============================================================================
 
 // Find the next leaf in the given direction, searching across all clusters.
-// Returns pair<ClusterId, cellIndex> or nullopt if no neighbor found.
 [[nodiscard]] std::optional<std::pair<ClusterId, int>>
 findNextLeafInDirection(const System& system, ClusterId currentClusterId, int currentCellIndex,
                         cell_logic::Direction dir);
 
 // Move selection across the multi-cluster system.
-// Returns true if selection changed (possibly to a different cluster).
 bool moveSelection(System& system, cell_logic::Direction dir);
 
 // ============================================================================
@@ -86,31 +176,25 @@ bool moveSelection(System& system, cell_logic::Direction dir);
 // ============================================================================
 
 // Split the selected leaf in the currently selected cluster.
-// Uses the globalNextLeafId from the system for new leaves.
-// Returns the leafId of the newly created leaf, or nullopt on failure.
 std::optional<size_t> splitSelectedLeaf(System& system);
 
 // Delete the selected leaf in the currently selected cluster.
-// If the cluster becomes empty, moves selection to another cluster.
-// Returns true if deletion occurred.
 bool deleteSelectedLeaf(System& system);
 
 // Get the currently selected cell across the entire system.
-// Returns pair<ClusterId, cellIndex> or nullopt if no selection.
 [[nodiscard]] std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system);
 
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<cell_logic::Rect> getSelectedCellGlobalRect(const System& system);
 
 // Toggle the split direction of the selected cell's parent.
-// Returns true if toggled.
 bool toggleSelectedSplitDir(System& system);
 
 // ============================================================================
 // Utilities
 // ============================================================================
 
-// Validate the entire multi-cluster system. Returns true if valid.
+// Validate the entire multi-cluster system.
 bool validateSystem(const System& system);
 
 // Debug: print the entire multi-cluster system to stdout.

@@ -24,24 +24,24 @@
     <ClCompile Include="src\winapi.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\cells.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\process.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\test_cells.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\multi_cells.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\multi_ui.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\cells.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\process.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\winapi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\multi_cells.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\multi_ui.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

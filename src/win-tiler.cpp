@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cells.h"
 #include "multi_cells.h"
 #include "multi_ui.h"
 #include "process.h"

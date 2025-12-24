@@ -12,5 +12,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Test-Debug|x64'">
     <LocalDebuggerCommandArguments>ui-test-monitor 0</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>ui-test-monitor 0|</LocalDebuggerCommandArgumentsHistory>
   </PropertyGroup>
 </Project>
