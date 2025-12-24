@@ -259,7 +259,7 @@ bool set_foreground_window(HWND_T hwnd) {
   HWND foregroundHwnd = GetForegroundWindow();
 
   if (foregroundHwnd == targetHwnd) {
-    return true;  // Already foreground
+    return true; // Already foreground
   }
 
   DWORD foregroundThreadId = GetWindowThreadProcessId(foregroundHwnd, nullptr);
@@ -270,6 +270,10 @@ bool set_foreground_window(HWND_T hwnd) {
     attached = AttachThreadInput(currentThreadId, foregroundThreadId, TRUE) != 0;
   }
 
+  // Simulate a "null" keyboard event — a keypress with no actual key.
+  // This satisfies condition: your process becomes the one that "received the last input event,"
+  // which grants it permission to call SetForegroundWindow successfully.
+  keybd_event(0, 0, 0, 0);
   bool result = SetForegroundWindow(targetHwnd) != 0;
 
   if (attached) {
