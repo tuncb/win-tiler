@@ -68,21 +68,8 @@ CellCluster createInitialState(float width, float height);
 // Returns true if the cell at cellIndex exists and has no children.
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
-// Append a cell to the state's cell array and return its index.
-int addCell(CellCluster& state, const Cell& cell);
-
-// Recompute rectangles for the subtree rooted at nodeIndex.
-void recomputeSubtreeRects(CellCluster& state, int nodeIndex);
-
 // Delete the currently selected leaf cell. Returns true if deletion occurred.
 bool deleteSelectedLeaf(CellCluster& state);
-
-// Find the next leaf cell in the given direction relative to currentIndex.
-[[nodiscard]] std::optional<int> findNextLeafInDirection(const CellCluster& state, int currentIndex,
-                                                         Direction dir);
-
-// Move the selection in the given direction. Returns true if changed.
-bool moveSelection(CellCluster& state, Direction dir);
 
 // Split the currently selected leaf cell. Returns id of the new leaf.
 std::optional<size_t> splitSelectedLeaf(CellCluster& state);
