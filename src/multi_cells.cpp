@@ -1202,6 +1202,27 @@ size_t countTotalLeaves(const System& system) {
 }
 
 // ============================================================================
+// Hit Testing
+// ============================================================================
+
+std::optional<std::pair<ClusterId, int>>
+findCellAtPoint(const System& system, float globalX, float globalY) {
+  for (const auto& pc : system.clusters) {
+    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+      if (!cell_logic::isLeaf(pc.cluster, i)) {
+        continue;
+      }
+      cell_logic::Rect globalRect = getCellGlobalRect(pc, i);
+      if (globalX >= globalRect.x && globalX < globalRect.x + globalRect.width &&
+          globalY >= globalRect.y && globalY < globalRect.y + globalRect.height) {
+        return std::make_pair(pc.id, i);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+// ============================================================================
 // System Update
 // ============================================================================
 

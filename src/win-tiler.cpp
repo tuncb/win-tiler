@@ -202,6 +202,16 @@ void applyTileLayout(const multi_cell_logic::System& system) {
   }
 }
 
+bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd) {
+  size_t hwndValue = reinterpret_cast<size_t>(hwnd);
+  for (const auto& pc : system.clusters) {
+    if (multi_cell_logic::findCellByLeafId(pc.cluster, hwndValue).has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void runLoopTestMode() {
   // 1. Build initial state (like computeTileLayout)
   auto monitors = winapi::get_monitors();
@@ -395,6 +405,45 @@ void runLoopMode() {
     spdlog::trace("updateSystem: {}us", std::chrono::duration_cast<std::chrono::microseconds>(
                                             updateSystemEnd - updateSystemStart)
                                             .count());
+
+    // === Foreground/Selection Update Logic ===
+    auto foregroundHwnd = winapi::get_foreground_window();
+
+    if (foregroundHwnd != nullptr && isHwndInSystem(system, foregroundHwnd)) {
+      auto cursorPosOpt = winapi::get_cursor_pos();
+      if (!cursorPosOpt.has_value()) {
+        continue; // Skip this iteration if cursor pos unavailable
+      }
+      float cursorX = static_cast<float>(cursorPosOpt->x);
+      float cursorY = static_cast<float>(cursorPosOpt->y);
+
+      auto cellAtCursor = multi_cell_logic::findCellAtPoint(system, cursorX, cursorY);
+
+      if (cellAtCursor.has_value()) {
+        auto [clusterId, cellIndex] = *cellAtCursor;
+
+        bool needsUpdate = !system.selection.has_value() ||
+                           system.selection->clusterId != clusterId ||
+                           system.selection->cellIndex != cellIndex;
+
+        if (needsUpdate) {
+          system.selection = multi_cell_logic::Selection{clusterId, cellIndex};
+
+          const auto* pc = multi_cell_logic::getCluster(system, clusterId);
+          if (pc != nullptr) {
+            const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
+            if (cell.leafId.has_value()) {
+              winapi::HWND_T cellHwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+              if (!winapi::set_foreground_window(cellHwnd)) {
+                spdlog::error("Failed to set foreground window for HWND {}", cellHwnd);
+              }
+              spdlog::trace("======================Selection updated: cluster={}, cell={}",
+                            clusterId, cellIndex);
+            }
+          }
+        }
+      }
+    }
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {

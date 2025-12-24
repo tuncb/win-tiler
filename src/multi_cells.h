@@ -261,6 +261,15 @@ void debugPrintSystem(const System& system);
 [[nodiscard]] size_t countTotalLeaves(const System& system);
 
 // ============================================================================
+// Hit Testing
+// ============================================================================
+
+// Find the cluster and cell at a global point.
+// Returns nullopt if no cell contains the point.
+[[nodiscard]] std::optional<std::pair<ClusterId, int>>
+findCellAtPoint(const System& system, float globalX, float globalY);
+
+// ============================================================================
 // System Update
 // ============================================================================
 

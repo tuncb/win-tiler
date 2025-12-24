@@ -67,4 +67,13 @@ void log_windows_per_monitor(std::optional<size_t> monitor_index = std::nullopt)
 void update_window_position(const TileInfo& tile_info);
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index);
 
+struct Point {
+  long x;
+  long y;
+};
+
+HWND_T get_foreground_window();
+std::optional<Point> get_cursor_pos();
+bool set_foreground_window(HWND_T hwnd);
+
 } // namespace winapi

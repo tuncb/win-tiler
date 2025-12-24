@@ -241,4 +241,42 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index) {
   return hwnds;
 }
 
+HWND_T get_foreground_window() {
+  return reinterpret_cast<HWND_T>(GetForegroundWindow());
+}
+
+std::optional<Point> get_cursor_pos() {
+  POINT pt;
+  if (GetCursorPos(&pt)) {
+    return Point{pt.x, pt.y};
+  }
+  spdlog::error("GetCursorPos failed");
+  return std::nullopt;
+}
+
+bool set_foreground_window(HWND_T hwnd) {
+  HWND targetHwnd = reinterpret_cast<HWND>(hwnd);
+  HWND foregroundHwnd = GetForegroundWindow();
+
+  if (foregroundHwnd == targetHwnd) {
+    return true;  // Already foreground
+  }
+
+  DWORD foregroundThreadId = GetWindowThreadProcessId(foregroundHwnd, nullptr);
+  DWORD currentThreadId = GetCurrentThreadId();
+
+  bool attached = false;
+  if (foregroundThreadId != currentThreadId) {
+    attached = AttachThreadInput(currentThreadId, foregroundThreadId, TRUE) != 0;
+  }
+
+  bool result = SetForegroundWindow(targetHwnd) != 0;
+
+  if (attached) {
+    AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+  }
+
+  return result;
+}
+
 } // namespace winapi
