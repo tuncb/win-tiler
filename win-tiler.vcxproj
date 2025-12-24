@@ -192,6 +192,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cells.cpp" />
+    <ClCompile Include="src\multi_cells.cpp" />
+    <ClCompile Include="src\multi_ui.cpp" />
     <ClCompile Include="src\process.cpp" />
     <ClCompile Include="src\test_cells.cpp" />
     <ClCompile Include="src\test_process.cpp" />
@@ -200,6 +202,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\cells.h" />
+    <ClInclude Include="src\multi_cells.h" />
+    <ClInclude Include="src\multi_ui.h" />
     <ClInclude Include="src\process.h" />
     <ClInclude Include="src\winapi.h" />
   </ItemGroup>

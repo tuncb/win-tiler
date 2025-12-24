@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "cells.h"
+#include "multi_cells.h"
+#include "multi_ui.h"
 #include "process.h"
 #include "raylib.h"
 #include "winapi.h"
@@ -317,6 +319,20 @@ int main(int argc, char* argv[]) {
       winapi::log_windows_per_monitor(monitorIndex);
       auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
       runRaylibUI(hwnds);
+      return 0;
+    }
+
+    if (arg == "ui-test-multi") {
+      // Create test clusters simulating two monitors side by side
+      std::vector<multi_cell_logic::ClusterInitInfo> infos;
+
+      // Monitor 0: left side (0, 0) - 1920x1080
+      infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+
+      // Monitor 1: right side (1920, 0) - 1920x1080
+      infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+
+      runRaylibUIMultiCluster(infos);
       return 0;
     }
   }
