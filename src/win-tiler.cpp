@@ -323,14 +323,32 @@ int main(int argc, char* argv[]) {
     }
 
     if (arg == "ui-test-multi") {
-      // Create test clusters simulating two monitors side by side
       std::vector<multi_cell_logic::ClusterInitInfo> infos;
 
-      // Monitor 0: left side (0, 0) - 1920x1080
-      infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+      // Collect remaining arguments after "ui-test-multi"
+      int remaining = argc - (i + 1);
 
-      // Monitor 1: right side (1920, 0) - 1920x1080
-      infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+      if (remaining == 0) {
+        // Default: two monitors side by side
+        infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+        infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+      } else if (remaining % 4 != 0) {
+        std::cerr << "Error: ui-test-multi requires 4 numbers per cluster (x y width height)"
+                  << std::endl;
+        std::cerr << "Usage: ui-test-multi [x1 y1 w1 h1] [x2 y2 w2 h2] ..." << std::endl;
+        std::cerr << "Got " << remaining << " arguments, which is not a multiple of 4" << std::endl;
+        return 1;
+      } else {
+        // Parse clusters from arguments
+        size_t clusterId = 0;
+        for (int j = i + 1; j + 3 < argc; j += 4) {
+          float x = std::stof(argv[j]);
+          float y = std::stof(argv[j + 1]);
+          float w = std::stof(argv[j + 2]);
+          float h = std::stof(argv[j + 3]);
+          infos.push_back({clusterId++, x, y, w, h, {}});
+        }
+      }
 
       runRaylibUIMultiCluster(infos);
       return 0;
