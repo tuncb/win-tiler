@@ -309,11 +309,31 @@ int main(int argc, char* argv[]) {
       return 0;
     }
 
-    if (arg == "ui-test-monitor" && i + 1 < argc) {
-      size_t monitorIndex = std::stoul(argv[i + 1]);
-      winapi::log_windows_per_monitor(monitorIndex);
-      auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
-      runRaylibUI(hwnds);
+    if (arg == "ui-test-monitor") {
+      auto monitors = winapi::get_monitors();
+      std::vector<multi_cell_logic::ClusterInitInfo> infos;
+
+      for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
+        const auto& monitor = monitors[monitorIndex];
+
+        // Get workArea bounds for this monitor
+        float x = static_cast<float>(monitor.workArea.left);
+        float y = static_cast<float>(monitor.workArea.top);
+        float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
+        float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+
+        // Get HWNDs for this monitor and convert to cell IDs
+        auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
+        std::vector<size_t> cellIds;
+        for (auto hwnd : hwnds) {
+          cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+        }
+
+        infos.push_back({monitorIndex, x, y, w, h, cellIds});
+      }
+
+      winapi::log_windows_per_monitor();
+      runRaylibUIMultiCluster(infos);
       return 0;
     }
 
