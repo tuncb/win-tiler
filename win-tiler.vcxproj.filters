@@ -18,6 +18,9 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\loop.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\win-tiler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -35,6 +38,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\loop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\winapi.h">
       <Filter>Header Files</Filter>
     </ClInclude>
