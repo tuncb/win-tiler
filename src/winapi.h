@@ -76,4 +76,25 @@ HWND_T get_foreground_window();
 std::optional<Point> get_cursor_pos();
 bool set_foreground_window(HWND_T hwnd);
 
+// Keyboard hotkey support
+struct HotKeyInfo {
+  int id;
+  unsigned int modifiers;
+  unsigned int key;
+};
+
+// Parse a hotkey string like "ctrl+alt+a" and return HotKeyInfo
+// Supported modifiers: alt, ctrl, shift, super (Windows key)
+// Only single character keys are supported
+std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id);
+
+// Register a hotkey with Windows
+bool register_hotkey(const HotKeyInfo& hotkey);
+
+// Unregister a previously registered hotkey
+bool unregister_hotkey(int id);
+
+// Check for pending hotkey messages, returns the hotkey id if triggered
+std::optional<int> check_keyboard_action();
+
 } // namespace winapi

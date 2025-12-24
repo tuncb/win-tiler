@@ -283,4 +283,97 @@ bool set_foreground_window(HWND_T hwnd) {
   return result;
 }
 
+std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
+  // Split by '+' and trim/lowercase each part
+  std::vector<std::string> parts;
+  std::string current;
+
+  for (char c : text) {
+    if (c == '+') {
+      if (!current.empty()) {
+        // Trim and lowercase
+        std::string trimmed;
+        for (char tc : current) {
+          if (!std::isspace(static_cast<unsigned char>(tc))) {
+            trimmed += static_cast<char>(std::tolower(static_cast<unsigned char>(tc)));
+          }
+        }
+        if (!trimmed.empty()) {
+          parts.push_back(trimmed);
+        }
+        current.clear();
+      }
+    } else {
+      current += c;
+    }
+  }
+  // Don't forget the last part
+  if (!current.empty()) {
+    std::string trimmed;
+    for (char tc : current) {
+      if (!std::isspace(static_cast<unsigned char>(tc))) {
+        trimmed += static_cast<char>(std::tolower(static_cast<unsigned char>(tc)));
+      }
+    }
+    if (!trimmed.empty()) {
+      parts.push_back(trimmed);
+    }
+  }
+
+  if (parts.empty()) {
+    return std::nullopt;
+  }
+
+  unsigned int modifiers = 0;
+  const std::string& keyStr = parts.back();
+
+  // Parse modifiers (all parts except the last)
+  for (size_t i = 0; i < parts.size() - 1; ++i) {
+    const std::string& part = parts[i];
+    if (part == "alt") {
+      modifiers |= MOD_ALT;
+    } else if (part == "ctrl") {
+      modifiers |= MOD_CONTROL;
+    } else if (part == "shift") {
+      modifiers |= MOD_SHIFT;
+    } else if (part == "super") {
+      modifiers |= MOD_WIN;
+    } else {
+      return std::nullopt;  // Unknown modifier
+    }
+  }
+
+  // Parse key - only single character keys supported
+  if (keyStr.length() != 1) {
+    return std::nullopt;
+  }
+
+  unsigned int key = static_cast<unsigned int>(
+      std::toupper(static_cast<unsigned char>(keyStr[0])));
+
+  return HotKeyInfo{id, modifiers, key};
+}
+
+bool register_hotkey(const HotKeyInfo& hotkey) {
+  BOOL result = RegisterHotKey(nullptr, hotkey.id, hotkey.modifiers, hotkey.key);
+  return result != 0;
+}
+
+bool unregister_hotkey(int id) {
+  BOOL result = UnregisterHotKey(nullptr, id);
+  return result != 0;
+}
+
+std::optional<int> check_keyboard_action() {
+  MSG msg;
+  if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+    if (msg.message == WM_HOTKEY) {
+      return static_cast<int>(msg.wParam);
+    }
+    TranslateMessage(&msg);
+    DispatchMessageW(&msg);
+  }
+  return std::nullopt;
+}
+
 } // namespace winapi
