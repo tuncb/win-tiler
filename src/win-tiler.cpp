@@ -378,7 +378,30 @@ int main(int argc, char* argv[]) {
   // Flush spdlog on info-level messages to ensure immediate output
   spdlog::flush_on(spdlog::level::info);
 
-  for (int i = 1; i < argc; ++i) {
+  // Parse optional logging level argument (must be first)
+  int argStart = 1;
+  if (argc > 1) {
+    std::string firstArg = argv[1];
+    if (firstArg.rfind("logging:", 0) == 0) {
+      std::string level = firstArg.substr(8);
+      if (level == "trace") {
+        spdlog::set_level(spdlog::level::trace);
+      } else if (level == "debug") {
+        spdlog::set_level(spdlog::level::debug);
+      } else if (level == "info") {
+        spdlog::set_level(spdlog::level::info);
+      } else if (level == "warn") {
+        spdlog::set_level(spdlog::level::warn);
+      } else if (level == "err") {
+        spdlog::set_level(spdlog::level::err);
+      } else if (level == "off") {
+        spdlog::set_level(spdlog::level::off);
+      }
+      argStart = 2;
+    }
+  }
+
+  for (int i = argStart; i < argc; ++i) {
     std::string arg = argv[i];
 
     if (arg == "apply") {
