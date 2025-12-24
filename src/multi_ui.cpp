@@ -2,13 +2,13 @@
 
 #include "multi_ui.h"
 
-#include "raylib.h"
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
 #include <unordered_map>
+
+#include "raylib.h"
 
 namespace wintiler {
 
@@ -18,22 +18,22 @@ const size_t CELL_ID_START = 10;
 
 // Semi-transparent cluster background colors
 const Color CLUSTER_COLORS[] = {
-    {100, 149, 237, 50},  // Cornflower blue
-    {144, 238, 144, 50},  // Light green
-    {255, 165, 0, 50},    // Orange
-    {221, 160, 221, 50},  // Plum
-    {255, 182, 193, 50},  // Light pink
-    {255, 255, 0, 50},    // Yellow
-    {0, 255, 255, 50},    // Cyan
-    {255, 99, 71, 50},    // Tomato
+    {100, 149, 237, 50}, // Cornflower blue
+    {144, 238, 144, 50}, // Light green
+    {255, 165, 0, 50},   // Orange
+    {221, 160, 221, 50}, // Plum
+    {255, 182, 193, 50}, // Light pink
+    {255, 255, 0, 50},   // Yellow
+    {0, 255, 255, 50},   // Cyan
+    {255, 99, 71, 50},   // Tomato
 };
 const size_t NUM_CLUSTER_COLORS = sizeof(CLUSTER_COLORS) / sizeof(CLUSTER_COLORS[0]);
 
 struct ViewTransform {
-  float offsetX;      // minX of bounding box
-  float offsetY;      // minY of bounding box
-  float scale;        // uniform scale factor
-  float margin;       // screen margin
+  float offsetX; // minX of bounding box
+  float offsetY; // minY of bounding box
+  float scale;   // uniform scale factor
+  float margin;  // screen margin
   float screenWidth;
   float screenHeight;
 };
@@ -205,6 +205,9 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
 
   SetTargetFPS(60);
 
+  // Store cell for swap/move operations (clusterId, leafId)
+  std::optional<std::pair<multi_cell_logic::ClusterId, size_t>> storedCell;
+
   while (!WindowShouldClose()) {
     // Mouse hover selection
     Vector2 mousePos = GetMousePosition();
@@ -267,6 +270,63 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       }
     }
 
+    // S - Store currently selected cell for operation
+    if (IsKeyPressed(KEY_S) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+      if (appState.system.selection.has_value()) {
+        auto* pc =
+            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+        if (pc) {
+          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+          if (cell.leafId.has_value()) {
+            storedCell = {appState.system.selection->clusterId, *cell.leafId};
+          }
+        }
+      }
+    }
+
+    // Shift+S - Clear stored cell
+    if (IsKeyPressed(KEY_S) && IsKeyDown(KEY_LEFT_SHIFT)) {
+      storedCell.reset();
+    }
+
+    // M - Move selected cell to stored cell
+    if (IsKeyPressed(KEY_M)) {
+      if (storedCell.has_value() && appState.system.selection.has_value()) {
+        auto* pc =
+            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+        if (pc) {
+          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+          if (cell.leafId.has_value()) {
+            auto result =
+                multi_cell_logic::moveCell(appState.system, storedCell->first, storedCell->second,
+                                           appState.system.selection->clusterId, *cell.leafId);
+            if (result.success) {
+              storedCell.reset();
+            }
+          }
+        }
+      }
+    }
+
+    // E - Exchange/swap selected cell with stored cell
+    if (IsKeyPressed(KEY_E)) {
+      if (storedCell.has_value() && appState.system.selection.has_value()) {
+        auto* pc =
+            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+        if (pc) {
+          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+          if (cell.leafId.has_value()) {
+            auto result =
+                multi_cell_logic::swapCells(appState.system, appState.system.selection->clusterId,
+                                            *cell.leafId, storedCell->first, storedCell->second);
+            if (result.success) {
+              storedCell.reset();
+            }
+          }
+        }
+      }
+    }
+
     // Drawing
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -295,9 +355,34 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
 
         bool isSelected =
             selectedCell.has_value() && selectedCell->first == pc.id && selectedCell->second == i;
-        Color borderColor = isSelected ? RED : BLACK;
 
-        DrawRectangleLinesEx(screenRect, isSelected ? 3.0f : 1.0f, borderColor);
+        // Check if this cell is the stored cell
+        bool isStoredCell = false;
+        if (storedCell.has_value() && storedCell->first == pc.id) {
+          auto storedIdx = multi_cell_logic::findCellByLeafId(pc.cluster, storedCell->second);
+          if (storedIdx.has_value() && *storedIdx == i) {
+            isStoredCell = true;
+          }
+        }
+
+        // Determine border color and width
+        Color borderColor;
+        float borderWidth;
+        if (isSelected && isStoredCell) {
+          borderColor = PURPLE;
+          borderWidth = 4.0f;
+        } else if (isStoredCell) {
+          borderColor = BLUE;
+          borderWidth = 3.0f;
+        } else if (isSelected) {
+          borderColor = RED;
+          borderWidth = 3.0f;
+        } else {
+          borderColor = BLACK;
+          borderWidth = 1.0f;
+        }
+
+        DrawRectangleLinesEx(screenRect, borderWidth, borderColor);
 
         // Draw process ID if mapped
         if (cell.leafId.has_value()) {

@@ -949,3 +949,303 @@ TEST_SUITE("multi_cell_logic updateSystem") {
   }
 
 }
+
+// ============================================================================
+// Swap and Move Cell Tests
+// ============================================================================
+
+TEST_SUITE("multi_cell_logic swap and move") {
+
+  TEST_CASE("swapCells swaps two cells in same cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Get initial positions
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    auto idx20 = multi_cell_logic::findCellByLeafId(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    auto rect10Before = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20Before = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    // Swap
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 1, 20);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+
+    // Re-find cells (indices may have changed)
+    idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    idx20 = multi_cell_logic::findCellByLeafId(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    // Check rects were swapped
+    auto rect10After = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20After = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    CHECK(rect10After.x == doctest::Approx(rect20Before.x));
+    CHECK(rect10After.width == doctest::Approx(rect20Before.width));
+    CHECK(rect20After.x == doctest::Approx(rect10Before.x));
+    CHECK(rect20After.width == doctest::Approx(rect10Before.width));
+
+    CHECK(multi_cell_logic::validateSystem(system));
+  }
+
+  TEST_CASE("swapCells is no-op for same cell") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 1, 10);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+    CHECK(multi_cell_logic::validateSystem(system));
+  }
+
+  TEST_CASE("swapCells swaps cells across clusters") {
+    multi_cell_logic::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10}};
+    multi_cell_logic::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = multi_cell_logic::createSystem({info1, info2});
+
+    auto* pc1 = multi_cell_logic::getCluster(system, 1);
+    auto* pc2 = multi_cell_logic::getCluster(system, 2);
+    REQUIRE(pc1 != nullptr);
+    REQUIRE(pc2 != nullptr);
+
+    // Swap cross-cluster
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 2, 20);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+
+    // After cross-cluster swap, leafIds are exchanged
+    // Cell in cluster 1 now has leafId 20, cell in cluster 2 has leafId 10
+    auto idx1 = multi_cell_logic::findCellByLeafId(pc1->cluster, 20);
+    auto idx2 = multi_cell_logic::findCellByLeafId(pc2->cluster, 10);
+
+    CHECK(idx1.has_value());
+    CHECK(idx2.has_value());
+
+    CHECK(multi_cell_logic::validateSystem(system));
+  }
+
+  TEST_CASE("swapCells returns error for non-existent cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 999, 20);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("swapCells returns error for non-existent leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 1, 999);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("swapCells updates selection correctly in same cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    // Select the cell with leafId 10
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    REQUIRE(idx10.has_value());
+    system.selection = multi_cell_logic::Selection{1, *idx10};
+
+    // Swap
+    auto result = multi_cell_logic::swapCells(system, 1, 10, 1, 20);
+    CHECK(result.success);
+
+    // Selection should still point to the cell with leafId 10 (now at different index)
+    REQUIRE(system.selection.has_value());
+    auto& selectedCell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+    CHECK(selectedCell.leafId.has_value());
+    CHECK(*selectedCell.leafId == 10);
+  }
+
+  TEST_CASE("moveCell moves cell within same cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 2);
+
+    // Move 10 to 20
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 1, 20);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+    CHECK(result.newClusterId == 1);
+
+    // Should now have 2 leaves (20 was split, creating a new leaf for 10)
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 2);
+
+    // Verify both leaves still exist
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    auto idx20 = multi_cell_logic::findCellByLeafId(pc->cluster, 20);
+    CHECK(idx10.has_value());
+    CHECK(idx20.has_value());
+
+    CHECK(multi_cell_logic::validateSystem(system));
+  }
+
+  TEST_CASE("moveCell is no-op for same cell") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 1, 10);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 1);
+  }
+
+  TEST_CASE("moveCell moves cell across clusters") {
+    multi_cell_logic::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10, 11}};
+    multi_cell_logic::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = multi_cell_logic::createSystem({info1, info2});
+
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 3);
+
+    // Move 10 from cluster 1 to cluster 2 (split from 20)
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 2, 20);
+
+    CHECK(result.success);
+    CHECK(result.errorMessage.empty());
+    CHECK(result.newClusterId == 2);
+
+    // Cluster 1 should now have 1 leaf (11)
+    auto* pc1 = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc1 != nullptr);
+    auto leafIds1 = multi_cell_logic::getClusterLeafIds(pc1->cluster);
+    CHECK(leafIds1.size() == 1);
+    CHECK(leafIds1[0] == 11);
+
+    // Cluster 2 should now have 2 leaves (20 and 10)
+    auto* pc2 = multi_cell_logic::getCluster(system, 2);
+    REQUIRE(pc2 != nullptr);
+    auto leafIds2 = multi_cell_logic::getClusterLeafIds(pc2->cluster);
+    CHECK(leafIds2.size() == 2);
+    std::sort(leafIds2.begin(), leafIds2.end());
+    CHECK(leafIds2[0] == 10);
+    CHECK(leafIds2[1] == 20);
+
+    CHECK(multi_cell_logic::validateSystem(system));
+  }
+
+  TEST_CASE("moveCell preserves source leafId") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 1, 20);
+
+    CHECK(result.success);
+
+    // The moved cell should still have leafId 10
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    CHECK(idx10.has_value());
+    CHECK(*idx10 == result.newCellIndex);
+  }
+
+  TEST_CASE("moveCell returns error for non-existent source cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 999, 10, 1, 10);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("moveCell returns error for non-existent target cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 999, 20);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("moveCell returns error for non-existent source leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 1, 999, 1, 10);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("moveCell returns error for non-existent target leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 1, 999);
+
+    CHECK(!result.success);
+    CHECK(!result.errorMessage.empty());
+  }
+
+  TEST_CASE("moveCell updates selection when source was selected") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    // Select the cell with leafId 10
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    REQUIRE(idx10.has_value());
+    system.selection = multi_cell_logic::Selection{1, *idx10};
+
+    // Move 10 to 20
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 1, 20);
+
+    CHECK(result.success);
+
+    // Selection should be updated to the new cell
+    REQUIRE(system.selection.has_value());
+    CHECK(system.selection->cellIndex == result.newCellIndex);
+
+    // The selected cell should have leafId 10
+    auto& selectedCell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+    CHECK(selectedCell.leafId.has_value());
+    CHECK(*selectedCell.leafId == 10);
+  }
+
+  TEST_CASE("moveCell handles source cluster becoming empty") {
+    multi_cell_logic::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10}};
+    multi_cell_logic::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = multi_cell_logic::createSystem({info1, info2});
+
+    // Move the only cell from cluster 1 to cluster 2
+    auto result = multi_cell_logic::moveCell(system, 1, 10, 2, 20);
+
+    CHECK(result.success);
+
+    // Cluster 1 should now be empty
+    auto* pc1 = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc1 != nullptr);
+    CHECK(pc1->cluster.cells.empty());
+
+    // Cluster 2 should have 2 leaves
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 2);
+  }
+
+}

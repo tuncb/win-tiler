@@ -889,6 +889,208 @@ bool toggleSelectedSplitDir(System& system) {
                                      system.gapHorizontal, system.gapVertical);
 }
 
+SwapResult swapCells(System& system,
+                     ClusterId clusterId1, size_t leafId1,
+                     ClusterId clusterId2, size_t leafId2) {
+  // Get clusters
+  PositionedCluster* pc1 = getCluster(system, clusterId1);
+  PositionedCluster* pc2 = getCluster(system, clusterId2);
+
+  if (!pc1) {
+    return {false, "Cluster 1 not found"};
+  }
+  if (!pc2) {
+    return {false, "Cluster 2 not found"};
+  }
+
+  // Find cells by leafId
+  auto idx1Opt = findCellByLeafId(pc1->cluster, leafId1);
+  auto idx2Opt = findCellByLeafId(pc2->cluster, leafId2);
+
+  if (!idx1Opt.has_value()) {
+    return {false, "Leaf 1 not found"};
+  }
+  if (!idx2Opt.has_value()) {
+    return {false, "Leaf 2 not found"};
+  }
+
+  int idx1 = *idx1Opt;
+  int idx2 = *idx2Opt;
+
+  // Check if same cell (no-op)
+  if (clusterId1 == clusterId2 && leafId1 == leafId2) {
+    return {true, ""};
+  }
+
+  // Validate both are leaves
+  if (!cell_logic::isLeaf(pc1->cluster, idx1)) {
+    return {false, "Cell 1 is not a leaf"};
+  }
+  if (!cell_logic::isLeaf(pc2->cluster, idx2)) {
+    return {false, "Cell 2 is not a leaf"};
+  }
+
+  if (clusterId1 == clusterId2) {
+    // Same-cluster swap: swap tree positions
+    cell_logic::CellCluster& cluster = pc1->cluster;
+    cell_logic::Cell& cell1 = cluster.cells[static_cast<size_t>(idx1)];
+    cell_logic::Cell& cell2 = cluster.cells[static_cast<size_t>(idx2)];
+
+    // Store original parent info
+    auto parent1 = cell1.parent;
+    auto parent2 = cell2.parent;
+
+    // Swap parent pointers
+    cell1.parent = parent2;
+    cell2.parent = parent1;
+
+    // Update parent's child pointers
+    if (parent1.has_value()) {
+      cell_logic::Cell& p1 = cluster.cells[static_cast<size_t>(*parent1)];
+      if (p1.firstChild.has_value() && *p1.firstChild == idx1) {
+        p1.firstChild = idx2;
+      } else if (p1.secondChild.has_value() && *p1.secondChild == idx1) {
+        p1.secondChild = idx2;
+      }
+    }
+    if (parent2.has_value()) {
+      cell_logic::Cell& p2 = cluster.cells[static_cast<size_t>(*parent2)];
+      if (p2.firstChild.has_value() && *p2.firstChild == idx2) {
+        p2.firstChild = idx1;
+      } else if (p2.secondChild.has_value() && *p2.secondChild == idx2) {
+        p2.secondChild = idx1;
+      }
+    }
+
+    // Swap rects
+    std::swap(cell1.rect, cell2.rect);
+
+    // Note: Selection stays at the same cell index because the cells
+    // still have the same leafIds - only their tree positions changed.
+  } else {
+    // Cross-cluster swap: exchange leafIds
+    cell_logic::Cell& cell1 = pc1->cluster.cells[static_cast<size_t>(idx1)];
+    cell_logic::Cell& cell2 = pc2->cluster.cells[static_cast<size_t>(idx2)];
+
+    std::swap(cell1.leafId, cell2.leafId);
+
+    // Note: Selection doesn't need updating for cross-cluster swap
+    // because the selection tracks cell index, not leafId
+  }
+
+  return {true, ""};
+}
+
+MoveResult moveCell(System& system,
+                    ClusterId sourceClusterId, size_t sourceLeafId,
+                    ClusterId targetClusterId, size_t targetLeafId) {
+  // Get clusters
+  PositionedCluster* srcPC = getCluster(system, sourceClusterId);
+  PositionedCluster* tgtPC = getCluster(system, targetClusterId);
+
+  if (!srcPC) {
+    return {false, -1, 0, "Source cluster not found"};
+  }
+  if (!tgtPC) {
+    return {false, -1, 0, "Target cluster not found"};
+  }
+
+  // Find cells by leafId
+  auto srcIdxOpt = findCellByLeafId(srcPC->cluster, sourceLeafId);
+  auto tgtIdxOpt = findCellByLeafId(tgtPC->cluster, targetLeafId);
+
+  if (!srcIdxOpt.has_value()) {
+    return {false, -1, 0, "Source leaf not found"};
+  }
+  if (!tgtIdxOpt.has_value()) {
+    return {false, -1, 0, "Target leaf not found"};
+  }
+
+  // Check if same cell (no-op)
+  if (sourceClusterId == targetClusterId && sourceLeafId == targetLeafId) {
+    return {true, *srcIdxOpt, sourceClusterId, ""};
+  }
+
+  // Validate both are leaves
+  if (!cell_logic::isLeaf(srcPC->cluster, *srcIdxOpt)) {
+    return {false, -1, 0, "Source cell is not a leaf"};
+  }
+  if (!cell_logic::isLeaf(tgtPC->cluster, *tgtIdxOpt)) {
+    return {false, -1, 0, "Target cell is not a leaf"};
+  }
+
+  // Remember if source or target was selected
+  bool sourceWasSelected = system.selection.has_value() &&
+      system.selection->clusterId == sourceClusterId &&
+      system.selection->cellIndex == *srcIdxOpt;
+
+  bool targetWasSelected = system.selection.has_value() &&
+      system.selection->clusterId == targetClusterId &&
+      system.selection->cellIndex == *tgtIdxOpt;
+
+  // Store source's leafId
+  size_t savedLeafId = sourceLeafId;
+
+  // Delete source
+  auto deleteResult = cell_logic::deleteLeaf(srcPC->cluster, *srcIdxOpt,
+                                              system.gapHorizontal, system.gapVertical);
+
+  // Update srcPC pointer in case same-cluster operation moved things
+  if (sourceClusterId == targetClusterId) {
+    tgtPC = srcPC;
+  }
+
+  // Re-find target by leafId (index may have changed if same cluster)
+  tgtIdxOpt = findCellByLeafId(tgtPC->cluster, targetLeafId);
+  if (!tgtIdxOpt.has_value()) {
+    return {false, -1, 0, "Target lost after delete"};
+  }
+
+  // Sync the global leaf ID counter
+  tgtPC->cluster.nextLeafId = system.globalNextLeafId;
+
+  // Split target
+  auto splitResult = cell_logic::splitLeaf(tgtPC->cluster, *tgtIdxOpt,
+                                            system.gapHorizontal, system.gapVertical);
+
+  // Sync back after split
+  system.globalNextLeafId = tgtPC->cluster.nextLeafId;
+
+  if (!splitResult.has_value()) {
+    return {false, -1, 0, "Split failed"};
+  }
+
+  // Find the second child (new leaf) and set its leafId to savedLeafId
+  int firstChildIdx = splitResult->newSelectionIndex;
+  cell_logic::Cell& firstChild = tgtPC->cluster.cells[static_cast<size_t>(firstChildIdx)];
+
+  if (!firstChild.parent.has_value()) {
+    return {false, -1, 0, "Could not find parent after split"};
+  }
+
+  int parentIdx = *firstChild.parent;
+  cell_logic::Cell& parent = tgtPC->cluster.cells[static_cast<size_t>(parentIdx)];
+
+  if (!parent.secondChild.has_value()) {
+    return {false, -1, 0, "Could not find new cell after split"};
+  }
+
+  int newCellIdx = *parent.secondChild;
+  tgtPC->cluster.cells[static_cast<size_t>(newCellIdx)].leafId = savedLeafId;
+
+  // Update selection if source or target was selected
+  if (sourceWasSelected) {
+    // Source was selected - follow it to its new position
+    system.selection = Selection{targetClusterId, newCellIdx};
+  } else if (targetWasSelected) {
+    // Target was selected - it's now a parent, so select its first child
+    // (which keeps the target's original leafId)
+    system.selection = Selection{targetClusterId, firstChildIdx};
+  }
+
+  return {true, newCellIdx, targetClusterId, ""};
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================

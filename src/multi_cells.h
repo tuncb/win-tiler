@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -152,6 +153,22 @@ struct UpdateResult {
 };
 
 // ============================================================================
+// Swap and Move Operation Types
+// ============================================================================
+
+struct SwapResult {
+  bool success;
+  std::string errorMessage;  // Empty if success
+};
+
+struct MoveResult {
+  bool success;
+  int newCellIndex;          // Index of source cell in its new position
+  ClusterId newClusterId;    // Cluster where source ended up
+  std::string errorMessage;  // Empty if success
+};
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
@@ -211,6 +228,24 @@ bool deleteSelectedLeaf(System& system);
 
 // Toggle the split direction of the selected cell's parent.
 bool toggleSelectedSplitDir(System& system);
+
+// Swap two leaf cells' positions (potentially in different clusters).
+// Each cell keeps its identity (leafId) but they exchange visual positions.
+// For same-cluster: actual tree position swap.
+// For cross-cluster: leafIds are exchanged between the two positions.
+// If both arguments refer to the same cell, this is a no-op and returns success.
+SwapResult swapCells(System& system,
+                     ClusterId clusterId1, size_t leafId1,
+                     ClusterId clusterId2, size_t leafId2);
+
+// Move source cell to target cell's location.
+// - Deletes source from its current position
+// - Splits target to create a new slot
+// - Source's content (leafId) appears in the new split slot
+// If source and target are the same cell, this is a no-op and returns success.
+MoveResult moveCell(System& system,
+                    ClusterId sourceClusterId, size_t sourceLeafId,
+                    ClusterId targetClusterId, size_t targetLeafId);
 
 // ============================================================================
 // Utilities
