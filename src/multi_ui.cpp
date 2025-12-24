@@ -219,40 +219,11 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       auto currentSel = multi_cell_logic::getSelectedCell(appState.system);
       if (!currentSel.has_value() || currentSel->first != clusterId ||
           currentSel->second != cellIndex) {
-        // Clear old selection
-        if (appState.system.selectedClusterId.has_value()) {
-          auto* oldPc =
-              multi_cell_logic::getCluster(appState.system, *appState.system.selectedClusterId);
-          if (oldPc) {
-            oldPc->cluster.selectedIndex.reset();
-          }
-        }
-
         // Set new selection
-        auto* newPc = multi_cell_logic::getCluster(appState.system, clusterId);
-        if (newPc) {
-          newPc->cluster.selectedIndex = cellIndex;
-          appState.system.selectedClusterId = clusterId;
-        }
-      }
-    } else {
-      // No cell found - check if hovering over a cluster area (for empty clusters)
-      for (const auto& pc : appState.system.clusters) {
-        if (globalX >= pc.globalX && globalX < pc.globalX + pc.cluster.windowWidth &&
-            globalY >= pc.globalY && globalY < pc.globalY + pc.cluster.windowHeight) {
-          // Hovering over this cluster - select it (but no cell selection)
-          if (!appState.system.selectedClusterId.has_value() ||
-              *appState.system.selectedClusterId != pc.id) {
-            // Clear cell selection in all clusters
-            for (auto& otherPc : appState.system.clusters) {
-              otherPc.cluster.selectedIndex.reset();
-            }
-            appState.system.selectedClusterId = pc.id;
-          }
-          break;
-        }
+        appState.system.selection = multi_cell_logic::Selection{clusterId, cellIndex};
       }
     }
+    // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
 
     // Keyboard input
     if (IsKeyPressed(KEY_T)) {

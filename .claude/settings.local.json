@@ -7,7 +7,10 @@
       "Bash(.build-run.bat build-run --Test-Debug)",
       "Bash(cmd /c \".\\\\build-run.bat build-run --Test-Debug\")",
       "Bash(cmd //c \"build-run.bat build-run --Test-Debug\")",
-      "Bash(build-run.bat build-run --Test-Debug)"
+      "Bash(build-run.bat build-run --Test-Debug)",
+      "Bash(cmd /c \"build-run.bat build-run --Test-Debug\")",
+      "Bash(C:workwin-tilerbuild-run.bat build-run --Test-Debug)",
+      "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\build-run.bat build-run --Test-Debug\")"
     ]
   }
 }

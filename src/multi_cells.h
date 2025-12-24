@@ -39,7 +39,6 @@ struct Cell {
 
 struct CellCluster {
   std::vector<Cell> cells;
-  std::optional<int> selectedIndex; // always holds a Leaf index when set
 
   // Global split direction that alternates on each cell creation.
   SplitDir globalSplitDir;
@@ -59,20 +58,26 @@ enum class Direction {
   Down,
 };
 
+// Result of splitting a leaf cell.
+struct SplitResult {
+  size_t newLeafId;
+  int newSelectionIndex;
+};
+
 // Create initial CellCluster with given width/height (no cells yet).
 CellCluster createInitialState(float width, float height);
 
 // Returns true if the cell at cellIndex exists and has no children.
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
-// Delete the currently selected leaf cell. Returns true if deletion occurred.
-bool deleteSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical);
+// Delete the given leaf cell. Returns new selection index (or nullopt if cluster empty).
+std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
 
-// Split the currently selected leaf cell. Returns id of the new leaf.
-std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical);
+// Split the given leaf cell. Returns SplitResult with new leaf ID and new selection index.
+std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
 
-// Toggle the splitDir of the selected cell's parent.
-bool toggleSelectedSplitDir(CellCluster& state, float gapHorizontal, float gapVertical);
+// Toggle the splitDir of the given cell's parent.
+bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
 
 // Debug: print the entire CellCluster to stdout.
 void debugPrintState(const CellCluster& state);
@@ -96,10 +101,16 @@ struct PositionedCluster {
   float globalY;
 };
 
+// System-wide selection tracking.
+struct Selection {
+  ClusterId clusterId;
+  int cellIndex;  // always a leaf index
+};
+
 struct System {
   std::vector<PositionedCluster> clusters;
-  std::optional<ClusterId> selectedClusterId; // Which cluster has selection
-  size_t globalNextLeafId = 1;                // Shared across all clusters
+  std::optional<Selection> selection;  // System-wide selection
+  size_t globalNextLeafId = 1;         // Shared across all clusters
   float gapHorizontal = 10.0f;
   float gapVertical = 10.0f;
 };

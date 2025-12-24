@@ -23,8 +23,6 @@ CellCluster createInitialState(float width, float height) {
 
   state.globalSplitDir = SplitDir::Vertical;
 
-  state.selectedIndex = std::nullopt;
-
   return state;
 }
 
@@ -103,52 +101,46 @@ static void recomputeSubtreeRects(CellCluster& state, int nodeIndex,
   }
 }
 
-bool deleteSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical) {
-  if (!state.selectedIndex.has_value()) {
-    return false;
-  }
-
-  int selected = *state.selectedIndex;
-  if (!isLeaf(state, selected)) {
-    return false;
+std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+  if (!isLeaf(state, selectedIndex)) {
+    return std::nullopt;
   }
   if (state.cells.empty()) {
-    return false;
+    return std::nullopt;
   }
 
-  Cell& selectedCell = state.cells[static_cast<std::size_t>(selected)];
+  Cell& selectedCell = state.cells[static_cast<std::size_t>(selectedIndex)];
   if (selectedCell.isDead) {
-    return false;
+    return std::nullopt;
   }
 
-  if (selected == 0) {
+  if (selectedIndex == 0) {
     state.cells.clear();
-    state.selectedIndex.reset();
-    return true;
+    return std::nullopt;  // Cluster is now empty
   }
 
   if (!selectedCell.parent.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   int parentIndex = *selectedCell.parent;
   Cell& parent = state.cells[static_cast<std::size_t>(parentIndex)];
 
   if (parent.isDead) {
-    return false;
+    return std::nullopt;
   }
 
   if (!parent.firstChild.has_value() || !parent.secondChild.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   int firstIdx = *parent.firstChild;
   int secondIdx = *parent.secondChild;
-  int siblingIndex = (selected == firstIdx) ? secondIdx : firstIdx;
+  int siblingIndex = (selectedIndex == firstIdx) ? secondIdx : firstIdx;
 
   Cell& sibling = state.cells[static_cast<std::size_t>(siblingIndex)];
   if (sibling.isDead) {
-    return false;
+    return std::nullopt;
   }
 
   Rect newRect = parent.rect;
@@ -187,40 +179,34 @@ bool deleteSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertic
     }
   }
 
-  state.selectedIndex = current;
-  return true;
+  return current;  // New selection index
 }
 
-std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical) {
-  if (!state.selectedIndex.has_value()) {
-    if (state.cells.empty()) {
-      Cell root{};
-      root.splitDir = state.globalSplitDir;
-      root.isDead = false;
-      root.parent = std::nullopt;
-      root.firstChild = std::nullopt;
-      root.secondChild = std::nullopt;
-      root.leafId = state.nextLeafId++;
+std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+  // Special case: if cluster is empty and selectedIndex is -1, create root
+  if (state.cells.empty() && selectedIndex == -1) {
+    Cell root{};
+    root.splitDir = state.globalSplitDir;
+    root.isDead = false;
+    root.parent = std::nullopt;
+    root.firstChild = std::nullopt;
+    root.secondChild = std::nullopt;
+    root.leafId = state.nextLeafId++;
 
-      float rootW = state.windowWidth;
-      float rootH = state.windowHeight;
-      root.rect = Rect{0.0f, 0.0f, rootW > 0.0f ? rootW : 0.0f, rootH > 0.0f ? rootH : 0.0f};
+    float rootW = state.windowWidth;
+    float rootH = state.windowHeight;
+    root.rect = Rect{0.0f, 0.0f, rootW > 0.0f ? rootW : 0.0f, rootH > 0.0f ? rootH : 0.0f};
 
-      int index = addCell(state, root);
-      state.selectedIndex = index;
+    int index = addCell(state, root);
 
-      return root.leafId;
-    }
+    return SplitResult{*root.leafId, index};
+  }
 
+  if (!isLeaf(state, selectedIndex)) {
     return std::nullopt;
   }
 
-  int selected = *state.selectedIndex;
-  if (!isLeaf(state, selected)) {
-    return std::nullopt;
-  }
-
-  Cell& leaf = state.cells[static_cast<std::size_t>(selected)];
+  Cell& leaf = state.cells[static_cast<std::size_t>(selectedIndex)];
   if (leaf.isDead) {
     return std::nullopt;
   }
@@ -249,7 +235,7 @@ std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal,
   Cell firstChild{};
   firstChild.splitDir = state.globalSplitDir;
   firstChild.isDead = false;
-  firstChild.parent = selected;
+  firstChild.parent = selectedIndex;
   firstChild.firstChild = std::nullopt;
   firstChild.secondChild = std::nullopt;
   firstChild.rect = firstRect;
@@ -258,7 +244,7 @@ std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal,
   Cell secondChild{};
   secondChild.splitDir = state.globalSplitDir;
   secondChild.isDead = false;
-  secondChild.parent = selected;
+  secondChild.parent = selectedIndex;
   secondChild.firstChild = std::nullopt;
   secondChild.secondChild = std::nullopt;
   secondChild.rect = secondRect;
@@ -268,30 +254,23 @@ std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal,
   int secondIndex = addCell(state, secondChild);
 
   {
-    Cell& parent = state.cells[static_cast<std::size_t>(selected)];
+    Cell& parent = state.cells[static_cast<std::size_t>(selectedIndex)];
     parent.firstChild = firstIndex;
     parent.secondChild = secondIndex;
   }
 
-  state.selectedIndex = firstIndex;
-
   state.globalSplitDir =
       (state.globalSplitDir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
 
-  return secondChild.leafId;
+  return SplitResult{secondChild.leafId.value(), firstIndex};
 }
 
-bool toggleSelectedSplitDir(CellCluster& state, float gapHorizontal, float gapVertical) {
-  if (!state.selectedIndex.has_value()) {
+bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+  if (!isLeaf(state, selectedIndex)) {
     return false;
   }
 
-  int selected = *state.selectedIndex;
-  if (!isLeaf(state, selected)) {
-    return false;
-  }
-
-  Cell& leaf = state.cells[static_cast<std::size_t>(selected)];
+  Cell& leaf = state.cells[static_cast<std::size_t>(selectedIndex)];
   if (leaf.isDead) {
     return false;
   }
@@ -313,7 +292,7 @@ bool toggleSelectedSplitDir(CellCluster& state, float gapHorizontal, float gapVe
 
   int firstIdx = *parent.firstChild;
   int secondIdx = *parent.secondChild;
-  int siblingIndex = (selected == firstIdx) ? secondIdx : firstIdx;
+  int siblingIndex = (selectedIndex == firstIdx) ? secondIdx : firstIdx;
 
   if (!isLeaf(state, siblingIndex)) {
     return false;
@@ -338,13 +317,6 @@ void debugPrintState(const CellCluster& state) {
   std::cout << "===== CellCluster =====" << std::endl;
 
   std::cout << "cells.size = " << state.cells.size() << std::endl;
-
-  std::cout << "selectedIndex = ";
-  if (state.selectedIndex.has_value())
-    std::cout << *state.selectedIndex;
-  else
-    std::cout << "null";
-  std::cout << std::endl;
 
   std::cout << "globalSplitDir = "
             << (state.globalSplitDir == SplitDir::Vertical ? "Vertical" : "Horizontal")
@@ -392,17 +364,7 @@ bool validateState(const CellCluster& state) {
   bool ok = true;
 
   if (state.cells.empty()) {
-    if (state.selectedIndex.has_value()) {
-      std::cout << "[validate] ERROR: empty state has non-null selectedIndex" << std::endl;
-      ok = false;
-    }
-
-    if (ok) {
-      std::cout << "[validate] State OK (empty)" << std::endl;
-    } else {
-      std::cout << "[validate] State has anomalies (empty)" << std::endl;
-    }
-
+    std::cout << "[validate] State OK (empty)" << std::endl;
     return ok;
   }
 
@@ -527,50 +489,53 @@ namespace multi_cell_logic {
 
 // ============================================================================
 // Helper: Pre-create leaves in a cluster from initialCellIds
+// Returns the selection index (or -1 if no cells created)
 // ============================================================================
 
-static void preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cellIds,
-                            size_t& globalNextLeafId, float gapHorizontal, float gapVertical) {
+static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cellIds,
+                           size_t& globalNextLeafId, float gapHorizontal, float gapVertical) {
+  int currentSelection = -1;
+
   for (size_t i = 0; i < cellIds.size(); ++i) {
     size_t cellId = cellIds[i];
 
     if (pc.cluster.cells.empty()) {
-      // First cell: create root leaf
+      // First cell: create root leaf (pass -1 for empty cluster)
       pc.cluster.nextLeafId = globalNextLeafId;
-      auto leafIdOpt = cell_logic::splitSelectedLeaf(pc.cluster, gapHorizontal, gapVertical);
-      if (leafIdOpt.has_value()) {
+      auto resultOpt = cell_logic::splitLeaf(pc.cluster, -1, gapHorizontal, gapVertical);
+      if (resultOpt.has_value()) {
         // The root leaf was just created. Overwrite its leafId with the provided one.
-        if (pc.cluster.selectedIndex.has_value()) {
-          int idx = *pc.cluster.selectedIndex;
-          pc.cluster.cells[static_cast<size_t>(idx)].leafId = cellId;
-        }
+        int idx = resultOpt->newSelectionIndex;
+        pc.cluster.cells[static_cast<size_t>(idx)].leafId = cellId;
+        currentSelection = idx;
         globalNextLeafId = pc.cluster.nextLeafId;
       }
     } else {
       // Subsequent cells: split current selection
       pc.cluster.nextLeafId = globalNextLeafId;
-      auto leafIdOpt = cell_logic::splitSelectedLeaf(pc.cluster, gapHorizontal, gapVertical);
-      if (leafIdOpt.has_value()) {
+      auto resultOpt = cell_logic::splitLeaf(pc.cluster, currentSelection, gapHorizontal, gapVertical);
+      if (resultOpt.has_value()) {
         // The new leaf (second child) was created. Find it and overwrite its leafId.
         // After split, selection moves to first child. The new leaf is the sibling.
-        if (pc.cluster.selectedIndex.has_value()) {
-          int firstChildIdx = *pc.cluster.selectedIndex;
-          cell_logic::Cell& firstChild =
-              pc.cluster.cells[static_cast<size_t>(firstChildIdx)];
-          if (firstChild.parent.has_value()) {
-            int parentIdx = *firstChild.parent;
-            cell_logic::Cell& parent =
-                pc.cluster.cells[static_cast<size_t>(parentIdx)];
-            if (parent.secondChild.has_value()) {
-              int secondChildIdx = *parent.secondChild;
-              pc.cluster.cells[static_cast<size_t>(secondChildIdx)].leafId = cellId;
-            }
+        int firstChildIdx = resultOpt->newSelectionIndex;
+        cell_logic::Cell& firstChild =
+            pc.cluster.cells[static_cast<size_t>(firstChildIdx)];
+        if (firstChild.parent.has_value()) {
+          int parentIdx = *firstChild.parent;
+          cell_logic::Cell& parent =
+              pc.cluster.cells[static_cast<size_t>(parentIdx)];
+          if (parent.secondChild.has_value()) {
+            int secondChildIdx = *parent.secondChild;
+            pc.cluster.cells[static_cast<size_t>(secondChildIdx)].leafId = cellId;
           }
         }
+        currentSelection = firstChildIdx;
         globalNextLeafId = pc.cluster.nextLeafId;
       }
     }
   }
+
+  return currentSelection;
 }
 
 // ============================================================================
@@ -589,15 +554,16 @@ System createSystem(const std::vector<ClusterInitInfo>& infos) {
     pc.globalY = info.y;
     pc.cluster = cell_logic::createInitialState(info.width, info.height);
 
+    int selectionIndex = -1;
     // Pre-create leaves if initialCellIds provided
     if (!info.initialCellIds.empty()) {
-      preCreateLeaves(pc, info.initialCellIds, system.globalNextLeafId,
-                      system.gapHorizontal, system.gapVertical);
+      selectionIndex = preCreateLeaves(pc, info.initialCellIds, system.globalNextLeafId,
+                                       system.gapHorizontal, system.gapVertical);
     }
 
-    // If this is the first cluster with a selection, make it the selected cluster
-    if (!system.selectedClusterId.has_value() && pc.cluster.selectedIndex.has_value()) {
-      system.selectedClusterId = pc.id;
+    // If this is the first cluster with cells, make it the selected cluster
+    if (!system.selection.has_value() && selectionIndex >= 0) {
+      system.selection = Selection{pc.id, selectionIndex};
     }
 
     system.clusters.push_back(std::move(pc));
@@ -613,13 +579,14 @@ ClusterId addCluster(System& system, const ClusterInitInfo& info) {
   pc.globalY = info.y;
   pc.cluster = cell_logic::createInitialState(info.width, info.height);
 
+  int selectionIndex = -1;
   if (!info.initialCellIds.empty()) {
-    preCreateLeaves(pc, info.initialCellIds, system.globalNextLeafId,
-                    system.gapHorizontal, system.gapVertical);
+    selectionIndex = preCreateLeaves(pc, info.initialCellIds, system.globalNextLeafId,
+                                     system.gapHorizontal, system.gapVertical);
   }
 
-  if (!system.selectedClusterId.has_value() && pc.cluster.selectedIndex.has_value()) {
-    system.selectedClusterId = pc.id;
+  if (!system.selection.has_value() && selectionIndex >= 0) {
+    system.selection = Selection{pc.id, selectionIndex};
   }
 
   system.clusters.push_back(std::move(pc));
@@ -634,17 +601,25 @@ bool removeCluster(System& system, ClusterId id) {
     return false;
   }
 
-  bool wasSelected = system.selectedClusterId.has_value() && *system.selectedClusterId == id;
+  bool wasSelected = system.selection.has_value() && system.selection->clusterId == id;
 
   system.clusters.erase(it);
 
-  // If the removed cluster was selected, move selection to another cluster
+  // If the removed cluster was selected, move selection to another cluster with cells
   if (wasSelected) {
-    system.selectedClusterId.reset();
+    system.selection.reset();
     for (auto& pc : system.clusters) {
-      if (pc.cluster.selectedIndex.has_value()) {
-        system.selectedClusterId = pc.id;
-        break;
+      if (!pc.cluster.cells.empty()) {
+        // Find the first leaf in this cluster
+        for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+          if (cell_logic::isLeaf(pc.cluster, i)) {
+            system.selection = Selection{pc.id, i};
+            break;
+          }
+        }
+        if (system.selection.has_value()) {
+          break;
+        }
       }
     }
   }
@@ -816,38 +791,18 @@ findNextLeafInDirection(const System& system, ClusterId currentClusterId, int cu
 }
 
 bool moveSelection(System& system, cell_logic::Direction dir) {
-  if (!system.selectedClusterId.has_value()) {
+  if (!system.selection.has_value()) {
     return false;
   }
 
-  PositionedCluster* currentPC = getCluster(system, *system.selectedClusterId);
-  if (!currentPC || !currentPC->cluster.selectedIndex.has_value()) {
-    return false;
-  }
-
-  int currentCellIndex = *currentPC->cluster.selectedIndex;
-
-  auto nextOpt = findNextLeafInDirection(system, *system.selectedClusterId, currentCellIndex, dir);
+  auto nextOpt = findNextLeafInDirection(system, system.selection->clusterId,
+                                          system.selection->cellIndex, dir);
   if (!nextOpt.has_value()) {
     return false;
   }
 
   auto [nextClusterId, nextCellIndex] = *nextOpt;
-
-  // Update selection
-  if (nextClusterId != *system.selectedClusterId) {
-    // Cross-cluster move: clear selection in old cluster, set in new
-    currentPC->cluster.selectedIndex.reset();
-
-    PositionedCluster* nextPC = getCluster(system, nextClusterId);
-    if (nextPC) {
-      nextPC->cluster.selectedIndex = nextCellIndex;
-      system.selectedClusterId = nextClusterId;
-    }
-  } else {
-    // Same cluster move
-    currentPC->cluster.selectedIndex = nextCellIndex;
-  }
+  system.selection = Selection{nextClusterId, nextCellIndex};
 
   return true;
 }
@@ -857,11 +812,11 @@ bool moveSelection(System& system, cell_logic::Direction dir) {
 // ============================================================================
 
 std::optional<size_t> splitSelectedLeaf(System& system) {
-  if (!system.selectedClusterId.has_value()) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  PositionedCluster* pc = getCluster(system, *system.selectedClusterId);
+  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
   if (!pc) {
     return std::nullopt;
   }
@@ -869,51 +824,62 @@ std::optional<size_t> splitSelectedLeaf(System& system) {
   // Sync the global leaf ID counter
   pc->cluster.nextLeafId = system.globalNextLeafId;
 
-  auto result = cell_logic::splitSelectedLeaf(pc->cluster, system.gapHorizontal, system.gapVertical);
+  auto resultOpt = cell_logic::splitLeaf(pc->cluster, system.selection->cellIndex,
+                                         system.gapHorizontal, system.gapVertical);
 
   // Sync back after split
   system.globalNextLeafId = pc->cluster.nextLeafId;
 
-  return result;
+  if (resultOpt.has_value()) {
+    // Update selection to the new selection index
+    system.selection->cellIndex = resultOpt->newSelectionIndex;
+    return resultOpt->newLeafId;
+  }
+
+  return std::nullopt;
 }
 
 bool deleteSelectedLeaf(System& system) {
-  if (!system.selectedClusterId.has_value()) {
+  if (!system.selection.has_value()) {
     return false;
   }
 
-  PositionedCluster* pc = getCluster(system, *system.selectedClusterId);
+  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
   if (!pc) {
     return false;
   }
 
-  bool result = cell_logic::deleteSelectedLeaf(pc->cluster, system.gapHorizontal, system.gapVertical);
+  auto newSelectionOpt = cell_logic::deleteLeaf(pc->cluster, system.selection->cellIndex,
+                                                 system.gapHorizontal, system.gapVertical);
 
-  // If the cluster became empty, move selection to another cluster
-  if (result && pc->cluster.cells.empty()) {
-    system.selectedClusterId.reset();
-    for (auto& otherPc : system.clusters) {
-      if (otherPc.cluster.selectedIndex.has_value()) {
-        system.selectedClusterId = otherPc.id;
-        break;
+  if (newSelectionOpt.has_value()) {
+    // Update selection to new cell in same cluster
+    system.selection->cellIndex = *newSelectionOpt;
+    return true;
+  }
+
+  // Cluster became empty (or deletion failed for root), find another cluster with cells
+  system.selection.reset();
+  for (auto& otherPc : system.clusters) {
+    if (!otherPc.cluster.cells.empty()) {
+      for (int i = 0; i < static_cast<int>(otherPc.cluster.cells.size()); ++i) {
+        if (cell_logic::isLeaf(otherPc.cluster, i)) {
+          system.selection = Selection{otherPc.id, i};
+          return true;
+        }
       }
     }
   }
 
-  return result;
+  return true;  // Deletion occurred even if no new selection found
 }
 
 std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system) {
-  if (!system.selectedClusterId.has_value()) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  const PositionedCluster* pc = getCluster(system, *system.selectedClusterId);
-  if (!pc || !pc->cluster.selectedIndex.has_value()) {
-    return std::nullopt;
-  }
-
-  return std::make_pair(*system.selectedClusterId, *pc->cluster.selectedIndex);
+  return std::make_pair(system.selection->clusterId, system.selection->cellIndex);
 }
 
 std::optional<cell_logic::Rect> getSelectedCellGlobalRect(const System& system) {
@@ -932,16 +898,17 @@ std::optional<cell_logic::Rect> getSelectedCellGlobalRect(const System& system) 
 }
 
 bool toggleSelectedSplitDir(System& system) {
-  if (!system.selectedClusterId.has_value()) {
+  if (!system.selection.has_value()) {
     return false;
   }
 
-  PositionedCluster* pc = getCluster(system, *system.selectedClusterId);
+  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
   if (!pc) {
     return false;
   }
 
-  return cell_logic::toggleSelectedSplitDir(pc->cluster, system.gapHorizontal, system.gapVertical);
+  return cell_logic::toggleSplitDir(pc->cluster, system.selection->cellIndex,
+                                     system.gapHorizontal, system.gapVertical);
 }
 
 // ============================================================================
@@ -953,23 +920,24 @@ bool validateSystem(const System& system) {
 
   std::cout << "===== Validating MultiClusterSystem =====" << std::endl;
   std::cout << "Total clusters: " << system.clusters.size() << std::endl;
-  std::cout << "selectedClusterId: ";
-  if (system.selectedClusterId.has_value()) {
-    std::cout << *system.selectedClusterId;
+  std::cout << "selection: ";
+  if (system.selection.has_value()) {
+    std::cout << "cluster=" << system.selection->clusterId
+              << ", cellIndex=" << system.selection->cellIndex;
   } else {
     std::cout << "null";
   }
   std::cout << std::endl;
 
-  // Check that selectedClusterId points to a valid cluster
-  if (system.selectedClusterId.has_value()) {
-    const PositionedCluster* selectedPc = getCluster(system, *system.selectedClusterId);
+  // Check that selection points to a valid cluster and cell
+  if (system.selection.has_value()) {
+    const PositionedCluster* selectedPc = getCluster(system, system.selection->clusterId);
     if (!selectedPc) {
-      std::cout << "[validate] ERROR: selectedClusterId points to non-existent cluster"
-                << std::endl;
+      std::cout << "[validate] ERROR: selection points to non-existent cluster" << std::endl;
       ok = false;
-    } else if (!selectedPc->cluster.selectedIndex.has_value()) {
-      std::cout << "[validate] WARNING: selected cluster has no selectedIndex" << std::endl;
+    } else if (!cell_logic::isLeaf(selectedPc->cluster, system.selection->cellIndex)) {
+      std::cout << "[validate] ERROR: selection points to non-leaf cell" << std::endl;
+      ok = false;
     }
   }
 
@@ -1029,9 +997,10 @@ void debugPrintSystem(const System& system) {
   std::cout << "clusters.size = " << system.clusters.size() << std::endl;
   std::cout << "globalNextLeafId = " << system.globalNextLeafId << std::endl;
 
-  std::cout << "selectedClusterId = ";
-  if (system.selectedClusterId.has_value()) {
-    std::cout << *system.selectedClusterId;
+  std::cout << "selection = ";
+  if (system.selection.has_value()) {
+    std::cout << "cluster=" << system.selection->clusterId
+              << ", cellIndex=" << system.selection->cellIndex;
   } else {
     std::cout << "null";
   }
