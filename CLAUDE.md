@@ -2,81 +2,56 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Build Commands
 
-This is a Windows C++ application called "win-tiler" built with Visual Studio 2019 (v145 toolset) using C++20. The project uses raylib for graphics rendering and vcpkg for dependency management.
+```batch
+build-run.bat build --Debug           # Build debug version
+build-run.bat build --Release         # Build release version
+build-run.bat build-run --Test-Debug  # Build and run unit tests
+```
+
+The build script auto-detects MSBuild via vswhere.exe and copies required DLLs (raylib.dll, glfw3.dll) to the output directory `x64\{Configuration}\`.
+
+## Running the Application
+
+```batch
+build-run.bat build-run --Debug apply              # Apply tiling to actual windows
+build-run.bat build-run --Debug apply-test         # Preview tiling layout in console
+build-run.bat build-run --Debug ui-test-monitor 0  # Launch UI visualizer for monitor 0
+build-run.bat build-run --Debug ui-test-multi 800 600 1920 1080  # UI with custom cluster dimensions
+```
 
 ## Architecture
 
-- **Main application**: `win-tiler.cpp` - Simple raylib-based window application
-- **Project type**: Console application (Windows-only)
-- **Dependencies**: Managed through vcpkg with raylib as the primary graphics library
-- **Build system**: MSBuild via Visual Studio project files
+Win-tiler is a Windows window tiling manager using a binary space partition (BSP) tree algorithm.
 
-## Development Commands
+### Three-Layer Design
 
-### Building the Project
+1. **Cell Logic** (`cell_logic` namespace in `src/multi_cells.h/cpp`)
+   - BSP tree implementation where each `Cell` is either a leaf or has two children
+   - Core operations: split, delete, toggle split direction, navigate
+   - `CellCluster` manages a tree of cells for one logical area
 
-Use the provided batch script for building:
+2. **Multi-Cluster System** (`multi_cell_logic` namespace in `src/multi_cells.h/cpp`)
+   - `System` manages multiple `CellCluster` instances (one per monitor)
+   - System-wide selection tracking across all clusters
+   - Cross-cluster navigation (move selection between monitors)
+   - Coordinate conversion between local cluster coords and global screen coords
 
-```bash
-# Build debug version
-build-run.bat build --debug
+3. **Application Layer**
+   - `src/multi_ui.h/cpp` - Raylib-based interactive visualization
+   - `src/winapi.h/cpp` - Windows API wrapper for monitor/window enumeration
+   - `src/win-tiler.cpp` - Main entry point with command dispatch
 
-# Build release version
-build-run.bat build --release
+### Key Concepts
 
-# Build and run debug version
-build-run.bat build-run --debug
+- **Selection Model**: Selection is tracked at the System level, not individual clusters. Only one cell can be selected across the entire system.
+- **Gap System**: `gap_h` and `gap_v` control spacing between tiled windows (default 10.0f)
+- **Leaf Cells**: Only leaf cells (no children) can hold windows. Splits create parent-child relationships.
+- **Direction Navigation**: `Direction::left/right/top/bottom` for navigation, `SplitDir::horizontal/vertical` for splits
 
-# Build and run release version
-build-run.bat build-run --release
-```
+## Dependencies
 
-### Manual MSBuild (alternative)
-
-If you need to build manually without the batch script:
-
-```bash
-# Find MSBuild via vswhere and build
-msbuild win-tiler.slnx /p:Configuration=Debug /m
-msbuild win-tiler.slnx /p:Configuration=Release /m
-```
-
-### Running the Application
-
-After building, executables are located in:
-- Debug: `x64\Debug\win-tiler.exe`
-- Release: `x64\Release\win-tiler.exe`
-
-## Dependencies and Package Management
-
-- **vcpkg**: Used for C++ package management
-- **vcpkg.json**: Defines raylib as the primary dependency
-- **vcpkg-configuration.json**: Configures Microsoft's vcpkg registry
-- Dependencies are automatically restored during build via vcpkg manifest mode
-
-## Visual Studio Configuration
-
-- **Platform**: x64 and x86 support (primary target: x64)
-- **Toolset**: v145 (Visual Studio 2019)
-- **Language Standard**: C++20
-- **Character Set**: Unicode
-- **vcpkg integration**: Enabled via manifest mode
-
-## Project Structure
-
-- `win-tiler.cpp` - Main application source
-- `win-tiler.vcxproj` - Visual Studio project file
-- `win-tiler.slnx` - Solution file
-- `vcpkg.json` - Package manifest
-- `vcpkg-configuration.json` - vcpkg registry configuration
-- `build-run.bat` - Build and run automation script
-- `vcpkg_installed/` - vcpkg package installation directory
-
-## Notes
-
-- No testing framework is currently configured
-- No linting tools are set up - code follows Visual Studio default C++ formatting
-- The project is Windows-specific and requires Visual Studio build tools
-- Dependencies are automatically managed through vcpkg manifest mode
+- **raylib** - Graphics/UI visualization
+- **doctest** - Unit testing framework
+- **Windows API** - Dwmapi.lib, Psapi.lib for window management
