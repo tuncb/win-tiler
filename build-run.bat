@@ -59,6 +59,13 @@ if "%MSBUILD%"=="" (
 echo Using MSBuild: %MSBUILD%
 echo.
 
+REM Kill any running instance of win-tiler.exe before building
+taskkill /F /IM win-tiler.exe >nul 2>&1
+if %errorlevel%==0 (
+    echo Killed running win-tiler.exe instance.
+    echo.
+)
+
 REM Build the solution
 "%MSBUILD%" "win-tiler.slnx" /p:Configuration=%CONFIG% /m
 if errorlevel 1 (
