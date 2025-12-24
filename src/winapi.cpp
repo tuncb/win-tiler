@@ -2,11 +2,11 @@
 
 #include <dwmapi.h>
 #include <psapi.h>
+#include <spdlog/spdlog.h>
 #include <windows.h>
 
 #include <algorithm>
 #include <cctype>
-#include <iostream>
 
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
@@ -159,8 +159,12 @@ std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_optio
 
 IgnoreOptions get_default_ignore_options() {
   IgnoreOptions options;
-  options.ignored_processes = {"TextInputHost.exe", "ApplicationFrameHost.exe",
-                               "Microsoft.CmdPal.UI.exe"};
+  options.ignored_processes = {
+      "TextInputHost.exe",
+      "ApplicationFrameHost.exe",
+      "Microsoft.CmdPal.UI.exe",
+      "PowerToys.PowerLauncher.exe",
+  };
   options.ignored_window_titles = {};
   options.ignored_process_title_pairs = {{"SystemSettings.exe", "Settings"},
                                          {"explorer.exe", "Program Manager"},
@@ -176,8 +180,8 @@ void log_windows_per_monitor(std::optional<size_t> monitor_index) {
   auto windows = gather_raw_window_data(options);
 
   if (monitor_index.has_value() && *monitor_index >= monitors.size()) {
-    std::cerr << "Error: Monitor index " << *monitor_index << " is out of bounds. "
-              << "Available monitors: 0-" << (monitors.size() - 1) << "\n";
+    spdlog::error("Monitor index {} is out of bounds. Available monitors: 0-{}", *monitor_index,
+                  monitors.size() - 1);
     return;
   }
 
@@ -187,11 +191,11 @@ void log_windows_per_monitor(std::optional<size_t> monitor_index) {
     }
 
     const auto& monitor = monitors[i];
-    std::cout << "Monitor " << i << " (Handle: " << monitor.handle << ")\n";
-    std::cout << "  Rect: [" << monitor.rect.left << ", " << monitor.rect.top << ", "
-              << monitor.rect.right << ", " << monitor.rect.bottom << "]\n";
+    spdlog::debug("Monitor {} (Handle: {})", i, monitor.handle);
+    spdlog::debug("  Rect: [{}, {}, {}, {}]", monitor.rect.left, monitor.rect.top,
+                  monitor.rect.right, monitor.rect.bottom);
 
-    std::cout << "  Windows:\n";
+    spdlog::debug("  Windows:");
     for (const auto& win : windows) {
       HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
       if (winMonitor == (HMONITOR)monitor.handle) {
@@ -199,14 +203,13 @@ void log_windows_per_monitor(std::optional<size_t> monitor_index) {
         GetWindowRect((HWND)win.handle, &rect);
         int width = rect.right - rect.left;
         int height = rect.bottom - rect.top;
-        std::cout << "    Handle: " << win.handle
-                  << ", PID: " << (win.pid.has_value() ? std::to_string(win.pid.value()) : "N/A")
-                  << ", Process: " << win.processName << ", Title: " << win.title << "\n";
-        std::cout << "      Position: (" << rect.left << ", " << rect.top << ")"
-                  << ", Size: " << width << "x" << height << "\n";
+        spdlog::debug("    Handle: {}, PID: {}, Process: {}, Title: {}", win.handle,
+                      win.pid.has_value() ? std::to_string(win.pid.value()) : "N/A",
+                      win.processName, win.title);
+        spdlog::debug("      Position: ({}, {}), Size: {}x{}", rect.left, rect.top, width, height);
       }
     }
-    std::cout << "--------------------------------------------------\n";
+    spdlog::debug("--------------------------------------------------");
   }
 }
 

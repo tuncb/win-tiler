@@ -2,9 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <iterator>
 #include <limits>
+
+#include <spdlog/spdlog.h>
 
 namespace wintiler {
 
@@ -315,62 +316,41 @@ bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, 
 }
 
 void debugPrintState(const CellCluster& state) {
-  std::cout << "===== CellCluster =====" << std::endl;
-
-  std::cout << "cells.size = " << state.cells.size() << std::endl;
-
-  std::cout << "globalSplitDir = "
-            << (state.globalSplitDir == SplitDir::Vertical ? "Vertical" : "Horizontal")
-            << std::endl;
+  spdlog::debug("===== CellCluster =====");
+  spdlog::debug("cells.size = {}", state.cells.size());
+  spdlog::debug("globalSplitDir = {}",
+                state.globalSplitDir == SplitDir::Vertical ? "Vertical" : "Horizontal");
 
   for (std::size_t i = 0; i < state.cells.size(); ++i) {
     const Cell& c = state.cells[i];
     if (c.isDead) {
       continue;
     }
-    std::cout << "-- Cell " << i << " --" << std::endl;
-    std::cout << "  kind = " << (c.leafId.has_value() ? "Leaf" : "Split") << std::endl;
-    std::cout << "  splitDir = " << (c.splitDir == SplitDir::Vertical ? "Vertical" : "Horizontal")
-              << std::endl;
-
-    std::cout << "  parent = ";
-    if (c.parent.has_value())
-      std::cout << *c.parent;
-    else
-      std::cout << "null";
-    std::cout << std::endl;
-
-    std::cout << "  firstChild = ";
-    if (c.firstChild.has_value())
-      std::cout << *c.firstChild;
-    else
-      std::cout << "null";
-    std::cout << std::endl;
-
-    std::cout << "  secondChild = ";
-    if (c.secondChild.has_value())
-      std::cout << *c.secondChild;
-    else
-      std::cout << "null";
-    std::cout << std::endl;
-
-    std::cout << "  rect = { x=" << c.rect.x << ", y=" << c.rect.y << ", w=" << c.rect.width
-              << ", h=" << c.rect.height << " }" << std::endl;
+    spdlog::debug("-- Cell {} --", i);
+    spdlog::debug("  kind = {}", c.leafId.has_value() ? "Leaf" : "Split");
+    spdlog::debug("  splitDir = {}", c.splitDir == SplitDir::Vertical ? "Vertical" : "Horizontal");
+    spdlog::debug("  parent = {}", c.parent.has_value() ? std::to_string(*c.parent) : "null");
+    spdlog::debug("  firstChild = {}",
+                  c.firstChild.has_value() ? std::to_string(*c.firstChild) : "null");
+    spdlog::debug("  secondChild = {}",
+                  c.secondChild.has_value() ? std::to_string(*c.secondChild) : "null");
+    spdlog::debug("  rect = {{ x={}, y={}, w={}, h={} }}", c.rect.x, c.rect.y, c.rect.width,
+                  c.rect.height);
   }
 
-  std::cout << "===== End CellCluster =====" << std::endl;
+  spdlog::debug("===== End CellCluster =====");
 }
 
 bool validateState(const CellCluster& state) {
   bool ok = true;
 
   if (state.cells.empty()) {
-    std::cout << "[validate] State OK (empty)" << std::endl;
+    spdlog::debug("[validate] State OK (empty)");
     return ok;
   }
 
   if (state.cells[0].parent.has_value()) {
-    std::cout << "[validate] ERROR: root cell (index 0) has a parent" << std::endl;
+    spdlog::error("[validate] ERROR: root cell (index 0) has a parent");
     ok = false;
   }
 
@@ -387,8 +367,7 @@ bool validateState(const CellCluster& state) {
     if (c.parent.has_value()) {
       int p = *c.parent;
       if (p < 0 || static_cast<std::size_t>(p) >= state.cells.size()) {
-        std::cout << "[validate] ERROR: cell " << i << " has out-of-range parent index " << p
-                  << std::endl;
+        spdlog::error("[validate] ERROR: cell {} has out-of-range parent index {}", i, p);
         ok = false;
       } else {
         parentRefCount[static_cast<std::size_t>(i)]++;
@@ -397,12 +376,12 @@ bool validateState(const CellCluster& state) {
 
     if (c.leafId.has_value()) {
       if (c.firstChild.has_value() || c.secondChild.has_value()) {
-        std::cout << "[validate] ERROR: leaf cell " << i << " has children" << std::endl;
+        spdlog::error("[validate] ERROR: leaf cell {} has children", i);
         ok = false;
       }
     } else {
       if (!c.firstChild.has_value() || !c.secondChild.has_value()) {
-        std::cout << "[validate] ERROR: split cell " << i << " is missing children" << std::endl;
+        spdlog::error("[validate] ERROR: split cell {} is missing children", i);
         ok = false;
       }
     }
@@ -414,21 +393,19 @@ bool validateState(const CellCluster& state) {
 
       int child = *childOpt;
       if (child < 0 || static_cast<std::size_t>(child) >= state.cells.size()) {
-        std::cout << "[validate] ERROR: cell " << i << " has out-of-range " << label << " index "
-                  << child << std::endl;
+        spdlog::error("[validate] ERROR: cell {} has out-of-range {} index {}", i, label, child);
         ok = false;
         return;
       }
 
       const Cell& cc = state.cells[static_cast<std::size_t>(child)];
       if (cc.isDead) {
-        std::cout << "[validate] WARNING: cell " << i << "'s " << label << " (" << child
-                  << ") is dead" << std::endl;
+        spdlog::warn("[validate] WARNING: cell {}'s {} ({}) is dead", i, label, child);
         ok = false;
       }
       if (!cc.parent.has_value() || *cc.parent != i) {
-        std::cout << "[validate] ERROR: cell " << i << "'s " << label << " (" << child
-                  << ") does not point back to parent " << i << std::endl;
+        spdlog::error("[validate] ERROR: cell {}'s {} ({}) does not point back to parent {}",
+                      i, label, child, i);
         ok = false;
       }
 
@@ -441,14 +418,14 @@ bool validateState(const CellCluster& state) {
 
   for (std::size_t i = 0; i < state.cells.size(); ++i) {
     if (parentRefCount[i] > 1) {
-      std::cout << "[validate] WARNING: cell " << i << " has parent set more than once ("
-                << parentRefCount[i] << ")" << std::endl;
+      spdlog::warn("[validate] WARNING: cell {} has parent set more than once ({})",
+                   i, parentRefCount[i]);
       ok = false;
     }
 
     if (childRefCount[i] > 2) {
-      std::cout << "[validate] WARNING: cell " << i << " is referenced as a child more than twice ("
-                << childRefCount[i] << ")" << std::endl;
+      spdlog::warn("[validate] WARNING: cell {} is referenced as a child more than twice ({})",
+                   i, childRefCount[i]);
       ok = false;
     }
   }
@@ -467,15 +444,15 @@ bool validateState(const CellCluster& state) {
   std::sort(leafIds.begin(), leafIds.end());
   for (std::size_t i = 1; i < leafIds.size(); ++i) {
     if (leafIds[i] == leafIds[i - 1]) {
-      std::cout << "[validate] ERROR: duplicate leafId " << leafIds[i] << " found" << std::endl;
+      spdlog::error("[validate] ERROR: duplicate leafId {} found", leafIds[i]);
       ok = false;
     }
   }
 
   if (ok) {
-    std::cout << "[validate] State OK (" << state.cells.size() << " cells)" << std::endl;
+    spdlog::debug("[validate] State OK ({} cells)", state.cells.size());
   } else {
-    std::cout << "[validate] State has anomalies" << std::endl;
+    spdlog::warn("[validate] State has anomalies");
   }
 
   return ok;
@@ -919,33 +896,30 @@ bool toggleSelectedSplitDir(System& system) {
 bool validateSystem(const System& system) {
   bool ok = true;
 
-  std::cout << "===== Validating MultiClusterSystem =====" << std::endl;
-  std::cout << "Total clusters: " << system.clusters.size() << std::endl;
-  std::cout << "selection: ";
+  spdlog::debug("===== Validating MultiClusterSystem =====");
+  spdlog::debug("Total clusters: {}", system.clusters.size());
   if (system.selection.has_value()) {
-    std::cout << "cluster=" << system.selection->clusterId
-              << ", cellIndex=" << system.selection->cellIndex;
+    spdlog::debug("selection: cluster={}, cellIndex={}", system.selection->clusterId,
+                  system.selection->cellIndex);
   } else {
-    std::cout << "null";
+    spdlog::debug("selection: null");
   }
-  std::cout << std::endl;
 
   // Check that selection points to a valid cluster and cell
   if (system.selection.has_value()) {
     const PositionedCluster* selectedPc = getCluster(system, system.selection->clusterId);
     if (!selectedPc) {
-      std::cout << "[validate] ERROR: selection points to non-existent cluster" << std::endl;
+      spdlog::error("[validate] ERROR: selection points to non-existent cluster");
       ok = false;
     } else if (!cell_logic::isLeaf(selectedPc->cluster, system.selection->cellIndex)) {
-      std::cout << "[validate] ERROR: selection points to non-leaf cell" << std::endl;
+      spdlog::error("[validate] ERROR: selection points to non-leaf cell");
       ok = false;
     }
   }
 
   // Validate each cluster
   for (const auto& pc : system.clusters) {
-    std::cout << "--- Cluster " << pc.id << " at (" << pc.globalX << ", " << pc.globalY << ") ---"
-              << std::endl;
+    spdlog::debug("--- Cluster {} at ({}, {}) ---", pc.id, pc.globalX, pc.globalY);
     if (!cell_logic::validateState(pc.cluster)) {
       ok = false;
     }
@@ -959,7 +933,7 @@ bool validateSystem(const System& system) {
   std::sort(ids.begin(), ids.end());
   for (size_t i = 1; i < ids.size(); ++i) {
     if (ids[i] == ids[i - 1]) {
-      std::cout << "[validate] ERROR: duplicate cluster ID " << ids[i] << std::endl;
+      spdlog::error("[validate] ERROR: duplicate cluster ID {}", ids[i]);
       ok = false;
     }
   }
@@ -976,44 +950,41 @@ bool validateSystem(const System& system) {
   std::sort(allLeafIds.begin(), allLeafIds.end());
   for (size_t i = 1; i < allLeafIds.size(); ++i) {
     if (allLeafIds[i] == allLeafIds[i - 1]) {
-      std::cout << "[validate] ERROR: duplicate leafId " << allLeafIds[i] << " across clusters"
-                << std::endl;
+      spdlog::error("[validate] ERROR: duplicate leafId {} across clusters", allLeafIds[i]);
       ok = false;
     }
   }
 
   if (ok) {
-    std::cout << "[validate] System OK" << std::endl;
+    spdlog::debug("[validate] System OK");
   } else {
-    std::cout << "[validate] System has anomalies" << std::endl;
+    spdlog::warn("[validate] System has anomalies");
   }
 
-  std::cout << "===== End Validation =====" << std::endl;
+  spdlog::debug("===== End Validation =====");
 
   return ok;
 }
 
 void debugPrintSystem(const System& system) {
-  std::cout << "===== MultiClusterSystem =====" << std::endl;
-  std::cout << "clusters.size = " << system.clusters.size() << std::endl;
-  std::cout << "globalNextLeafId = " << system.globalNextLeafId << std::endl;
+  spdlog::debug("===== MultiClusterSystem =====");
+  spdlog::debug("clusters.size = {}", system.clusters.size());
+  spdlog::debug("globalNextLeafId = {}", system.globalNextLeafId);
 
-  std::cout << "selection = ";
   if (system.selection.has_value()) {
-    std::cout << "cluster=" << system.selection->clusterId
-              << ", cellIndex=" << system.selection->cellIndex;
+    spdlog::debug("selection = cluster={}, cellIndex={}", system.selection->clusterId,
+                  system.selection->cellIndex);
   } else {
-    std::cout << "null";
+    spdlog::debug("selection = null");
   }
-  std::cout << std::endl;
 
   for (const auto& pc : system.clusters) {
-    std::cout << "--- Cluster " << pc.id << " ---" << std::endl;
-    std::cout << "  globalX = " << pc.globalX << ", globalY = " << pc.globalY << std::endl;
+    spdlog::debug("--- Cluster {} ---", pc.id);
+    spdlog::debug("  globalX = {}, globalY = {}", pc.globalX, pc.globalY);
     cell_logic::debugPrintState(pc.cluster);
   }
 
-  std::cout << "===== End MultiClusterSystem =====" << std::endl;
+  spdlog::debug("===== End MultiClusterSystem =====");
 }
 
 size_t countTotalLeaves(const System& system) {

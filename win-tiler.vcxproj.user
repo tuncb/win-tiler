@@ -1,17 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>ui-test-monitor 0</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>loop</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArgumentsHistory>tests|ui-test-monitor 0|</LocalDebuggerCommandArgumentsHistory>
+    <LocalDebuggerCommandArgumentsHistory>tests|ui-test-monitor 0|loop-test|loop|</LocalDebuggerCommandArgumentsHistory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>ui-test-monitor 0</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>loop</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>loop|</LocalDebuggerCommandArgumentsHistory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Test-Debug|x64'">
-    <LocalDebuggerCommandArguments>ui-test-monitor 0</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>loop</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArgumentsHistory>ui-test-monitor 0|</LocalDebuggerCommandArgumentsHistory>
+    <LocalDebuggerCommandArgumentsHistory>ui-test-monitor 0|loop-test|</LocalDebuggerCommandArgumentsHistory>
   </PropertyGroup>
 </Project>

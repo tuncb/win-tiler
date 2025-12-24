@@ -1,8 +1,9 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <chrono>
-#include <iostream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -11,7 +12,6 @@
 #include "multi_cells.h"
 #include "multi_ui.h"
 #include "process.h"
-#include "raylib.h"
 #include "winapi.h"
 
 using namespace wintiler;
@@ -72,8 +72,8 @@ std::vector<TileResult> computeTileLayout() {
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
 
       // Get global rect and convert to window position
-      cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc,
-          static_cast<int>(&cell - &pc.cluster.cells[0]));
+      cell_logic::Rect globalRect =
+          multi_cell_logic::getCellGlobalRect(pc, static_cast<int>(&cell - &pc.cluster.cells[0]));
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(globalRect.x);
@@ -107,25 +107,23 @@ void runApplyTestMode() {
   auto tiles = computeTileLayout();
 
   if (tiles.empty()) {
-    std::cout << "No windows to tile." << std::endl;
+    spdlog::info("No windows to tile.");
     return;
   }
 
-  std::cout << "=== Tile Layout Preview ===" << std::endl;
-  std::cout << "Total windows: " << tiles.size() << std::endl;
-  std::cout << std::endl;
+  spdlog::info("=== Tile Layout Preview ===");
+  spdlog::info("Total windows: {}", tiles.size());
 
   size_t currentMonitor = SIZE_MAX;
   for (const auto& tile : tiles) {
     if (tile.monitorIndex != currentMonitor) {
       currentMonitor = tile.monitorIndex;
-      std::cout << "--- Monitor " << currentMonitor << " ---" << std::endl;
+      spdlog::info("--- Monitor {} ---", currentMonitor);
     }
 
-    std::cout << "  Window: \"" << tile.windowTitle << "\"" << std::endl;
-    std::cout << "    Position: x=" << tile.position.x << ", y=" << tile.position.y << std::endl;
-    std::cout << "    Size: " << tile.position.width << "x" << tile.position.height << std::endl;
-    std::cout << std::endl;
+    spdlog::info("  Window: \"{}\"", tile.windowTitle);
+    spdlog::info("    Position: x={}, y={}", tile.position.x, tile.position.y);
+    spdlog::info("    Size: {}x{}", tile.position.width, tile.position.height);
   }
 }
 
@@ -133,11 +131,10 @@ void runApplyTestMode() {
 void printTileLayout(const multi_cell_logic::System& system,
                      const std::unordered_map<size_t, std::string>& hwndToTitle) {
   size_t totalWindows = multi_cell_logic::countTotalLeaves(system);
-  std::cout << "Total windows: " << totalWindows << std::endl;
-  std::cout << std::endl;
+  spdlog::info("Total windows: {}", totalWindows);
 
   for (const auto& pc : system.clusters) {
-    std::cout << "--- Monitor " << pc.id << " ---" << std::endl;
+    spdlog::info("--- Monitor {} ---", pc.id);
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -154,12 +151,11 @@ void printTileLayout(const multi_cell_logic::System& system,
         title = titleIt->second;
       }
 
-      std::cout << "  Window: \"" << title << "\"" << std::endl;
-      std::cout << "    Position: x=" << static_cast<int>(globalRect.x)
-                << ", y=" << static_cast<int>(globalRect.y) << std::endl;
-      std::cout << "    Size: " << static_cast<int>(globalRect.width)
-                << "x" << static_cast<int>(globalRect.height) << std::endl;
-      std::cout << std::endl;
+      spdlog::info("  Window: \"{}\"", title);
+      spdlog::info("    Position: x={}, y={}", static_cast<int>(globalRect.x),
+                   static_cast<int>(globalRect.y));
+      spdlog::info("    Size: {}x{}", static_cast<int>(globalRect.width),
+                   static_cast<int>(globalRect.height));
     }
   }
 }
@@ -238,14 +234,14 @@ void runLoopTestMode() {
   auto system = multi_cell_logic::createSystem(clusterInfos);
 
   // 2. Print initial layout
-  std::cout << "=== Initial Tile Layout ===" << std::endl;
+  spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system, hwndToTitle);
 
   // 3. Enter monitoring loop
-  std::cout << "Monitoring for window changes... (Ctrl+C to exit)\n" << std::endl;
+  spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
   while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Re-gather window state
     auto currentState = gatherCurrentWindowState();
@@ -264,28 +260,28 @@ void runLoopTestMode() {
 
     // If changes detected, log them
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      std::cout << "=== Window Changes Detected ===" << std::endl;
+      spdlog::info("=== Window Changes Detected ===");
 
       if (!result.deletedLeafIds.empty()) {
-        std::cout << "Removed windows: " << result.deletedLeafIds.size() << std::endl;
+        spdlog::info("Removed windows: {}", result.deletedLeafIds.size());
         for (size_t id : result.deletedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            std::cout << "  - \"" << titleIt->second << "\"" << std::endl;
+            spdlog::info("  - \"{}\"", titleIt->second);
           }
         }
       }
       if (!result.addedLeafIds.empty()) {
-        std::cout << "Added windows: " << result.addedLeafIds.size() << std::endl;
+        spdlog::info("Added windows: {}", result.addedLeafIds.size());
         for (size_t id : result.addedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            std::cout << "  + \"" << titleIt->second << "\"" << std::endl;
+            spdlog::info("  + \"{}\"", titleIt->second);
           }
         }
       }
 
-      std::cout << "\n=== Updated Tile Layout ===" << std::endl;
+      spdlog::info("=== Updated Tile Layout ===");
       printTileLayout(system, hwndToTitle);
     }
   }
@@ -323,12 +319,12 @@ void runLoopMode() {
   auto system = multi_cell_logic::createSystem(clusterInfos);
 
   // 2. Print initial layout and apply
-  std::cout << "=== Initial Tile Layout ===" << std::endl;
+  spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system, hwndToTitle);
   applyTileLayout(system);
 
   // 3. Enter monitoring loop
-  std::cout << "Monitoring for window changes... (Ctrl+C to exit)\n" << std::endl;
+  spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -350,35 +346,38 @@ void runLoopMode() {
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      std::cout << "=== Window Changes Detected ===" << std::endl;
+      spdlog::info("=== Window Changes Detected ===");
 
       if (!result.deletedLeafIds.empty()) {
-        std::cout << "Removed windows: " << result.deletedLeafIds.size() << std::endl;
+        spdlog::info("Removed windows: {}", result.deletedLeafIds.size());
         for (size_t id : result.deletedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            std::cout << "  - \"" << titleIt->second << "\"" << std::endl;
+            spdlog::info("  - \"{}\"", titleIt->second);
           }
         }
       }
       if (!result.addedLeafIds.empty()) {
-        std::cout << "Added windows: " << result.addedLeafIds.size() << std::endl;
+        spdlog::info("Added windows: {}", result.addedLeafIds.size());
         for (size_t id : result.addedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            std::cout << "  + \"" << titleIt->second << "\"" << std::endl;
+            spdlog::info("  + \"{}\"", titleIt->second);
           }
         }
       }
 
-      std::cout << "\n=== Updated Tile Layout ===" << std::endl;
+      spdlog::info("=== Updated Tile Layout ===");
       printTileLayout(system, hwndToTitle);
-      applyTileLayout(system);
     }
+    applyTileLayout(system);
   }
 }
 
 int main(int argc, char* argv[]) {
+  // Flush spdlog on info-level messages to ensure immediate output
+  spdlog::flush_on(spdlog::level::info);
+
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
 
@@ -441,10 +440,9 @@ int main(int argc, char* argv[]) {
         infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
         infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
       } else if (remaining % 4 != 0) {
-        std::cerr << "Error: ui-test-multi requires 4 numbers per cluster (x y width height)"
-                  << std::endl;
-        std::cerr << "Usage: ui-test-multi [x1 y1 w1 h1] [x2 y2 w2 h2] ..." << std::endl;
-        std::cerr << "Got " << remaining << " arguments, which is not a multiple of 4" << std::endl;
+        spdlog::error("ui-test-multi requires 4 numbers per cluster (x y width height)");
+        spdlog::error("Usage: ui-test-multi [x1 y1 w1 h1] [x2 y2 w2 h2] ...");
+        spdlog::error("Got {} arguments, which is not a multiple of 4", remaining);
         return 1;
       } else {
         // Parse clusters from arguments
