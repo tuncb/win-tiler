@@ -28,69 +28,66 @@ std::vector<TileResult> computeTileLayout() {
   std::vector<TileResult> results;
   auto monitors = winapi::get_monitors();
 
+  // Build window title lookup
+  auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+  std::unordered_map<size_t, std::string> hwndToTitle;
+  for (const auto& info : windowInfos) {
+    hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
+  }
+
+  // Build cluster infos for all monitors
+  std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
     const auto& monitor = monitors[monitorIndex];
 
-    // Get windows for this monitor
+    // Get workArea bounds
+    float x = static_cast<float>(monitor.workArea.left);
+    float y = static_cast<float>(monitor.workArea.top);
+    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
+    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+
+    // Get HWNDs for this monitor - these become the leafIds
     auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
-    if (hwnds.empty()) {
-      continue;
-    }
-
-    // Get window info to retrieve titles
-    auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
-    std::unordered_map<size_t, std::string> hwndToTitle;
-    for (const auto& info : windowInfos) {
-      hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
-    }
-
-    // Convert HWNDs to size_t IDs for process_logic
     std::vector<size_t> cellIds;
     for (auto hwnd : hwnds) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
     }
 
-    // Calculate workArea dimensions
-    float width = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-    float height = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+    clusterInfos.push_back({monitorIndex, x, y, w, h, cellIds});
+  }
 
-    // Create and initialize app state
-    process_logic::AppState appState;
-    process_logic::resetAppState(appState, width, height);
+  // Create multi-cluster system
+  auto system = multi_cell_logic::createSystem(clusterInfos);
 
-    // Create cells for all windows
-    process_logic::updateProcesses(appState, cellIds);
-
-    // Collect tile results
-    for (const auto& cell : appState.CellCluster.cells) {
+  // Collect tile results from all clusters
+  for (const auto& pc : system.clusters) {
+    for (const auto& cell : pc.cluster.cells) {
       if (cell.isDead || !cell.leafId.has_value()) {
         continue;
       }
 
-      // Find the processId (HWND) for this leaf
-      auto it = appState.leafIdToProcessMap.find(*cell.leafId);
-      if (it == appState.leafIdToProcessMap.end()) {
-        continue;
-      }
+      // leafId is the HWND (passed as initialCellId)
+      size_t hwndValue = *cell.leafId;
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
 
-      size_t processId = it->second;
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(processId);
+      // Get global rect and convert to window position
+      cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc,
+          static_cast<int>(&cell - &pc.cluster.cells[0]));
 
-      // Convert cell rect to window position (offset by workArea origin)
       winapi::WindowPosition pos;
-      pos.x = static_cast<int>(cell.rect.x) + monitor.workArea.left;
-      pos.y = static_cast<int>(cell.rect.y) + monitor.workArea.top;
-      pos.width = static_cast<int>(cell.rect.width);
-      pos.height = static_cast<int>(cell.rect.height);
+      pos.x = static_cast<int>(globalRect.x);
+      pos.y = static_cast<int>(globalRect.y);
+      pos.width = static_cast<int>(globalRect.width);
+      pos.height = static_cast<int>(globalRect.height);
 
       // Get window title
       std::string title;
-      auto titleIt = hwndToTitle.find(processId);
+      auto titleIt = hwndToTitle.find(hwndValue);
       if (titleIt != hwndToTitle.end()) {
         title = titleIt->second;
       }
 
-      results.push_back({hwnd, pos, title, monitorIndex});
+      results.push_back({hwnd, pos, title, pc.id});
     }
   }
 
