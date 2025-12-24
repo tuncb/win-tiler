@@ -203,14 +203,33 @@ static float directionalDistance(const cell_logic::Rect& from, const cell_logic:
   float dxCenter = (to.x + to.width * 0.5f) - (from.x + from.width * 0.5f);
   float dyCenter = (to.y + to.height * 0.5f) - (from.y + from.height * 0.5f);
 
+  // Check for perpendicular overlap - cells that share vertical/horizontal space
+  // are strongly preferred over cells that don't
+  bool hasVerticalOverlap = (to.y < from.y + from.height) && (to.y + to.height > from.y);
+  bool hasHorizontalOverlap = (to.x < from.x + from.width) && (to.x + to.width > from.x);
+
   switch (dir) {
   case cell_logic::Direction::Left:
-  case cell_logic::Direction::Right:
-    return (dir == cell_logic::Direction::Left ? -dxCenter : dxCenter) +
-           0.25f * std::abs(dyCenter);
+  case cell_logic::Direction::Right: {
+    float primaryDist = (dir == cell_logic::Direction::Left) ? -dxCenter : dxCenter;
+    if (hasVerticalOverlap) {
+      return primaryDist; // Overlapping cells get pure horizontal distance
+    }
+    // Non-overlapping cells get a large penalty
+    float gap = std::min(std::abs(to.y - (from.y + from.height)),
+                         std::abs(from.y - (to.y + to.height)));
+    return primaryDist + 10000.0f + gap;
+  }
   case cell_logic::Direction::Up:
-  case cell_logic::Direction::Down:
-    return (dir == cell_logic::Direction::Up ? -dyCenter : dyCenter) + 0.25f * std::abs(dxCenter);
+  case cell_logic::Direction::Down: {
+    float primaryDist = (dir == cell_logic::Direction::Up) ? -dyCenter : dyCenter;
+    if (hasHorizontalOverlap) {
+      return primaryDist; // Overlapping cells get pure vertical distance
+    }
+    float gap = std::min(std::abs(to.x - (from.x + from.width)),
+                         std::abs(from.x - (to.x + to.width)));
+    return primaryDist + 10000.0f + gap;
+  }
   default:
     return std::numeric_limits<float>::max();
   }
