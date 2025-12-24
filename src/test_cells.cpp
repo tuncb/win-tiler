@@ -10,6 +10,10 @@
 
 using namespace wintiler;
 
+// Default gap values for tests
+constexpr float TEST_GAP_H = 10.0f;
+constexpr float TEST_GAP_V = 10.0f;
+
 // ============================================================================
 // cell_logic Tests
 // ============================================================================
@@ -23,8 +27,6 @@ TEST_SUITE("cell_logic") {
     CHECK(state.windowWidth == 800.0f);
     CHECK(state.windowHeight == 600.0f);
     CHECK(state.globalSplitDir == cell_logic::SplitDir::Vertical);
-    CHECK(state.gapHorizontal == 10.0f);
-    CHECK(state.gapVertical == 10.0f);
     CHECK(!state.selectedIndex.has_value());
     CHECK(state.nextLeafId == 1);
   }
@@ -39,7 +41,7 @@ TEST_SUITE("cell_logic") {
   TEST_CASE("splitSelectedLeaf creates root cell when cluster is empty") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
 
-    auto leafId = cell_logic::splitSelectedLeaf(state);
+    auto leafId = cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(leafId.has_value());
     CHECK(*leafId == 1);
@@ -62,11 +64,11 @@ TEST_SUITE("cell_logic") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
 
     // Create root
-    auto rootLeafId = cell_logic::splitSelectedLeaf(state);
+    auto rootLeafId = cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
     REQUIRE(rootLeafId.has_value());
 
     // Split root - should create two children
-    auto newLeafId = cell_logic::splitSelectedLeaf(state);
+    auto newLeafId = cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(newLeafId.has_value());
     CHECK(*newLeafId == 2);
@@ -98,69 +100,67 @@ TEST_SUITE("cell_logic") {
 
     CHECK(state.globalSplitDir == cell_logic::SplitDir::Vertical);
 
-    cell_logic::splitSelectedLeaf(state); // Create root (no toggle, just creates leaf)
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Create root (no toggle, just creates leaf)
     CHECK(state.globalSplitDir == cell_logic::SplitDir::Vertical);
 
-    cell_logic::splitSelectedLeaf(state); // First split - toggles to Horizontal
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // First split - toggles to Horizontal
     CHECK(state.globalSplitDir == cell_logic::SplitDir::Horizontal);
 
-    cell_logic::splitSelectedLeaf(state); // Second split - toggles back to Vertical
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Second split - toggles back to Vertical
     CHECK(state.globalSplitDir == cell_logic::SplitDir::Vertical);
   }
 
   TEST_CASE("splitSelectedLeaf creates correct rects for vertical split") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    state.gapHorizontal = 10.0f;
 
-    cell_logic::splitSelectedLeaf(state); // Create root (vertical split dir)
-    cell_logic::splitSelectedLeaf(state); // Split vertically
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Create root (vertical split dir)
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Split vertically
 
     // Children should be side by side
     const auto& first = state.cells[1];
     const auto& second = state.cells[2];
 
-    float expectedWidth = (800.0f - 10.0f) / 2.0f; // (width - gap) / 2
+    float expectedWidth = (800.0f - TEST_GAP_H) / 2.0f; // (width - gap) / 2
 
     CHECK(first.rect.x == 0.0f);
     CHECK(first.rect.width == doctest::Approx(expectedWidth));
     CHECK(first.rect.height == 600.0f);
 
-    CHECK(second.rect.x == doctest::Approx(expectedWidth + 10.0f));
+    CHECK(second.rect.x == doctest::Approx(expectedWidth + TEST_GAP_H));
     CHECK(second.rect.width == doctest::Approx(expectedWidth));
     CHECK(second.rect.height == 600.0f);
   }
 
   TEST_CASE("splitSelectedLeaf creates correct rects for horizontal split") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    state.gapVertical = 10.0f;
 
-    cell_logic::splitSelectedLeaf(state); // Create root
-    cell_logic::splitSelectedLeaf(state); // First split (vertical)
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Create root
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // First split (vertical)
 
-    // Now globalSplitDir is Vertical again, select second child for horizontal split
+    // Now globalSplitDir is Horizontal, select first child for horizontal split
     state.selectedIndex = 1;
     state.globalSplitDir = cell_logic::SplitDir::Horizontal;
-    cell_logic::splitSelectedLeaf(state); // Split horizontally
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Split horizontally
 
     // Children should be stacked vertically
     const auto& first = state.cells[3];
     const auto& second = state.cells[4];
 
     float parentHeight = state.cells[1].rect.height;
-    float expectedHeight = (parentHeight - 10.0f) / 2.0f;
+    float expectedHeight = (parentHeight - TEST_GAP_V) / 2.0f;
 
     CHECK(first.rect.y == state.cells[1].rect.y);
     CHECK(first.rect.height == doctest::Approx(expectedHeight));
 
-    CHECK(second.rect.y == doctest::Approx(first.rect.y + expectedHeight + 10.0f));
+    CHECK(second.rect.y == doctest::Approx(first.rect.y + expectedHeight + TEST_GAP_V));
     CHECK(second.rect.height == doctest::Approx(expectedHeight));
   }
 
   TEST_CASE("deleteSelectedLeaf removes root cell") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    cell_logic::splitSelectedLeaf(state);
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
-    bool result = cell_logic::deleteSelectedLeaf(state);
+    bool result = cell_logic::deleteSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result);
     CHECK(state.cells.empty());
@@ -169,12 +169,12 @@ TEST_SUITE("cell_logic") {
 
   TEST_CASE("deleteSelectedLeaf promotes sibling") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    cell_logic::splitSelectedLeaf(state); // Root
-    cell_logic::splitSelectedLeaf(state); // Split into 2 children
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Root
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Split into 2 children
 
     // Select second child and delete it
     state.selectedIndex = 2;
-    bool result = cell_logic::deleteSelectedLeaf(state);
+    bool result = cell_logic::deleteSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result);
     // After deletion, the first child should be promoted to root position
@@ -186,34 +186,34 @@ TEST_SUITE("cell_logic") {
   TEST_CASE("deleteSelectedLeaf returns false with no selection") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
 
-    bool result = cell_logic::deleteSelectedLeaf(state);
+    bool result = cell_logic::deleteSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result);
   }
 
   TEST_CASE("toggleSelectedSplitDir toggles parent's split direction") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    cell_logic::splitSelectedLeaf(state); // Root
-    cell_logic::splitSelectedLeaf(state); // Split
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Root
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Split
 
     // Parent (root) should have Vertical split dir initially
     CHECK(state.cells[0].splitDir == cell_logic::SplitDir::Vertical);
 
-    bool result = cell_logic::toggleSelectedSplitDir(state);
+    bool result = cell_logic::toggleSelectedSplitDir(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result);
     CHECK(state.cells[0].splitDir == cell_logic::SplitDir::Horizontal);
 
     // Toggle back
-    result = cell_logic::toggleSelectedSplitDir(state);
+    result = cell_logic::toggleSelectedSplitDir(state, TEST_GAP_H, TEST_GAP_V);
     CHECK(result);
     CHECK(state.cells[0].splitDir == cell_logic::SplitDir::Vertical);
   }
 
   TEST_CASE("toggleSelectedSplitDir returns false for root leaf") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    cell_logic::splitSelectedLeaf(state); // Create root leaf
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V); // Create root leaf
 
-    bool result = cell_logic::toggleSelectedSplitDir(state);
+    bool result = cell_logic::toggleSelectedSplitDir(state, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result); // Root has no parent to toggle
   }
 
@@ -224,9 +224,9 @@ TEST_SUITE("cell_logic") {
 
   TEST_CASE("validateState returns true for valid state with cells") {
     auto state = cell_logic::createInitialState(800.0f, 600.0f);
-    cell_logic::splitSelectedLeaf(state);
-    cell_logic::splitSelectedLeaf(state);
-    cell_logic::splitSelectedLeaf(state);
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
+    cell_logic::splitSelectedLeaf(state, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(cell_logic::validateState(state));
   }

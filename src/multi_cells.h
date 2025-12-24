@@ -44,9 +44,6 @@ struct CellCluster {
   // Global split direction that alternates on each cell creation.
   SplitDir globalSplitDir;
 
-  float gapHorizontal;
-  float gapVertical;
-
   // Logical window size used to derive the initial root cell rect
   // when the first cell is created lazily on a split.
   float windowWidth = 0.0f;
@@ -69,13 +66,13 @@ CellCluster createInitialState(float width, float height);
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
 // Delete the currently selected leaf cell. Returns true if deletion occurred.
-bool deleteSelectedLeaf(CellCluster& state);
+bool deleteSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical);
 
 // Split the currently selected leaf cell. Returns id of the new leaf.
-std::optional<size_t> splitSelectedLeaf(CellCluster& state);
+std::optional<size_t> splitSelectedLeaf(CellCluster& state, float gapHorizontal, float gapVertical);
 
 // Toggle the splitDir of the selected cell's parent.
-bool toggleSelectedSplitDir(CellCluster& state);
+bool toggleSelectedSplitDir(CellCluster& state, float gapHorizontal, float gapVertical);
 
 // Debug: print the entire CellCluster to stdout.
 void debugPrintState(const CellCluster& state);
@@ -103,8 +100,8 @@ struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<ClusterId> selectedClusterId; // Which cluster has selection
   size_t globalNextLeafId = 1;                // Shared across all clusters
-  float defaultGapHorizontal = 10.0f;
-  float defaultGapVertical = 10.0f;
+  float gapHorizontal = 10.0f;
+  float gapVertical = 10.0f;
 };
 
 struct ClusterInitInfo {
