@@ -288,17 +288,28 @@ void runLoopTestMode() {
 }
 
 void runLoopMode() {
+  auto initStart = std::chrono::high_resolution_clock::now();
+
   // 1. Build initial state (like computeTileLayout)
+  auto monitorsStart = std::chrono::high_resolution_clock::now();
   auto monitors = winapi::get_monitors();
+  auto monitorsEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("get_monitors: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(monitorsEnd - monitorsStart).count());
 
   // Build hwnd -> title lookup
+  auto windowDataStart = std::chrono::high_resolution_clock::now();
   auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
   std::unordered_map<size_t, std::string> hwndToTitle;
   for (const auto& info : windowInfos) {
     hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
   }
+  auto windowDataEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("gather_raw_window_data + build lookup: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(windowDataEnd - windowDataStart).count());
 
   // Create cluster init info
+  auto clusterInfoStart = std::chrono::high_resolution_clock::now();
   std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
@@ -315,13 +326,29 @@ void runLoopMode() {
 
     clusterInfos.push_back({i, x, y, w, h, cellIds});
   }
+  auto clusterInfoEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("build cluster infos: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(clusterInfoEnd - clusterInfoStart).count());
 
+  auto createSystemStart = std::chrono::high_resolution_clock::now();
   auto system = multi_cell_logic::createSystem(clusterInfos);
+  auto createSystemEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("createSystem: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(createSystemEnd - createSystemStart).count());
+
+  auto initEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("total initialization: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(initEnd - initStart).count());
 
   // 2. Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system, hwndToTitle);
+
+  auto applyStart = std::chrono::high_resolution_clock::now();
   applyTileLayout(system);
+  auto applyEnd = std::chrono::high_resolution_clock::now();
+  spdlog::trace("initial applyTileLayout: {}us",
+                std::chrono::duration_cast<std::chrono::microseconds>(applyEnd - applyStart).count());
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
@@ -329,10 +356,17 @@ void runLoopMode() {
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
+    auto loopStart = std::chrono::high_resolution_clock::now();
+
     // Re-gather window state
+    auto gatherStateStart = std::chrono::high_resolution_clock::now();
     auto currentState = gatherCurrentWindowState();
+    auto gatherStateEnd = std::chrono::high_resolution_clock::now();
+    spdlog::trace("gatherCurrentWindowState: {}us",
+                  std::chrono::duration_cast<std::chrono::microseconds>(gatherStateEnd - gatherStateStart).count());
 
     // Update title lookup for any new windows
+    auto titleLookupStart = std::chrono::high_resolution_clock::now();
     auto newWindowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
     for (const auto& info : newWindowInfos) {
       size_t key = reinterpret_cast<size_t>(info.handle);
@@ -340,9 +374,16 @@ void runLoopMode() {
         hwndToTitle[key] = info.title;
       }
     }
+    auto titleLookupEnd = std::chrono::high_resolution_clock::now();
+    spdlog::trace("update title lookup: {}us",
+                  std::chrono::duration_cast<std::chrono::microseconds>(titleLookupEnd - titleLookupStart).count());
 
     // Use updateSystem to sync
+    auto updateSystemStart = std::chrono::high_resolution_clock::now();
     auto result = multi_cell_logic::updateSystem(system, currentState, std::nullopt);
+    auto updateSystemEnd = std::chrono::high_resolution_clock::now();
+    spdlog::trace("updateSystem: {}us",
+                  std::chrono::duration_cast<std::chrono::microseconds>(updateSystemEnd - updateSystemStart).count());
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
@@ -370,7 +411,16 @@ void runLoopMode() {
       spdlog::info("=== Updated Tile Layout ===");
       printTileLayout(system, hwndToTitle);
     }
+
+    auto applyLayoutStart = std::chrono::high_resolution_clock::now();
     applyTileLayout(system);
+    auto applyLayoutEnd = std::chrono::high_resolution_clock::now();
+    spdlog::trace("applyTileLayout: {}us",
+                  std::chrono::duration_cast<std::chrono::microseconds>(applyLayoutEnd - applyLayoutStart).count());
+
+    auto loopEnd = std::chrono::high_resolution_clock::now();
+    spdlog::trace("loop iteration total: {}us",
+                  std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count());
   }
 }
 
