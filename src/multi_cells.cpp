@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <iterator>
 #include <limits>
 
 namespace wintiler {
@@ -1025,6 +1026,185 @@ size_t countTotalLeaves(const System& system) {
     }
   }
   return count;
+}
+
+// ============================================================================
+// System Update
+// ============================================================================
+
+std::vector<size_t> getClusterLeafIds(const cell_logic::CellCluster& cluster) {
+  std::vector<size_t> leafIds;
+  for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
+    const auto& cell = cluster.cells[static_cast<size_t>(i)];
+    if (!cell.isDead && cell.leafId.has_value()) {
+      leafIds.push_back(*cell.leafId);
+    }
+  }
+  return leafIds;
+}
+
+std::optional<int> findCellByLeafId(const cell_logic::CellCluster& cluster, size_t leafId) {
+  for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
+    const auto& cell = cluster.cells[static_cast<size_t>(i)];
+    if (!cell.isDead && cell.leafId.has_value() && *cell.leafId == leafId) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+UpdateResult updateSystem(
+    System& system,
+    const std::vector<ClusterCellIds>& clusterCellIds,
+    std::optional<std::pair<ClusterId, size_t>> newSelection) {
+
+  UpdateResult result;
+  result.selectionUpdated = false;
+
+  // Process each cluster update
+  for (const auto& clusterUpdate : clusterCellIds) {
+    PositionedCluster* pc = getCluster(system, clusterUpdate.clusterId);
+
+    if (!pc) {
+      // Cluster not found - add error
+      result.errors.push_back({
+          UpdateError::Type::ClusterNotFound,
+          clusterUpdate.clusterId,
+          0  // no specific leaf ID
+      });
+      continue;
+    }
+
+    // Get current leaf IDs
+    std::vector<size_t> currentLeafIds = getClusterLeafIds(pc->cluster);
+
+    // Compute set differences
+    std::vector<size_t> sortedCurrent = currentLeafIds;
+    std::vector<size_t> sortedDesired = clusterUpdate.leafIds;
+    std::sort(sortedCurrent.begin(), sortedCurrent.end());
+    std::sort(sortedDesired.begin(), sortedDesired.end());
+
+    // toDelete = current - desired
+    std::vector<size_t> toDelete;
+    std::set_difference(sortedCurrent.begin(), sortedCurrent.end(),
+                        sortedDesired.begin(), sortedDesired.end(),
+                        std::back_inserter(toDelete));
+
+    // toAdd = desired - current
+    std::vector<size_t> toAdd;
+    std::set_difference(sortedDesired.begin(), sortedDesired.end(),
+                        sortedCurrent.begin(), sortedCurrent.end(),
+                        std::back_inserter(toAdd));
+
+    // Handle deletions
+    for (size_t leafId : toDelete) {
+      auto cellIndexOpt = findCellByLeafId(pc->cluster, leafId);
+      if (!cellIndexOpt.has_value()) {
+        result.errors.push_back({
+            UpdateError::Type::LeafNotFound,
+            clusterUpdate.clusterId,
+            leafId
+        });
+        continue;
+      }
+
+      auto newSelectionOpt = cell_logic::deleteLeaf(pc->cluster, *cellIndexOpt,
+                                                     system.gapHorizontal, system.gapVertical);
+      result.deletedLeafIds.push_back(leafId);
+
+      // If deletion succeeded and returned a new selection, update it if this was selected
+      if (system.selection.has_value() &&
+          system.selection->clusterId == clusterUpdate.clusterId &&
+          system.selection->cellIndex == *cellIndexOpt) {
+        if (newSelectionOpt.has_value()) {
+          system.selection->cellIndex = *newSelectionOpt;
+        } else {
+          system.selection.reset();
+        }
+      }
+    }
+
+    // Handle additions
+    for (size_t leafId : toAdd) {
+      // Find an existing leaf to split, or create root if empty
+      int currentSelection = -1;
+
+      if (pc->cluster.cells.empty()) {
+        // Cluster is empty - will create root with splitLeaf(-1)
+        currentSelection = -1;
+      } else {
+        // Find the first available leaf
+        for (int i = 0; i < static_cast<int>(pc->cluster.cells.size()); ++i) {
+          if (cell_logic::isLeaf(pc->cluster, i)) {
+            currentSelection = i;
+            break;
+          }
+        }
+      }
+
+      // Sync the global leaf ID counter
+      pc->cluster.nextLeafId = system.globalNextLeafId;
+
+      auto resultOpt = cell_logic::splitLeaf(pc->cluster, currentSelection,
+                                              system.gapHorizontal, system.gapVertical);
+
+      // Sync back after split
+      system.globalNextLeafId = pc->cluster.nextLeafId;
+
+      if (resultOpt.has_value()) {
+        // Override the new leaf's ID with the desired one
+        // The new leaf is the second child of the split
+        if (currentSelection == -1) {
+          // Root was created - override its leafId
+          int idx = resultOpt->newSelectionIndex;
+          pc->cluster.cells[static_cast<size_t>(idx)].leafId = leafId;
+        } else {
+          // A split occurred - find the second child and override its leafId
+          int firstChildIdx = resultOpt->newSelectionIndex;
+          cell_logic::Cell& firstChild =
+              pc->cluster.cells[static_cast<size_t>(firstChildIdx)];
+          if (firstChild.parent.has_value()) {
+            int parentIdx = *firstChild.parent;
+            cell_logic::Cell& parent =
+                pc->cluster.cells[static_cast<size_t>(parentIdx)];
+            if (parent.secondChild.has_value()) {
+              int secondChildIdx = *parent.secondChild;
+              pc->cluster.cells[static_cast<size_t>(secondChildIdx)].leafId = leafId;
+            }
+          }
+        }
+        result.addedLeafIds.push_back(leafId);
+      }
+    }
+  }
+
+  // Update selection
+  if (newSelection.has_value()) {
+    auto [clusterId, leafId] = *newSelection;
+
+    PositionedCluster* pc = getCluster(system, clusterId);
+    if (!pc) {
+      result.errors.push_back({
+          UpdateError::Type::SelectionInvalid,
+          clusterId,
+          leafId
+      });
+    } else {
+      auto cellIndexOpt = findCellByLeafId(pc->cluster, leafId);
+      if (!cellIndexOpt.has_value()) {
+        result.errors.push_back({
+            UpdateError::Type::SelectionInvalid,
+            clusterId,
+            leafId
+        });
+      } else {
+        system.selection = Selection{clusterId, *cellIndexOpt};
+        result.selectionUpdated = true;
+      }
+    }
+  }
+
+  return result;
 }
 
 } // namespace multi_cell_logic

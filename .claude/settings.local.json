@@ -13,7 +13,8 @@
       "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\build-run.bat build-run --Test-Debug\")",
       "Bash(dir:*)",
       "Bash(git -C \"C:\\\\work\\\\win-tiler\" log --oneline -10)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(build-run.bat build --Debug)"
     ]
   }
 }

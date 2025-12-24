@@ -690,3 +690,261 @@ TEST_SUITE("multi_cell_logic navigation") {
   }
 
 }
+
+// ============================================================================
+// System Update Tests
+// ============================================================================
+
+TEST_SUITE("multi_cell_logic updateSystem") {
+
+  TEST_CASE("getClusterLeafIds returns all leaf IDs") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20, 30}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    auto leafIds = multi_cell_logic::getClusterLeafIds(pc->cluster);
+
+    CHECK(leafIds.size() == 3);
+    // Check all IDs are present (order may vary)
+    std::sort(leafIds.begin(), leafIds.end());
+    CHECK(leafIds[0] == 10);
+    CHECK(leafIds[1] == 20);
+    CHECK(leafIds[2] == 30);
+  }
+
+  TEST_CASE("getClusterLeafIds returns empty for empty cluster") {
+    auto cluster = cell_logic::createInitialState(800.0f, 600.0f);
+
+    auto leafIds = multi_cell_logic::getClusterLeafIds(cluster);
+    CHECK(leafIds.empty());
+  }
+
+  TEST_CASE("findCellByLeafId finds existing leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    auto idx10 = multi_cell_logic::findCellByLeafId(pc->cluster, 10);
+    auto idx20 = multi_cell_logic::findCellByLeafId(pc->cluster, 20);
+
+    CHECK(idx10.has_value());
+    CHECK(idx20.has_value());
+    CHECK(*idx10 != *idx20);
+  }
+
+  TEST_CASE("findCellByLeafId returns nullopt for non-existent leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    auto result = multi_cell_logic::findCellByLeafId(pc->cluster, 999);
+    CHECK(!result.has_value());
+  }
+
+  TEST_CASE("updateSystem adds leaves to empty cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 0);
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {100, 200}}
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.addedLeafIds.size() == 2);
+    CHECK(result.deletedLeafIds.empty());
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 2);
+  }
+
+  TEST_CASE("updateSystem adds leaves to existing cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 1);
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10, 20, 30}}  // Keep 10, add 20 and 30
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.addedLeafIds.size() == 2);
+    CHECK(result.deletedLeafIds.empty());
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 3);
+  }
+
+  TEST_CASE("updateSystem deletes leaves") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20, 30}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 3);
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10}}  // Keep only 10, delete 20 and 30
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.deletedLeafIds.size() == 2);
+    CHECK(result.addedLeafIds.empty());
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 1);
+  }
+
+  TEST_CASE("updateSystem handles mixed add and delete") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10, 30}}  // Keep 10, delete 20, add 30
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.deletedLeafIds.size() == 1);
+    CHECK(result.addedLeafIds.size() == 1);
+    CHECK(result.deletedLeafIds[0] == 20);
+    CHECK(result.addedLeafIds[0] == 30);
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 2);
+  }
+
+  TEST_CASE("updateSystem updates selection") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10, 20}}  // No changes, just update selection
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, {{1, 20}});
+
+    CHECK(result.errors.empty());
+    CHECK(result.selectionUpdated);
+    CHECK(system.selection.has_value());
+    CHECK(system.selection->clusterId == 1);
+
+    // Verify selection points to leaf with ID 20
+    auto* pc = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+    CHECK(cell.leafId.has_value());
+    CHECK(*cell.leafId == 20);
+  }
+
+  TEST_CASE("updateSystem reports error for unknown cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {999, {10, 20}}  // Cluster 999 doesn't exist
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.size() == 1);
+    CHECK(result.errors[0].type == multi_cell_logic::UpdateError::Type::ClusterNotFound);
+    CHECK(result.errors[0].clusterId == 999);
+  }
+
+  TEST_CASE("updateSystem reports error for invalid selection cluster") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10}}
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, {{999, 10}});
+
+    CHECK(result.errors.size() == 1);
+    CHECK(result.errors[0].type == multi_cell_logic::UpdateError::Type::SelectionInvalid);
+    CHECK(!result.selectionUpdated);
+  }
+
+  TEST_CASE("updateSystem reports error for invalid selection leaf") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10}}
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, {{1, 999}});
+
+    CHECK(result.errors.size() == 1);
+    CHECK(result.errors[0].type == multi_cell_logic::UpdateError::Type::SelectionInvalid);
+    CHECK(result.errors[0].leafId == 999);
+    CHECK(!result.selectionUpdated);
+  }
+
+  TEST_CASE("updateSystem handles multiple clusters") {
+    multi_cell_logic::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10}};
+    multi_cell_logic::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = multi_cell_logic::createSystem({info1, info2});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {10, 11}},  // Add 11 to cluster 1
+        {2, {20, 21}}   // Add 21 to cluster 2
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.addedLeafIds.size() == 2);
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 4);
+  }
+
+  TEST_CASE("updateSystem leaves unchanged cluster alone") {
+    multi_cell_logic::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10, 11}};
+    multi_cell_logic::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = multi_cell_logic::createSystem({info1, info2});
+
+    // Only update cluster 2, leave cluster 1 alone
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {2, {20, 21}}
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+
+    // Cluster 1 should still have its original leaves
+    auto* pc1 = multi_cell_logic::getCluster(system, 1);
+    REQUIRE(pc1 != nullptr);
+    auto leafIds1 = multi_cell_logic::getClusterLeafIds(pc1->cluster);
+    CHECK(leafIds1.size() == 2);
+
+    // Cluster 2 should have the new leaf
+    auto* pc2 = multi_cell_logic::getCluster(system, 2);
+    REQUIRE(pc2 != nullptr);
+    auto leafIds2 = multi_cell_logic::getClusterLeafIds(pc2->cluster);
+    CHECK(leafIds2.size() == 2);
+  }
+
+  TEST_CASE("updateSystem can clear cluster to empty") {
+    multi_cell_logic::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = multi_cell_logic::createSystem({info});
+
+    std::vector<multi_cell_logic::ClusterCellIds> updates = {
+        {1, {}}  // Empty - delete all leaves
+    };
+
+    auto result = multi_cell_logic::updateSystem(system, updates, std::nullopt);
+
+    CHECK(result.errors.empty());
+    CHECK(result.deletedLeafIds.size() == 1);
+    CHECK(multi_cell_logic::countTotalLeaves(system) == 0);
+  }
+
+}

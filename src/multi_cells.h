@@ -125,6 +125,33 @@ struct ClusterInitInfo {
 };
 
 // ============================================================================
+// Update System Types
+// ============================================================================
+
+struct ClusterCellIds {
+  ClusterId clusterId;
+  std::vector<size_t> leafIds;  // Desired leaf IDs for this cluster
+};
+
+struct UpdateError {
+  enum class Type {
+    ClusterNotFound,
+    LeafNotFound,
+    SelectionInvalid,
+  };
+  Type type;
+  ClusterId clusterId;
+  size_t leafId;  // relevant leaf ID (if applicable)
+};
+
+struct UpdateResult {
+  std::vector<size_t> deletedLeafIds;
+  std::vector<size_t> addedLeafIds;
+  std::vector<UpdateError> errors;
+  bool selectionUpdated;
+};
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
@@ -197,6 +224,25 @@ void debugPrintSystem(const System& system);
 
 // Count total leaves across all clusters.
 [[nodiscard]] size_t countTotalLeaves(const System& system);
+
+// ============================================================================
+// System Update
+// ============================================================================
+
+// Get all leaf IDs from a cluster.
+[[nodiscard]] std::vector<size_t> getClusterLeafIds(const cell_logic::CellCluster& cluster);
+
+// Find cell index by leaf ID. Returns nullopt if not found.
+[[nodiscard]] std::optional<int> findCellByLeafId(const cell_logic::CellCluster& cluster, size_t leafId);
+
+// Update the system to match the desired state.
+// - Deletes leaves that are not in the desired state
+// - Adds leaves that are in the desired state but not currently present
+// - Updates the selection if provided
+UpdateResult updateSystem(
+    System& system,
+    const std::vector<ClusterCellIds>& clusterCellIds,
+    std::optional<std::pair<ClusterId, size_t>> newSelection);
 
 } // namespace multi_cell_logic
 } // namespace wintiler
