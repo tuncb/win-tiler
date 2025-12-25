@@ -62,6 +62,12 @@ ParseResult parseArgs(int argc, char* argv[]) {
                            ". Valid values: trace, debug, info, warn, err, off");
         }
         args.options.logLevel = level;
+      } else if (optionName == "config") {
+        if (i + 1 >= argc) {
+          return makeError("--config requires a filepath");
+        }
+        ++i;
+        args.options.configPath = argv[i];
       } else {
         return makeError("Unknown option: --" + optionName);
       }
@@ -117,6 +123,12 @@ ParseResult parseArgs(int argc, char* argv[]) {
       args.command = multiCmd;
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
+    } else if (cmd == "init-config") {
+      if (i >= argc) {
+        return makeError("init-config requires a filepath argument");
+      }
+      args.command = InitConfigCommand{argv[i]};
+      ++i;
     } else {
       return makeError("Unknown command: " + cmd);
     }
@@ -131,6 +143,7 @@ void printUsage() {
             << "Options:\n"
             << "  --help, -h              Show this help message\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
+            << "  --config <filepath>     Load configuration from a TOML file\n"
             << "\n"
             << "Commands:\n"
             << "  apply                   Apply tiling to actual windows\n"
@@ -141,11 +154,14 @@ void printUsage() {
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
             << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"
             << "  track-windows           Track and log windows per monitor in a loop\n"
+            << "  init-config <filepath>  Create default configuration TOML file\n"
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
             << "  win-tiler apply\n"
-            << "  win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080\n";
+            << "  win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080\n"
+            << "  win-tiler init-config config.toml\n"
+            << "  win-tiler --config config.toml loop\n";
 }
 
 }  // namespace wintiler

@@ -2,6 +2,7 @@
   "dependencies": [
     "raylib",
     "doctest",
-    "spdlog"
+    "spdlog",
+    "tomlplusplus"
   ]
 }

@@ -1,8 +1,10 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace wintiler {
@@ -56,5 +58,25 @@ GlobalOptions get_default_global_options();
 
 // Get default ignore options (convenience function)
 IgnoreOptions get_default_ignore_options();
+
+// Result type for TOML operations
+struct WriteResult {
+  bool success;
+  std::string error;  // Set if success == false
+};
+
+struct ReadResult {
+  bool success;
+  std::string error;  // Set if success == false
+  GlobalOptions options;  // Valid if success == true
+};
+
+// Write GlobalOptions to a TOML file
+WriteResult write_options_toml(
+    const GlobalOptions& options,
+    const std::filesystem::path& filepath);
+
+// Read GlobalOptions from a TOML file
+ReadResult read_options_toml(const std::filesystem::path& filepath);
 
 } // namespace wintiler

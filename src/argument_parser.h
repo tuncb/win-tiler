@@ -29,6 +29,10 @@ struct UiTestMultiCommand {
 
 struct TrackWindowsCommand {};
 
+struct InitConfigCommand {
+  std::string filepath;
+};
+
 // Variant holding all possible commands
 using Command = std::variant<HelpCommand,
                              ApplyCommand,
@@ -37,14 +41,15 @@ using Command = std::variant<HelpCommand,
                              LoopTestCommand,
                              UiTestMonitorCommand,
                              UiTestMultiCommand,
-                             TrackWindowsCommand>;
+                             TrackWindowsCommand,
+                             InitConfigCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };
 
 struct CliOptions {
   std::optional<LogLevel> logLevel;  // --logmode <level>
-  // Future options can be added here
+  std::optional<std::string> configPath;  // --config <filepath>
 };
 
 // ===== Parsed Arguments =====

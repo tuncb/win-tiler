@@ -237,6 +237,18 @@ int main(int argc, char* argv[]) {
   // Get default global options
   auto globalOptions = get_default_global_options();
 
+  // Load config if specified
+  if (result.args.options.configPath) {
+    auto loaded = read_options_toml(*result.args.options.configPath);
+    if (loaded.success) {
+      globalOptions = loaded.options;
+      spdlog::info("Loaded config from: {}", *result.args.options.configPath);
+    } else {
+      spdlog::error("Failed to load config: {}", loaded.error);
+      return 1;
+    }
+  }
+
   // Dispatch command
   if (result.args.command) {
     std::visit(
@@ -249,6 +261,14 @@ int main(int argc, char* argv[]) {
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
+            [](const InitConfigCommand& cmd) {
+              auto writeResult = write_options_toml(get_default_global_options(), cmd.filepath);
+              if (writeResult.success) {
+                spdlog::info("Config written to: {}", cmd.filepath);
+              } else {
+                spdlog::error("Failed to write config: {}", writeResult.error);
+              }
+            },
         },
         *result.args.command);
     return 0;
