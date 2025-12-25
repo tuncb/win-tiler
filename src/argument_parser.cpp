@@ -124,11 +124,13 @@ ParseResult parseArgs(int argc, char* argv[]) {
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
     } else if (cmd == "init-config") {
-      if (i >= argc) {
-        return makeError("init-config requires a filepath argument");
+      InitConfigCommand initCmd;
+      if (i < argc && argv[i][0] != '-') {
+        // Optional filepath argument provided
+        initCmd.filepath = argv[i];
+        ++i;
       }
-      args.command = InitConfigCommand{argv[i]};
-      ++i;
+      args.command = initCmd;
     } else {
       return makeError("Unknown command: " + cmd);
     }
@@ -154,7 +156,8 @@ void printUsage() {
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
             << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"
             << "  track-windows           Track and log windows per monitor in a loop\n"
-            << "  init-config <filepath>  Create default configuration TOML file\n"
+            << "  init-config [filepath]  Create default configuration TOML file\n"
+            << "                          (defaults to win-tiler.toml next to executable)\n"
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"

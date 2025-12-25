@@ -30,7 +30,7 @@ struct UiTestMultiCommand {
 struct TrackWindowsCommand {};
 
 struct InitConfigCommand {
-  std::string filepath;
+  std::optional<std::string> filepath;  // Empty = use default (win-tiler.toml next to exe)
 };
 
 // Variant holding all possible commands

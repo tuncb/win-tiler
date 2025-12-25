@@ -2,8 +2,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -15,6 +18,20 @@
 #include "multi_ui.h"
 #include "options.h"
 #include "winapi.h"
+
+namespace {
+
+std::filesystem::path getExecutableDirectory() {
+  char path[MAX_PATH];
+  GetModuleFileNameA(nullptr, path, MAX_PATH);
+  return std::filesystem::path(path).parent_path();
+}
+
+std::filesystem::path getDefaultConfigPath() {
+  return getExecutableDirectory() / "win-tiler.toml";
+}
+
+}  // namespace
 
 // Helper for std::visit with lambdas
 template <class... Ts>
@@ -237,15 +254,31 @@ int main(int argc, char* argv[]) {
   // Get default global options
   auto globalOptions = get_default_global_options();
 
-  // Load config if specified
+  // Determine config path to load
+  std::filesystem::path configPath;
+  bool configExplicitlySpecified = false;
+
   if (result.args.options.configPath) {
-    auto loaded = read_options_toml(*result.args.options.configPath);
+    configPath = *result.args.options.configPath;
+    configExplicitlySpecified = true;
+  } else {
+    configPath = getDefaultConfigPath();
+  }
+
+  // Load config
+  if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
+    auto loaded = read_options_toml(configPath);
     if (loaded.success) {
       globalOptions = loaded.options;
-      spdlog::info("Loaded config from: {}", *result.args.options.configPath);
+      spdlog::info("Loaded config from: {}", configPath.string());
     } else {
-      spdlog::error("Failed to load config: {}", loaded.error);
-      return 1;
+      if (configExplicitlySpecified) {
+        // Explicit config path failed - error out
+        spdlog::error("Failed to load config: {}", loaded.error);
+        return 1;
+      }
+      // Default config failed to load - just use defaults silently
+      spdlog::debug("Default config not loaded: {}", loaded.error);
     }
   }
 
@@ -262,9 +295,12 @@ int main(int argc, char* argv[]) {
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
             [](const InitConfigCommand& cmd) {
-              auto writeResult = write_options_toml(get_default_global_options(), cmd.filepath);
+              auto targetPath = cmd.filepath
+                  ? std::filesystem::path(*cmd.filepath)
+                  : getDefaultConfigPath();
+              auto writeResult = write_options_toml(get_default_global_options(), targetPath);
               if (writeResult.success) {
-                spdlog::info("Config written to: {}", cmd.filepath);
+                spdlog::info("Config written to: {}", targetPath.string());
               } else {
                 spdlog::error("Failed to write config: {}", writeResult.error);
               }
