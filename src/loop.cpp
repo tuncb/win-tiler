@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 #include <unordered_map>
@@ -217,6 +218,61 @@ bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd)
     }
   }
   return false;
+}
+
+// Redirect new windows to the selected cluster so they split from the selected cell
+void redirectNewWindowsToSelection(
+    const multi_cell_logic::System& system,
+    std::vector<multi_cell_logic::ClusterCellIds>& clusterCellIds) {
+
+  if (!system.selection.has_value()) {
+    return;  // No selection, keep default behavior
+  }
+
+  multi_cell_logic::ClusterId selectedClusterId = system.selection->clusterId;
+
+  // Collect new windows (not in any cluster)
+  std::vector<size_t> newWindows;
+  for (const auto& update : clusterCellIds) {
+    for (size_t leafId : update.leafIds) {
+      bool isNew = true;
+      for (const auto& pc : system.clusters) {
+        if (multi_cell_logic::findCellByLeafId(pc.cluster, leafId).has_value()) {
+          isNew = false;
+          break;
+        }
+      }
+      if (isNew) {
+        newWindows.push_back(leafId);
+      }
+    }
+  }
+
+  if (newWindows.empty()) {
+    return;  // No new windows to redirect
+  }
+
+  spdlog::debug("Redirecting {} new window(s) to selected cluster {}",
+                newWindows.size(), selectedClusterId);
+
+  // Remove new windows from their detected clusters
+  for (auto& update : clusterCellIds) {
+    auto& ids = update.leafIds;
+    ids.erase(std::remove_if(ids.begin(), ids.end(),
+      [&newWindows](size_t id) {
+        return std::find(newWindows.begin(), newWindows.end(), id) != newWindows.end();
+      }), ids.end());
+  }
+
+  // Add new windows to the selected cluster
+  for (auto& update : clusterCellIds) {
+    if (update.clusterId == selectedClusterId) {
+      for (size_t id : newWindows) {
+        update.leafIds.push_back(id);
+      }
+      break;
+    }
+  }
 }
 
 } // namespace
@@ -467,6 +523,9 @@ void runLoopMode(const GlobalOptions& options) {
         }
       }
     });
+
+    // Redirect new windows to the selected cluster so they split from the selected cell
+    redirectNewWindowsToSelection(system, currentState);
 
     // Use updateSystem to sync
     auto result = timed("updateSystem", [&system, &currentState] {
