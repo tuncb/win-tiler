@@ -392,26 +392,22 @@ void runLoopMode() {
         handleKeyboardNavigation(system, *dir);
       } else if (*hotkeyId == HOTKEY_ID_TOGGLE_SPLIT) {
         if (multi_cell_logic::toggleSelectedSplitDir(system)) {
-          // Get the current split direction after toggle
-          if (system.selection.has_value()) {
-            const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
-            if (pc != nullptr) {
-              const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-              if (cell.parent.has_value()) {
-                const auto& parentCell = pc->cluster.cells[static_cast<size_t>(*cell.parent)];
-                const char* dirStr = (parentCell.splitDir == cell_logic::SplitDir::Vertical)
-                    ? "vertical" : "horizontal";
-                spdlog::info("Toggled split direction: {}", dirStr);
-              }
-            }
-          }
+          spdlog::info("Toggled split direction");
         }
       } else if (*hotkeyId == HOTKEY_ID_EXIT) {
         spdlog::info("Exit hotkey pressed, shutting down...");
         break;
       } else if (*hotkeyId == HOTKEY_ID_TOGGLE_GLOBAL) {
         if (multi_cell_logic::toggleClusterGlobalSplitDir(system)) {
-          spdlog::info("Toggled cluster global split direction");
+          // Get the current global split direction after toggle
+          if (system.selection.has_value()) {
+            const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+            if (pc != nullptr) {
+              const char* dirStr = (pc->cluster.globalSplitDir == cell_logic::SplitDir::Vertical)
+                  ? "vertical" : "horizontal";
+              spdlog::info("Toggled cluster global split direction: {}", dirStr);
+            }
+          }
         }
       } else if (*hotkeyId == HOTKEY_ID_STORE_CELL) {
         if (system.selection.has_value()) {
@@ -549,6 +545,23 @@ void runLoopMode() {
 
       spdlog::debug("=== Updated Tile Layout ===");
       printTileLayout(system, hwndToTitle);
+
+      // Move mouse to center of the last added cell
+      if (!result.addedLeafIds.empty()) {
+        size_t lastAddedId = result.addedLeafIds.back();
+        // Find which cluster contains this leaf
+        for (const auto& pc : system.clusters) {
+          auto cellIndexOpt = multi_cell_logic::findCellByLeafId(pc.cluster, lastAddedId);
+          if (cellIndexOpt.has_value()) {
+            cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, *cellIndexOpt);
+            long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
+            long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
+            winapi::set_cursor_pos(centerX, centerY);
+            spdlog::debug("Moved cursor to center of new cell at ({}, {})", centerX, centerY);
+            break;
+          }
+        }
+      }
     }
 
     timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
