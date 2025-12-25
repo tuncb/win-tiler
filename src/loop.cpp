@@ -68,6 +68,36 @@ void unregisterNavigationHotkeys(const KeyboardOptions& keyboardOptions) {
   }
 }
 
+// Convert HotkeyAction to human-readable string
+const char* hotkeyActionToString(HotkeyAction action) {
+  switch (action) {
+  case HotkeyAction::NavigateLeft:
+    return "Navigate Left";
+  case HotkeyAction::NavigateDown:
+    return "Navigate Down";
+  case HotkeyAction::NavigateUp:
+    return "Navigate Up";
+  case HotkeyAction::NavigateRight:
+    return "Navigate Right";
+  case HotkeyAction::ToggleSplit:
+    return "Toggle Split";
+  case HotkeyAction::Exit:
+    return "Exit";
+  case HotkeyAction::ToggleGlobal:
+    return "Toggle Global";
+  case HotkeyAction::StoreCell:
+    return "Store Cell";
+  case HotkeyAction::ClearStored:
+    return "Clear Stored";
+  case HotkeyAction::Exchange:
+    return "Exchange";
+  case HotkeyAction::Move:
+    return "Move";
+  default:
+    return "Unknown";
+  }
+}
+
 // Convert HotkeyAction to direction (for navigation actions)
 std::optional<cell_logic::Direction> hotkeyActionToDirection(HotkeyAction action) {
   switch (action) {
@@ -419,6 +449,12 @@ void runLoopMode(const GlobalOptions& options) {
 
   // Register keyboard hotkeys
   registerNavigationHotkeys(keyboardOptions);
+
+  // Print keyboard shortcuts
+  spdlog::info("=== Keyboard Shortcuts ===");
+  for (const auto& binding : keyboardOptions.bindings) {
+    spdlog::info("  {}: {}", hotkeyActionToString(binding.action), binding.hotkey);
+  }
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
