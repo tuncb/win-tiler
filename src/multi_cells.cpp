@@ -889,6 +889,20 @@ bool toggleSelectedSplitDir(System& system) {
                                      system.gapHorizontal, system.gapVertical);
 }
 
+bool toggleClusterGlobalSplitDir(System& system) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+  auto* pc = getCluster(system, system.selection->clusterId);
+  if (pc == nullptr) {
+    return false;
+  }
+  pc->cluster.globalSplitDir = (pc->cluster.globalSplitDir == cell_logic::SplitDir::Vertical)
+                                   ? cell_logic::SplitDir::Horizontal
+                                   : cell_logic::SplitDir::Vertical;
+  return true;
+}
+
 SwapResult swapCells(System& system,
                      ClusterId clusterId1, size_t leafId1,
                      ClusterId clusterId2, size_t leafId2) {

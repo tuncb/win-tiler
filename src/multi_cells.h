@@ -229,6 +229,9 @@ bool deleteSelectedLeaf(System& system);
 // Toggle the split direction of the selected cell's parent.
 bool toggleSelectedSplitDir(System& system);
 
+// Toggle the globalSplitDir of the cluster containing the selected cell.
+bool toggleClusterGlobalSplitDir(System& system);
+
 // Swap two leaf cells' positions (potentially in different clusters).
 // Each cell keeps its identity (leafId) but they exchange visual positions.
 // For same-cluster: actual tree position swap.

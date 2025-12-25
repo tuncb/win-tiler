@@ -344,6 +344,7 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
   }
 
   if (parts.empty()) {
+    spdlog::error("create_hotkey: Empty hotkey text '{}'", text);
     return std::nullopt;
   }
 
@@ -362,24 +363,87 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
     } else if (part == "super") {
       modifiers |= MOD_WIN;
     } else {
-      return std::nullopt;  // Unknown modifier
+      spdlog::error("create_hotkey: Unknown modifier '{}' in '{}'", part, text);
+      return std::nullopt;
     }
   }
 
-  // Parse key - only single character keys supported
-  if (keyStr.length() != 1) {
+  // Parse key - support single character keys and special keys
+  unsigned int key = 0;
+  if (keyStr.length() == 1) {
+    char c = keyStr[0];
+    // Handle special characters that need OEM virtual key codes
+    if (c == ';') {
+      key = VK_OEM_1;  // ;:
+    } else if (c == ',') {
+      key = VK_OEM_COMMA;
+    } else if (c == '.') {
+      key = VK_OEM_PERIOD;
+    } else if (c == '/') {
+      key = VK_OEM_2;  // /?
+    } else if (c == '[') {
+      key = VK_OEM_4;  // [{
+    } else if (c == '\\') {
+      key = VK_OEM_5;  // \|
+    } else if (c == ']') {
+      key = VK_OEM_6;  // ]}
+    } else if (c == '\'') {
+      key = VK_OEM_7;  // '"
+    } else if (c == '-') {
+      key = VK_OEM_MINUS;
+    } else if (c == '=') {
+      key = VK_OEM_PLUS;
+    } else if (c == '`') {
+      key = VK_OEM_3;  // `~
+    } else {
+      key = static_cast<unsigned int>(std::toupper(static_cast<unsigned char>(c)));
+    }
+  } else if (keyStr == "escape" || keyStr == "esc") {
+    key = VK_ESCAPE;
+  } else if (keyStr == "enter" || keyStr == "return") {
+    key = VK_RETURN;
+  } else if (keyStr == "space") {
+    key = VK_SPACE;
+  } else if (keyStr == "tab") {
+    key = VK_TAB;
+  } else if (keyStr == "backspace") {
+    key = VK_BACK;
+  } else if (keyStr == "delete") {
+    key = VK_DELETE;
+  } else if (keyStr == "insert") {
+    key = VK_INSERT;
+  } else if (keyStr == "home") {
+    key = VK_HOME;
+  } else if (keyStr == "end") {
+    key = VK_END;
+  } else if (keyStr == "pageup") {
+    key = VK_PRIOR;
+  } else if (keyStr == "pagedown") {
+    key = VK_NEXT;
+  } else if (keyStr == "left") {
+    key = VK_LEFT;
+  } else if (keyStr == "right") {
+    key = VK_RIGHT;
+  } else if (keyStr == "up") {
+    key = VK_UP;
+  } else if (keyStr == "down") {
+    key = VK_DOWN;
+  } else {
+    spdlog::error("create_hotkey: Unknown key '{}'", keyStr);
     return std::nullopt;
   }
-
-  unsigned int key = static_cast<unsigned int>(
-      std::toupper(static_cast<unsigned char>(keyStr[0])));
 
   return HotKeyInfo{id, modifiers, key};
 }
 
 bool register_hotkey(const HotKeyInfo& hotkey) {
   BOOL result = RegisterHotKey(nullptr, hotkey.id, hotkey.modifiers, hotkey.key);
-  return result != 0;
+  if (result == 0) {
+    spdlog::error("register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
+                  hotkey.id, hotkey.key, hotkey.modifiers, GetLastError());
+    return false;
+  }
+  return true;
 }
 
 bool unregister_hotkey(int id) {

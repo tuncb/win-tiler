@@ -36,51 +36,38 @@ void timedVoid(const char* name, F&& func) {
 }
 
 // Hotkey IDs for vim-style navigation
-constexpr int HOTKEY_ID_LEFT = 1;         // Win+Shift+H
-constexpr int HOTKEY_ID_DOWN = 2;         // Win+Shift+J
-constexpr int HOTKEY_ID_UP = 3;           // Win+Shift+K
-constexpr int HOTKEY_ID_RIGHT = 4;        // Win+Shift+L
-constexpr int HOTKEY_ID_TOGGLE_SPLIT = 5; // Win+Shift+y
+constexpr int HOTKEY_ID_LEFT = 1;          // Win+Shift+H
+constexpr int HOTKEY_ID_DOWN = 2;          // Win+Shift+J
+constexpr int HOTKEY_ID_UP = 3;            // Win+Shift+K
+constexpr int HOTKEY_ID_RIGHT = 4;         // Win+Shift+L
+constexpr int HOTKEY_ID_TOGGLE_SPLIT = 5;  // Win+Shift+Y
+constexpr int HOTKEY_ID_EXIT = 6;          // Win+Shift+ESC
+constexpr int HOTKEY_ID_TOGGLE_GLOBAL = 7; // Win+Shift+;
+constexpr int HOTKEY_ID_STORE_CELL = 8;    // Win+Shift+[
+constexpr int HOTKEY_ID_CLEAR_STORED = 9;  // Win+Shift+]
+constexpr int HOTKEY_ID_EXCHANGE = 10;     // Win+Shift+,
+constexpr int HOTKEY_ID_MOVE = 11;         // Win+Shift+.
 
-bool registerNavigationHotkeys() {
-  auto hotkeyLeft = winapi::create_hotkey("super+shift+h", HOTKEY_ID_LEFT);
-  auto hotkeyDown = winapi::create_hotkey("super+shift+j", HOTKEY_ID_DOWN);
-  auto hotkeyUp = winapi::create_hotkey("super+shift+k", HOTKEY_ID_UP);
-  auto hotkeyRight = winapi::create_hotkey("super+shift+l", HOTKEY_ID_RIGHT);
-  auto hotkeyToggleSplit = winapi::create_hotkey("super+shift+y", HOTKEY_ID_TOGGLE_SPLIT);
+void registerHotkey(const std::string& text, int id) {
+  auto hotkey = winapi::create_hotkey(text, id);
+  if (hotkey) {
+    winapi::register_hotkey(*hotkey);
+  }
+}
 
-  if (!hotkeyLeft || !hotkeyDown || !hotkeyUp || !hotkeyRight || !hotkeyToggleSplit) {
-    spdlog::error("Failed to create hotkey info");
-    return false;
-  }
-
-  bool success = true;
-  if (!winapi::register_hotkey(*hotkeyLeft)) {
-    spdlog::error("Failed to register hotkey Win+Shift+H");
-    success = false;
-  }
-  if (!winapi::register_hotkey(*hotkeyDown)) {
-    spdlog::error("Failed to register hotkey Win+Shift+J");
-    success = false;
-  }
-  if (!winapi::register_hotkey(*hotkeyUp)) {
-    spdlog::error("Failed to register hotkey Win+Shift+K");
-    success = false;
-  }
-  if (!winapi::register_hotkey(*hotkeyRight)) {
-    spdlog::error("Failed to register hotkey Win+Shift+L");
-    success = false;
-  }
-  if (!winapi::register_hotkey(*hotkeyToggleSplit)) {
-    spdlog::error("Failed to register hotkey Win+Shift+T");
-    success = false;
-  }
-
-  if (success) {
-    spdlog::info("Registered navigation hotkeys: Win+Shift+H/J/K/L/T");
-  }
-
-  return success;
+void registerNavigationHotkeys() {
+  registerHotkey("super+shift+h", HOTKEY_ID_LEFT);
+  registerHotkey("super+shift+j", HOTKEY_ID_DOWN);
+  registerHotkey("super+shift+k", HOTKEY_ID_UP);
+  registerHotkey("super+shift+l", HOTKEY_ID_RIGHT);
+  registerHotkey("super+shift+y", HOTKEY_ID_TOGGLE_SPLIT);
+  registerHotkey("super+shift+escape", HOTKEY_ID_EXIT);
+  registerHotkey("super+shift+;", HOTKEY_ID_TOGGLE_GLOBAL);
+  registerHotkey("super+shift+[", HOTKEY_ID_STORE_CELL);
+  registerHotkey("super+shift+]", HOTKEY_ID_CLEAR_STORED);
+  registerHotkey("super+shift+,", HOTKEY_ID_EXCHANGE);
+  registerHotkey("super+shift+.", HOTKEY_ID_MOVE);
+  spdlog::info("Registered hotkeys: Win+Shift+H/J/K/L/Y/ESC/;/[/]/,/.");
 }
 
 void unregisterNavigationHotkeys() {
@@ -89,6 +76,12 @@ void unregisterNavigationHotkeys() {
   winapi::unregister_hotkey(HOTKEY_ID_UP);
   winapi::unregister_hotkey(HOTKEY_ID_RIGHT);
   winapi::unregister_hotkey(HOTKEY_ID_TOGGLE_SPLIT);
+  winapi::unregister_hotkey(HOTKEY_ID_EXIT);
+  winapi::unregister_hotkey(HOTKEY_ID_TOGGLE_GLOBAL);
+  winapi::unregister_hotkey(HOTKEY_ID_STORE_CELL);
+  winapi::unregister_hotkey(HOTKEY_ID_CLEAR_STORED);
+  winapi::unregister_hotkey(HOTKEY_ID_EXCHANGE);
+  winapi::unregister_hotkey(HOTKEY_ID_MOVE);
 }
 
 // Convert hotkey ID to direction
@@ -161,10 +154,10 @@ void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Dire
 void printTileLayout(const multi_cell_logic::System& system,
                      const std::unordered_map<size_t, std::string>& hwndToTitle) {
   size_t totalWindows = multi_cell_logic::countTotalLeaves(system);
-  spdlog::info("Total windows: {}", totalWindows);
+  spdlog::debug("Total windows: {}", totalWindows);
 
   for (const auto& pc : system.clusters) {
-    spdlog::info("--- Monitor {} ---", pc.id);
+    spdlog::debug("--- Monitor {} ---", pc.id);
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -181,11 +174,11 @@ void printTileLayout(const multi_cell_logic::System& system,
         title = titleIt->second;
       }
 
-      spdlog::info("  Window: \"{}\"", title);
-      spdlog::info("    Position: x={}, y={}", static_cast<int>(globalRect.x),
-                   static_cast<int>(globalRect.y));
-      spdlog::info("    Size: {}x{}", static_cast<int>(globalRect.width),
-                   static_cast<int>(globalRect.height));
+      spdlog::debug("  Window: \"{}\"", title);
+      spdlog::debug("    Position: x={}, y={}", static_cast<int>(globalRect.x),
+                    static_cast<int>(globalRect.y));
+      spdlog::debug("    Size: {}x{}", static_cast<int>(globalRect.width),
+                    static_cast<int>(globalRect.height));
     }
   }
 }
@@ -380,12 +373,13 @@ void runLoopMode() {
   timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
 
   // Register keyboard hotkeys
-  if (!registerNavigationHotkeys()) {
-    spdlog::warn("Some hotkeys failed to register - keyboard navigation may not work");
-  }
+  registerNavigationHotkeys();
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
+
+  // Store cell for swap/move operations (clusterId, leafId)
+  std::optional<std::pair<multi_cell_logic::ClusterId, size_t>> storedCell;
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -398,7 +392,72 @@ void runLoopMode() {
         handleKeyboardNavigation(system, *dir);
       } else if (*hotkeyId == HOTKEY_ID_TOGGLE_SPLIT) {
         if (multi_cell_logic::toggleSelectedSplitDir(system)) {
-          spdlog::trace("Toggled split direction for selected cell");
+          // Get the current split direction after toggle
+          if (system.selection.has_value()) {
+            const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+            if (pc != nullptr) {
+              const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+              if (cell.parent.has_value()) {
+                const auto& parentCell = pc->cluster.cells[static_cast<size_t>(*cell.parent)];
+                const char* dirStr = (parentCell.splitDir == cell_logic::SplitDir::Vertical)
+                    ? "vertical" : "horizontal";
+                spdlog::info("Toggled split direction: {}", dirStr);
+              }
+            }
+          }
+        }
+      } else if (*hotkeyId == HOTKEY_ID_EXIT) {
+        spdlog::info("Exit hotkey pressed, shutting down...");
+        break;
+      } else if (*hotkeyId == HOTKEY_ID_TOGGLE_GLOBAL) {
+        if (multi_cell_logic::toggleClusterGlobalSplitDir(system)) {
+          spdlog::info("Toggled cluster global split direction");
+        }
+      } else if (*hotkeyId == HOTKEY_ID_STORE_CELL) {
+        if (system.selection.has_value()) {
+          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          if (pc != nullptr) {
+            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              storedCell = {system.selection->clusterId, *cell.leafId};
+              spdlog::info("Stored cell for operation: cluster={}, leafId={}",
+                           system.selection->clusterId, *cell.leafId);
+            }
+          }
+        }
+      } else if (*hotkeyId == HOTKEY_ID_CLEAR_STORED) {
+        storedCell.reset();
+        spdlog::info("Cleared stored cell");
+      } else if (*hotkeyId == HOTKEY_ID_EXCHANGE) {
+        if (storedCell.has_value() && system.selection.has_value()) {
+          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          if (pc != nullptr) {
+            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              auto result = multi_cell_logic::swapCells(
+                  system, system.selection->clusterId, *cell.leafId, storedCell->first,
+                  storedCell->second);
+              if (result.success) {
+                storedCell.reset();
+                spdlog::info("Exchanged cells successfully");
+              }
+            }
+          }
+        }
+      } else if (*hotkeyId == HOTKEY_ID_MOVE) {
+        if (storedCell.has_value() && system.selection.has_value()) {
+          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          if (pc != nullptr) {
+            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              auto result = multi_cell_logic::moveCell(system, storedCell->first, storedCell->second,
+                                                       system.selection->clusterId, *cell.leafId);
+              if (result.success) {
+                storedCell.reset();
+                spdlog::info("Moved cell successfully");
+              }
+            }
+          }
         }
       }
     }
@@ -464,28 +523,31 @@ void runLoopMode() {
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      spdlog::info("=== Window Changes Detected ===");
+      // One-line summary at info level
+      spdlog::info("Window changes: +{} added, -{} removed",
+                   result.addedLeafIds.size(), result.deletedLeafIds.size());
 
+      // Detailed logging at debug level
       if (!result.deletedLeafIds.empty()) {
-        spdlog::info("Removed windows: {}", result.deletedLeafIds.size());
+        spdlog::debug("Removed windows:");
         for (size_t id : result.deletedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            spdlog::info("  - \"{}\"", titleIt->second);
+            spdlog::debug("  - \"{}\"", titleIt->second);
           }
         }
       }
       if (!result.addedLeafIds.empty()) {
-        spdlog::info("Added windows: {}", result.addedLeafIds.size());
+        spdlog::debug("Added windows:");
         for (size_t id : result.addedLeafIds) {
           auto titleIt = hwndToTitle.find(id);
           if (titleIt != hwndToTitle.end()) {
-            spdlog::info("  + \"{}\"", titleIt->second);
+            spdlog::debug("  + \"{}\"", titleIt->second);
           }
         }
       }
 
-      spdlog::info("=== Updated Tile Layout ===");
+      spdlog::debug("=== Updated Tile Layout ===");
       printTileLayout(system, hwndToTitle);
     }
 
@@ -496,6 +558,10 @@ void runLoopMode() {
         "loop iteration total: {}us",
         std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count());
   }
+
+  // Cleanup hotkeys before exit
+  unregisterNavigationHotkeys();
+  spdlog::info("Hotkeys unregistered, exiting...");
 }
 
 } // namespace wintiler
