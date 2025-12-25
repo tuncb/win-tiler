@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 #include "multi_cells.h"
@@ -165,8 +164,7 @@ void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Dire
 }
 
 // Helper: Print tile layout from a multi-cluster system
-void printTileLayout(const multi_cell_logic::System& system,
-                     const std::unordered_map<size_t, std::string>& hwndToTitle) {
+void printTileLayout(const multi_cell_logic::System& system) {
   size_t totalWindows = multi_cell_logic::countTotalLeaves(system);
   spdlog::debug("Total windows: {}", totalWindows);
 
@@ -182,11 +180,8 @@ void printTileLayout(const multi_cell_logic::System& system,
       size_t hwndValue = *cell.leafId;
       cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, i);
 
-      std::string title;
-      auto titleIt = hwndToTitle.find(hwndValue);
-      if (titleIt != hwndToTitle.end()) {
-        title = titleIt->second;
-      }
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
+      std::string title = winapi::get_window_info(hwnd).title;
 
       spdlog::debug("  Window: \"{}\"", title);
       spdlog::debug("    Position: x={}, y={}", static_cast<int>(globalRect.x),
@@ -313,13 +308,6 @@ void runLoopTestMode(const GlobalOptions& options) {
   // 1. Build initial state (like computeTileLayout)
   auto monitors = winapi::get_monitors();
 
-  // Build hwnd -> title lookup
-  auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
-  std::unordered_map<size_t, std::string> hwndToTitle;
-  for (const auto& info : windowInfos) {
-    hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
-  }
-
   // Create cluster init info
   std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {
@@ -342,7 +330,7 @@ void runLoopTestMode(const GlobalOptions& options) {
 
   // 2. Print initial layout
   spdlog::info("=== Initial Tile Layout ===");
-  printTileLayout(system, hwndToTitle);
+  printTileLayout(system);
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
@@ -353,43 +341,25 @@ void runLoopTestMode(const GlobalOptions& options) {
     // Re-gather window state
     auto currentState = gatherCurrentWindowState(ignoreOptions);
 
-    // Update title lookup for any new windows
-    auto newWindowInfos = winapi::gather_raw_window_data(ignoreOptions);
-    for (const auto& info : newWindowInfos) {
-      size_t key = reinterpret_cast<size_t>(info.handle);
-      if (hwndToTitle.find(key) == hwndToTitle.end()) {
-        hwndToTitle[key] = info.title;
-      }
-    }
-
     // Use updateSystem to sync
     auto result = multi_cell_logic::updateSystem(system, currentState, std::nullopt);
 
     // If changes detected, log them
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      spdlog::info("=== Window Changes Detected ===");
+      spdlog::info("Window changes: +{} added, -{} removed",
+                   result.addedLeafIds.size(), result.deletedLeafIds.size());
 
-      if (!result.deletedLeafIds.empty()) {
-        spdlog::info("Removed windows: {}", result.deletedLeafIds.size());
-        for (size_t id : result.deletedLeafIds) {
-          auto titleIt = hwndToTitle.find(id);
-          if (titleIt != hwndToTitle.end()) {
-            spdlog::info("  - \"{}\"", titleIt->second);
-          }
-        }
-      }
       if (!result.addedLeafIds.empty()) {
-        spdlog::info("Added windows: {}", result.addedLeafIds.size());
+        spdlog::info("Added windows:");
         for (size_t id : result.addedLeafIds) {
-          auto titleIt = hwndToTitle.find(id);
-          if (titleIt != hwndToTitle.end()) {
-            spdlog::info("  + \"{}\"", titleIt->second);
-          }
+          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+          std::string title = winapi::get_window_info(hwnd).title;
+          spdlog::info("  + \"{}\"", title);
         }
       }
 
       spdlog::info("=== Updated Tile Layout ===");
-      printTileLayout(system, hwndToTitle);
+      printTileLayout(system);
     }
   }
 }
@@ -402,16 +372,6 @@ void runLoopMode(const GlobalOptions& options) {
 
   // 1. Build initial state (like computeTileLayout)
   auto monitors = timed("get_monitors", [] { return winapi::get_monitors(); });
-
-  // Build hwnd -> title lookup
-  auto hwndToTitle = timed("gather_raw_window_data + build lookup", [&ignoreOptions] {
-    auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
-    std::unordered_map<size_t, std::string> result;
-    for (const auto& info : windowInfos) {
-      result[reinterpret_cast<size_t>(info.handle)] = info.title;
-    }
-    return result;
-  });
 
   // Create cluster init info
   auto clusterInfos = timed("build cluster infos", [&monitors, &ignoreOptions] {
@@ -443,7 +403,7 @@ void runLoopMode(const GlobalOptions& options) {
 
   // 2. Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
-  printTileLayout(system, hwndToTitle);
+  printTileLayout(system);
 
   timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
 
@@ -549,17 +509,6 @@ void runLoopMode(const GlobalOptions& options) {
     auto currentState =
         timed("gatherCurrentWindowState", [&ignoreOptions] { return gatherCurrentWindowState(ignoreOptions); });
 
-    // Update title lookup for any new windows
-    timedVoid("update title lookup", [&hwndToTitle, &ignoreOptions] {
-      auto newWindowInfos = winapi::gather_raw_window_data(ignoreOptions);
-      for (const auto& info : newWindowInfos) {
-        size_t key = reinterpret_cast<size_t>(info.handle);
-        if (hwndToTitle.find(key) == hwndToTitle.end()) {
-          hwndToTitle[key] = info.title;
-        }
-      }
-    });
-
     // Redirect new windows to the selected cluster so they split from the selected cell
     redirectNewWindowsToSelection(system, currentState);
 
@@ -613,28 +562,18 @@ void runLoopMode(const GlobalOptions& options) {
       spdlog::info("Window changes: +{} added, -{} removed",
                    result.addedLeafIds.size(), result.deletedLeafIds.size());
 
-      // Detailed logging at debug level
-      if (!result.deletedLeafIds.empty()) {
-        spdlog::debug("Removed windows:");
-        for (size_t id : result.deletedLeafIds) {
-          auto titleIt = hwndToTitle.find(id);
-          if (titleIt != hwndToTitle.end()) {
-            spdlog::debug("  - \"{}\"", titleIt->second);
-          }
-        }
-      }
+      // Detailed logging at debug level for added windows
       if (!result.addedLeafIds.empty()) {
         spdlog::debug("Added windows:");
         for (size_t id : result.addedLeafIds) {
-          auto titleIt = hwndToTitle.find(id);
-          if (titleIt != hwndToTitle.end()) {
-            spdlog::debug("  + \"{}\"", titleIt->second);
-          }
+          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+          std::string title = winapi::get_window_info(hwnd).title;
+          spdlog::debug("  + \"{}\"", title);
         }
       }
 
       spdlog::debug("=== Updated Tile Layout ===");
-      printTileLayout(system, hwndToTitle);
+      printTileLayout(system);
 
       // Move mouse to center of the last added cell
       if (!result.addedLeafIds.empty()) {

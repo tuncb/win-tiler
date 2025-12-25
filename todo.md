@@ -1,7 +1,8 @@
 # new
 
 - hardening especially for loop.cpp
-- a loop action where we only list the current windows that passed the filter.
+
+- configuration file loading and initing
 
 # bugs
 
@@ -39,3 +40,5 @@ super + shift + q: deselect currently selected cell for next operation, similar 
 == Operate on currently selected cell
 super + shift + e: exchange the currently selected cell with the cell that is selected for operation, similar to e key in @src/multi_ui.xpp
 super + shift + m: move the cell selected to the operation using the currently selected cell as target, similar to m key in @src/multi_ui.xpp
+
+- a loop action where we only list the current windows that passed the filter.

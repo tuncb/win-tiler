@@ -22,7 +22,8 @@
       "Bash(C:\\\\work\\\\win-tiler\\\\build-run.bat build --Debug)",
       "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\build-run.bat build --Debug\")",
       "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\\\\win-tiler.exe --help\")",
-      "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\\\\win-tiler.exe --unknown\")"
+      "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\\\\win-tiler.exe --unknown\")",
+      "WebSearch"
     ]
   }
 }
