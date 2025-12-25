@@ -185,6 +185,22 @@ void runUiTestMonitor(const GlobalOptions& globalOptions) {
   runRaylibUIMultiCluster(infos);
 }
 
+void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
+  while (true) {
+    auto monitors = winapi::get_monitors();
+    for (size_t i = 0; i < monitors.size(); ++i) {
+      auto hwnds = winapi::get_hwnds_for_monitor(i, ignoreOptions);
+      spdlog::info("--- Monitor {} ({} windows) ---", i, hwnds.size());
+      for (auto hwnd : hwnds) {
+        auto info = winapi::get_window_info(hwnd);
+        spdlog::info("  HWND: {}, PID: {}, Process: {}, Title: {}", info.handle,
+                     info.pid.value_or(0), info.processName, info.title);
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+}
+
 void runUiTestMulti(const UiTestMultiCommand& cmd) {
   std::vector<multi_cell_logic::ClusterInitInfo> infos;
 
@@ -232,6 +248,7 @@ int main(int argc, char* argv[]) {
             [&](const LoopTestCommand&) { runLoopTestMode(globalOptions); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
+            [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
         },
         *result.args.command);
     return 0;

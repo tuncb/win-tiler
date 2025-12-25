@@ -224,6 +224,23 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
   return hwnds;
 }
 
+WindowInfo get_window_info(HWND_T hwnd) {
+  WindowInfo info;
+  info.handle = hwnd;
+
+  char title[256];
+  if (GetWindowTextA((HWND)hwnd, title, sizeof(title)) > 0) {
+    info.title = title;
+  }
+
+  info.pid = get_window_pid(hwnd);
+  if (info.pid.has_value()) {
+    info.processName = get_process_name_from_pid(info.pid.value());
+  }
+
+  return info;
+}
+
 HWND_T get_foreground_window() {
   return reinterpret_cast<HWND_T>(GetForegroundWindow());
 }

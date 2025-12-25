@@ -27,6 +27,8 @@ struct UiTestMultiCommand {
   std::vector<ClusterDef> clusters;  // Empty = use defaults
 };
 
+struct TrackWindowsCommand {};
+
 // Variant holding all possible commands
 using Command = std::variant<HelpCommand,
                              ApplyCommand,
@@ -34,7 +36,8 @@ using Command = std::variant<HelpCommand,
                              LoopCommand,
                              LoopTestCommand,
                              UiTestMonitorCommand,
-                             UiTestMultiCommand>;
+                             UiTestMultiCommand,
+                             TrackWindowsCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

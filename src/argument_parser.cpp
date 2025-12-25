@@ -115,6 +115,8 @@ ParseResult parseArgs(int argc, char* argv[]) {
       }
 
       args.command = multiCmd;
+    } else if (cmd == "track-windows") {
+      args.command = TrackWindowsCommand{};
     } else {
       return makeError("Unknown command: " + cmd);
     }
@@ -138,6 +140,7 @@ void printUsage() {
             << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
             << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"
+            << "  track-windows           Track and log windows per monitor in a loop\n"
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
