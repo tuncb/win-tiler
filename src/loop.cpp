@@ -20,9 +20,8 @@ auto timed(const char* name, F&& func) {
   auto start = std::chrono::high_resolution_clock::now();
   auto result = func();
   auto end = std::chrono::high_resolution_clock::now();
-  spdlog::trace(
-      "{}: {}us", name,
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+  spdlog::trace("{}: {}us", name,
+                std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
   return result;
 }
 
@@ -32,24 +31,25 @@ void timedVoid(const char* name, F&& func) {
   auto start = std::chrono::high_resolution_clock::now();
   func();
   auto end = std::chrono::high_resolution_clock::now();
-  spdlog::trace(
-      "{}: {}us", name,
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+  spdlog::trace("{}: {}us", name,
+                std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 }
 
 // Hotkey IDs for vim-style navigation
-constexpr int HOTKEY_ID_LEFT = 1;   // Win+Shift+H
-constexpr int HOTKEY_ID_DOWN = 2;   // Win+Shift+J
-constexpr int HOTKEY_ID_UP = 3;     // Win+Shift+K
-constexpr int HOTKEY_ID_RIGHT = 4;  // Win+Shift+L
+constexpr int HOTKEY_ID_LEFT = 1;         // Win+Shift+H
+constexpr int HOTKEY_ID_DOWN = 2;         // Win+Shift+J
+constexpr int HOTKEY_ID_UP = 3;           // Win+Shift+K
+constexpr int HOTKEY_ID_RIGHT = 4;        // Win+Shift+L
+constexpr int HOTKEY_ID_TOGGLE_SPLIT = 5; // Win+Shift+y
 
 bool registerNavigationHotkeys() {
   auto hotkeyLeft = winapi::create_hotkey("super+shift+h", HOTKEY_ID_LEFT);
   auto hotkeyDown = winapi::create_hotkey("super+shift+j", HOTKEY_ID_DOWN);
   auto hotkeyUp = winapi::create_hotkey("super+shift+k", HOTKEY_ID_UP);
   auto hotkeyRight = winapi::create_hotkey("super+shift+l", HOTKEY_ID_RIGHT);
+  auto hotkeyToggleSplit = winapi::create_hotkey("super+shift+y", HOTKEY_ID_TOGGLE_SPLIT);
 
-  if (!hotkeyLeft || !hotkeyDown || !hotkeyUp || !hotkeyRight) {
+  if (!hotkeyLeft || !hotkeyDown || !hotkeyUp || !hotkeyRight || !hotkeyToggleSplit) {
     spdlog::error("Failed to create hotkey info");
     return false;
   }
@@ -71,9 +71,13 @@ bool registerNavigationHotkeys() {
     spdlog::error("Failed to register hotkey Win+Shift+L");
     success = false;
   }
+  if (!winapi::register_hotkey(*hotkeyToggleSplit)) {
+    spdlog::error("Failed to register hotkey Win+Shift+T");
+    success = false;
+  }
 
   if (success) {
-    spdlog::info("Registered navigation hotkeys: Win+Shift+H/J/K/L");
+    spdlog::info("Registered navigation hotkeys: Win+Shift+H/J/K/L/T");
   }
 
   return success;
@@ -84,21 +88,22 @@ void unregisterNavigationHotkeys() {
   winapi::unregister_hotkey(HOTKEY_ID_DOWN);
   winapi::unregister_hotkey(HOTKEY_ID_UP);
   winapi::unregister_hotkey(HOTKEY_ID_RIGHT);
+  winapi::unregister_hotkey(HOTKEY_ID_TOGGLE_SPLIT);
 }
 
 // Convert hotkey ID to direction
 std::optional<cell_logic::Direction> hotkeyIdToDirection(int hotkeyId) {
   switch (hotkeyId) {
-    case HOTKEY_ID_LEFT:
-      return cell_logic::Direction::Left;
-    case HOTKEY_ID_DOWN:
-      return cell_logic::Direction::Down;
-    case HOTKEY_ID_UP:
-      return cell_logic::Direction::Up;
-    case HOTKEY_ID_RIGHT:
-      return cell_logic::Direction::Right;
-    default:
-      return std::nullopt;
+  case HOTKEY_ID_LEFT:
+    return cell_logic::Direction::Left;
+  case HOTKEY_ID_DOWN:
+    return cell_logic::Direction::Down;
+  case HOTKEY_ID_UP:
+    return cell_logic::Direction::Up;
+  case HOTKEY_ID_RIGHT:
+    return cell_logic::Direction::Right;
+  default:
+    return std::nullopt;
   }
 }
 
@@ -237,7 +242,7 @@ bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd)
   return false;
 }
 
-}  // namespace
+} // namespace
 
 void runLoopTestMode() {
   // 1. Build initial state (like computeTileLayout)
@@ -361,9 +366,8 @@ void runLoopMode() {
     return result;
   });
 
-  auto system = timed("createSystem", [&clusterInfos] {
-    return multi_cell_logic::createSystem(clusterInfos);
-  });
+  auto system = timed("createSystem",
+                      [&clusterInfos] { return multi_cell_logic::createSystem(clusterInfos); });
 
   auto initEnd = std::chrono::high_resolution_clock::now();
   spdlog::trace("total initialization: {}us",
@@ -392,13 +396,16 @@ void runLoopMode() {
     if (auto hotkeyId = winapi::check_keyboard_action()) {
       if (auto dir = hotkeyIdToDirection(*hotkeyId)) {
         handleKeyboardNavigation(system, *dir);
+      } else if (*hotkeyId == HOTKEY_ID_TOGGLE_SPLIT) {
+        if (multi_cell_logic::toggleSelectedSplitDir(system)) {
+          spdlog::trace("Toggled split direction for selected cell");
+        }
       }
     }
 
     // Re-gather window state
-    auto currentState = timed("gatherCurrentWindowState", [] {
-      return gatherCurrentWindowState();
-    });
+    auto currentState =
+        timed("gatherCurrentWindowState", [] { return gatherCurrentWindowState(); });
 
     // Update title lookup for any new windows
     timedVoid("update title lookup", [&hwndToTitle] {
@@ -422,7 +429,7 @@ void runLoopMode() {
     if (foregroundHwnd != nullptr && isHwndInSystem(system, foregroundHwnd)) {
       auto cursorPosOpt = winapi::get_cursor_pos();
       if (!cursorPosOpt.has_value()) {
-        continue;  // Skip this iteration if cursor pos unavailable
+        continue; // Skip this iteration if cursor pos unavailable
       }
       float cursorX = static_cast<float>(cursorPosOpt->x);
       float cursorY = static_cast<float>(cursorPosOpt->y);
@@ -491,4 +498,4 @@ void runLoopMode() {
   }
 }
 
-}  // namespace wintiler
+} // namespace wintiler
