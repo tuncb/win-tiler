@@ -127,6 +127,12 @@ WriteResult write_options_toml(
     keyboard.insert("bindings", bindings);
     root.insert("keyboard", keyboard);
 
+    // Build gap section
+    toml::table gap;
+    gap.insert("horizontal", options.gapOptions.horizontal);
+    gap.insert("vertical", options.gapOptions.vertical);
+    root.insert("gap", gap);
+
     // Write to file
     std::ofstream file(filepath);
     if (!file) {
@@ -201,6 +207,16 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
             }
           }
         }
+      }
+    }
+
+    // Parse gap section
+    if (auto gap = tbl["gap"].as_table()) {
+      if (auto horizontal = (*gap)["horizontal"].as_floating_point()) {
+        options.gapOptions.horizontal = static_cast<float>(horizontal->get());
+      }
+      if (auto vertical = (*gap)["vertical"].as_floating_point()) {
+        options.gapOptions.vertical = static_cast<float>(vertical->get());
       }
     }
 

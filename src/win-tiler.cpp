@@ -52,7 +52,8 @@ struct TileResult {
   size_t monitorIndex;
 };
 
-std::vector<TileResult> computeTileLayout(const IgnoreOptions& ignoreOptions) {
+std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
+  const auto& ignoreOptions = globalOptions.ignoreOptions;
   std::vector<TileResult> results;
   auto monitors = winapi::get_monitors();
 
@@ -86,6 +87,8 @@ std::vector<TileResult> computeTileLayout(const IgnoreOptions& ignoreOptions) {
 
   // Create multi-cluster system
   auto system = multi_cell_logic::createSystem(clusterInfos);
+  system.gapHorizontal = globalOptions.gapOptions.horizontal;
+  system.gapVertical = globalOptions.gapOptions.vertical;
 
   // Collect tile results from all clusters
   for (const auto& pc : system.clusters) {
@@ -122,16 +125,16 @@ std::vector<TileResult> computeTileLayout(const IgnoreOptions& ignoreOptions) {
   return results;
 }
 
-void runApplyMode(const IgnoreOptions& ignoreOptions) {
-  auto tiles = computeTileLayout(ignoreOptions);
+void runApplyMode(const GlobalOptions& globalOptions) {
+  auto tiles = computeTileLayout(globalOptions);
   for (const auto& tile : tiles) {
     winapi::TileInfo tileInfo{tile.hwnd, tile.position};
     winapi::update_window_position(tileInfo);
   }
 }
 
-void runApplyTestMode(const IgnoreOptions& ignoreOptions) {
-  auto tiles = computeTileLayout(ignoreOptions);
+void runApplyTestMode(const GlobalOptions& globalOptions) {
+  auto tiles = computeTileLayout(globalOptions);
 
   if (tiles.empty()) {
     spdlog::info("No windows to tile.");
@@ -199,7 +202,7 @@ void runUiTestMonitor(const GlobalOptions& globalOptions) {
   }
 
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
-  runRaylibUIMultiCluster(infos);
+  runRaylibUIMultiCluster(infos, globalOptions.gapOptions);
 }
 
 void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
@@ -287,8 +290,8 @@ int main(int argc, char* argv[]) {
     std::visit(
         overloaded{
             [](const HelpCommand&) { printUsage(); },
-            [&](const ApplyCommand&) { runApplyMode(globalOptions.ignoreOptions); },
-            [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions.ignoreOptions); },
+            [&](const ApplyCommand&) { runApplyMode(globalOptions); },
+            [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions); },
             [&](const LoopCommand&) { runLoopMode(globalOptions); },
             [&](const LoopTestCommand&) { runLoopTestMode(globalOptions); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },

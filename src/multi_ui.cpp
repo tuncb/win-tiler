@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "raylib.h"
@@ -197,9 +198,14 @@ Color getClusterColor(multi_cell_logic::ClusterId id) {
 
 } // namespace
 
-void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo>& infos) {
+void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo>& infos,
+                              std::optional<GapOptions> gapOptions) {
   MultiClusterAppState appState;
   appState.system = multi_cell_logic::createSystem(infos);
+  if (gapOptions.has_value()) {
+    appState.system.gapHorizontal = gapOptions->horizontal;
+    appState.system.gapVertical = gapOptions->vertical;
+  }
 
   // Set nextProcessId to avoid collisions with any pre-existing leaf IDs
   size_t nextProcessId = CELL_ID_START;

@@ -47,10 +47,17 @@ struct KeyboardOptions {
   std::vector<HotkeyBinding> bindings;
 };
 
+// Gap configuration for window spacing
+struct GapOptions {
+  float horizontal = 10.0f;
+  float vertical = 10.0f;
+};
+
 // Global options container
 struct GlobalOptions {
   IgnoreOptions ignoreOptions;
   KeyboardOptions keyboardOptions;
+  GapOptions gapOptions;
 };
 
 // Get default global options

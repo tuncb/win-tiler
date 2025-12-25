@@ -327,6 +327,8 @@ void runLoopTestMode(const GlobalOptions& options) {
   }
 
   auto system = multi_cell_logic::createSystem(clusterInfos);
+  system.gapHorizontal = options.gapOptions.horizontal;
+  system.gapVertical = options.gapOptions.vertical;
 
   // 2. Print initial layout
   spdlog::info("=== Initial Tile Layout ===");
@@ -396,6 +398,8 @@ void runLoopMode(const GlobalOptions& options) {
 
   auto system = timed("createSystem",
                       [&clusterInfos] { return multi_cell_logic::createSystem(clusterInfos); });
+  system.gapHorizontal = options.gapOptions.horizontal;
+  system.gapVertical = options.gapOptions.vertical;
 
   auto initEnd = std::chrono::high_resolution_clock::now();
   spdlog::trace("total initialization: {}us",
