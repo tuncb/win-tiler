@@ -14,6 +14,29 @@ namespace wintiler {
 
 namespace {
 
+// Helper to time a function and log its duration
+template <typename F>
+auto timed(const char* name, F&& func) {
+  auto start = std::chrono::high_resolution_clock::now();
+  auto result = func();
+  auto end = std::chrono::high_resolution_clock::now();
+  spdlog::trace(
+      "{}: {}us", name,
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+  return result;
+}
+
+// Helper for void functions
+template <typename F>
+void timedVoid(const char* name, F&& func) {
+  auto start = std::chrono::high_resolution_clock::now();
+  func();
+  auto end = std::chrono::high_resolution_clock::now();
+  spdlog::trace(
+      "{}: {}us", name,
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+}
+
 // Hotkey IDs for vim-style navigation
 constexpr int HOTKEY_ID_LEFT = 1;   // Win+Shift+H
 constexpr int HOTKEY_ID_DOWN = 2;   // Win+Shift+J
@@ -305,55 +328,42 @@ void runLoopMode() {
   auto initStart = std::chrono::high_resolution_clock::now();
 
   // 1. Build initial state (like computeTileLayout)
-  auto monitorsStart = std::chrono::high_resolution_clock::now();
-  auto monitors = winapi::get_monitors();
-  auto monitorsEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace(
-      "get_monitors: {}us",
-      std::chrono::duration_cast<std::chrono::microseconds>(monitorsEnd - monitorsStart).count());
+  auto monitors = timed("get_monitors", [] { return winapi::get_monitors(); });
 
   // Build hwnd -> title lookup
-  auto windowDataStart = std::chrono::high_resolution_clock::now();
-  auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
-  std::unordered_map<size_t, std::string> hwndToTitle;
-  for (const auto& info : windowInfos) {
-    hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
-  }
-  auto windowDataEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace(
-      "gather_raw_window_data + build lookup: {}us",
-      std::chrono::duration_cast<std::chrono::microseconds>(windowDataEnd - windowDataStart)
-          .count());
+  auto hwndToTitle = timed("gather_raw_window_data + build lookup", [] {
+    auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+    std::unordered_map<size_t, std::string> result;
+    for (const auto& info : windowInfos) {
+      result[reinterpret_cast<size_t>(info.handle)] = info.title;
+    }
+    return result;
+  });
 
   // Create cluster init info
-  auto clusterInfoStart = std::chrono::high_resolution_clock::now();
-  std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
-  for (size_t i = 0; i < monitors.size(); ++i) {
-    const auto& monitor = monitors[i];
-    float x = static_cast<float>(monitor.workArea.left);
-    float y = static_cast<float>(monitor.workArea.top);
-    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+  auto clusterInfos = timed("build cluster infos", [&monitors] {
+    std::vector<multi_cell_logic::ClusterInitInfo> result;
+    for (size_t i = 0; i < monitors.size(); ++i) {
+      const auto& monitor = monitors[i];
+      float x = static_cast<float>(monitor.workArea.left);
+      float y = static_cast<float>(monitor.workArea.top);
+      float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
+      float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
-    auto hwnds = winapi::get_hwnds_for_monitor(i);
-    std::vector<size_t> cellIds;
-    for (auto hwnd : hwnds) {
-      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+      auto hwnds = winapi::get_hwnds_for_monitor(i);
+      std::vector<size_t> cellIds;
+      for (auto hwnd : hwnds) {
+        cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+      }
+
+      result.push_back({i, x, y, w, h, cellIds});
     }
+    return result;
+  });
 
-    clusterInfos.push_back({i, x, y, w, h, cellIds});
-  }
-  auto clusterInfoEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace("build cluster infos: {}us", std::chrono::duration_cast<std::chrono::microseconds>(
-                                                 clusterInfoEnd - clusterInfoStart)
-                                                 .count());
-
-  auto createSystemStart = std::chrono::high_resolution_clock::now();
-  auto system = multi_cell_logic::createSystem(clusterInfos);
-  auto createSystemEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace("createSystem: {}us", std::chrono::duration_cast<std::chrono::microseconds>(
-                                          createSystemEnd - createSystemStart)
-                                          .count());
+  auto system = timed("createSystem", [&clusterInfos] {
+    return multi_cell_logic::createSystem(clusterInfos);
+  });
 
   auto initEnd = std::chrono::high_resolution_clock::now();
   spdlog::trace("total initialization: {}us",
@@ -363,12 +373,7 @@ void runLoopMode() {
   spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system, hwndToTitle);
 
-  auto applyStart = std::chrono::high_resolution_clock::now();
-  applyTileLayout(system);
-  auto applyEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace(
-      "initial applyTileLayout: {}us",
-      std::chrono::duration_cast<std::chrono::microseconds>(applyEnd - applyStart).count());
+  timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
 
   // Register keyboard hotkeys
   if (!registerNavigationHotkeys()) {
@@ -391,36 +396,25 @@ void runLoopMode() {
     }
 
     // Re-gather window state
-    auto gatherStateStart = std::chrono::high_resolution_clock::now();
-    auto currentState = gatherCurrentWindowState();
-    auto gatherStateEnd = std::chrono::high_resolution_clock::now();
-    spdlog::trace(
-        "gatherCurrentWindowState: {}us",
-        std::chrono::duration_cast<std::chrono::microseconds>(gatherStateEnd - gatherStateStart)
-            .count());
+    auto currentState = timed("gatherCurrentWindowState", [] {
+      return gatherCurrentWindowState();
+    });
 
     // Update title lookup for any new windows
-    auto titleLookupStart = std::chrono::high_resolution_clock::now();
-    auto newWindowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
-    for (const auto& info : newWindowInfos) {
-      size_t key = reinterpret_cast<size_t>(info.handle);
-      if (hwndToTitle.find(key) == hwndToTitle.end()) {
-        hwndToTitle[key] = info.title;
+    timedVoid("update title lookup", [&hwndToTitle] {
+      auto newWindowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+      for (const auto& info : newWindowInfos) {
+        size_t key = reinterpret_cast<size_t>(info.handle);
+        if (hwndToTitle.find(key) == hwndToTitle.end()) {
+          hwndToTitle[key] = info.title;
+        }
       }
-    }
-    auto titleLookupEnd = std::chrono::high_resolution_clock::now();
-    spdlog::trace(
-        "update title lookup: {}us",
-        std::chrono::duration_cast<std::chrono::microseconds>(titleLookupEnd - titleLookupStart)
-            .count());
+    });
 
     // Use updateSystem to sync
-    auto updateSystemStart = std::chrono::high_resolution_clock::now();
-    auto result = multi_cell_logic::updateSystem(system, currentState, std::nullopt);
-    auto updateSystemEnd = std::chrono::high_resolution_clock::now();
-    spdlog::trace("updateSystem: {}us", std::chrono::duration_cast<std::chrono::microseconds>(
-                                            updateSystemEnd - updateSystemStart)
-                                            .count());
+    auto result = timed("updateSystem", [&system, &currentState] {
+      return multi_cell_logic::updateSystem(system, currentState, std::nullopt);
+    });
 
     // === Foreground/Selection Update Logic ===
     auto foregroundHwnd = winapi::get_foreground_window();
@@ -488,12 +482,7 @@ void runLoopMode() {
       printTileLayout(system, hwndToTitle);
     }
 
-    auto applyLayoutStart = std::chrono::high_resolution_clock::now();
-    applyTileLayout(system);
-    auto applyLayoutEnd = std::chrono::high_resolution_clock::now();
-    spdlog::trace("applyTileLayout: {}us", std::chrono::duration_cast<std::chrono::microseconds>(
-                                               applyLayoutEnd - applyLayoutStart)
-                                               .count());
+    timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
 
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(
