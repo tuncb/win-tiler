@@ -1318,6 +1318,14 @@ UpdateResult updateSystem(
       }
     }
 
+    // Determine starting split index for this cluster (prefer selection)
+    int splitFromIndex = -1;
+    if (system.selection.has_value() &&
+        system.selection->clusterId == pc->id &&
+        cell_logic::isLeaf(pc->cluster, system.selection->cellIndex)) {
+      splitFromIndex = system.selection->cellIndex;
+    }
+
     // Handle additions
     for (size_t leafId : toAdd) {
       // Find an existing leaf to split, or create root if empty
@@ -1326,8 +1334,12 @@ UpdateResult updateSystem(
       if (pc->cluster.cells.empty()) {
         // Cluster is empty - will create root with splitLeaf(-1)
         currentSelection = -1;
+      } else if (splitFromIndex >= 0 &&
+                 cell_logic::isLeaf(pc->cluster, splitFromIndex)) {
+        // Use tracked split point (follows selection)
+        currentSelection = splitFromIndex;
       } else {
-        // Find the first available leaf
+        // Fallback: find the first available leaf
         for (int i = 0; i < static_cast<int>(pc->cluster.cells.size()); ++i) {
           if (cell_logic::isLeaf(pc->cluster, i)) {
             currentSelection = i;
@@ -1355,6 +1367,10 @@ UpdateResult updateSystem(
         } else {
           // A split occurred - find the second child and override its leafId
           int firstChildIdx = resultOpt->newSelectionIndex;
+
+          // Update splitFromIndex to follow the first child for subsequent additions
+          splitFromIndex = firstChildIdx;
+
           cell_logic::Cell& firstChild =
               pc->cluster.cells[static_cast<size_t>(firstChildIdx)];
           if (firstChild.parent.has_value()) {
