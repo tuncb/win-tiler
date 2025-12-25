@@ -17,3 +17,9 @@ See winapi and multi_cell files for already implemented functionality.
 - refactor loop mode and loop test mode.
 
 -
+
+# Bugs
+
+- New apps dong split the selected window.
+
+- Still get busy arrow when moving with keyboard sometimes.
