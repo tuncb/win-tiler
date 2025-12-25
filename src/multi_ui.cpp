@@ -6,7 +6,6 @@
 #include <cmath>
 #include <limits>
 #include <string>
-#include <unordered_map>
 
 #include "raylib.h"
 
@@ -40,8 +39,6 @@ struct ViewTransform {
 
 struct MultiClusterAppState {
   multi_cell_logic::System system;
-  std::unordered_map<size_t, size_t> processToLeafIdMap;
-  std::unordered_map<size_t, size_t> leafIdToProcessMap;
 };
 
 ViewTransform computeViewTransform(const multi_cell_logic::System& system, float screenW,
@@ -131,19 +128,37 @@ void centerMouseOnSelection(const MultiClusterAppState& appState, const ViewTran
   }
 }
 
-void addNewProcessMulti(MultiClusterAppState& appState, size_t& nextProcessId) {
-  auto leafIdOpt = multi_cell_logic::splitSelectedLeaf(appState.system);
-  if (leafIdOpt.has_value()) {
-    size_t leafId = *leafIdOpt;
-    size_t processId = nextProcessId++;
-
-    appState.processToLeafIdMap[processId] = leafId;
-    appState.leafIdToProcessMap[leafId] = processId;
+std::vector<multi_cell_logic::ClusterCellIds> buildCurrentState(const multi_cell_logic::System& system) {
+  std::vector<multi_cell_logic::ClusterCellIds> state;
+  for (const auto& pc : system.clusters) {
+    state.push_back({pc.id, multi_cell_logic::getClusterLeafIds(pc.cluster)});
   }
+  return state;
+}
+
+void addNewProcessMulti(MultiClusterAppState& appState, size_t& nextProcessId) {
+  if (!appState.system.selection.has_value()) {
+    return;
+  }
+
+  auto selectedClusterId = appState.system.selection->clusterId;
+  auto state = buildCurrentState(appState.system);
+
+  // Add the new process ID (which becomes the leaf ID) to the selected cluster
+  size_t newLeafId = nextProcessId++;
+  for (auto& clusterCellIds : state) {
+    if (clusterCellIds.clusterId == selectedClusterId) {
+      clusterCellIds.leafIds.push_back(newLeafId);
+      break;
+    }
+  }
+
+  // Update system and select the newly added cell
+  multi_cell_logic::updateSystem(appState.system, state,
+                                 std::make_pair(selectedClusterId, newLeafId));
 }
 
 void deleteSelectedProcessMulti(MultiClusterAppState& appState) {
-  // Find the leafId of the selected cell before deletion
   auto selected = multi_cell_logic::getSelectedCell(appState.system);
   if (!selected.has_value()) {
     return;
@@ -156,18 +171,24 @@ void deleteSelectedProcessMulti(MultiClusterAppState& appState) {
   }
 
   const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
-  std::optional<size_t> leafIdToRemove = cell.leafId;
+  if (!cell.leafId.has_value()) {
+    return;
+  }
 
-  if (multi_cell_logic::deleteSelectedLeaf(appState.system)) {
-    if (leafIdToRemove.has_value()) {
-      auto it = appState.leafIdToProcessMap.find(*leafIdToRemove);
-      if (it != appState.leafIdToProcessMap.end()) {
-        size_t processId = it->second;
-        appState.processToLeafIdMap.erase(processId);
-        appState.leafIdToProcessMap.erase(it);
-      }
+  size_t leafIdToRemove = *cell.leafId;
+  auto state = buildCurrentState(appState.system);
+
+  // Remove the leaf ID from the appropriate cluster's list
+  for (auto& clusterCellIds : state) {
+    if (clusterCellIds.clusterId == clusterId) {
+      auto& ids = clusterCellIds.leafIds;
+      ids.erase(std::remove(ids.begin(), ids.end(), leafIdToRemove), ids.end());
+      break;
     }
   }
+
+  // Update system (selection will auto-update)
+  multi_cell_logic::updateSystem(appState.system, state, std::nullopt);
 }
 
 Color getClusterColor(multi_cell_logic::ClusterId id) {
@@ -180,16 +201,12 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
   MultiClusterAppState appState;
   appState.system = multi_cell_logic::createSystem(infos);
 
+  // Set nextProcessId to avoid collisions with any pre-existing leaf IDs
   size_t nextProcessId = CELL_ID_START;
-
-  // Build initial process mappings from any pre-created leaves
   for (const auto& pc : appState.system.clusters) {
     for (const auto& cell : pc.cluster.cells) {
       if (!cell.isDead && cell.leafId.has_value()) {
-        size_t leafId = *cell.leafId;
-        size_t processId = nextProcessId++;
-        appState.processToLeafIdMap[processId] = leafId;
-        appState.leafIdToProcessMap[leafId] = processId;
+        nextProcessId = std::max(nextProcessId, *cell.leafId + 1);
       }
     }
   }
@@ -384,22 +401,18 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
 
         DrawRectangleLinesEx(screenRect, borderWidth, borderColor);
 
-        // Draw process ID if mapped
+        // Draw process ID (leafId is the process ID)
         if (cell.leafId.has_value()) {
-          auto it = appState.leafIdToProcessMap.find(*cell.leafId);
-          if (it != appState.leafIdToProcessMap.end()) {
-            size_t processId = it->second;
-            std::string labelText = "P:" + std::to_string(processId);
-            float fontSize = std::min(screenRect.width, screenRect.height) * 0.2f;
-            if (fontSize < 10.0f)
-              fontSize = 10.0f;
+          std::string labelText = "P:" + std::to_string(*cell.leafId);
+          float fontSize = std::min(screenRect.width, screenRect.height) * 0.2f;
+          if (fontSize < 10.0f)
+            fontSize = 10.0f;
 
-            int textWidth = MeasureText(labelText.c_str(), (int)fontSize);
-            int textX = (int)(screenRect.x + (screenRect.width - textWidth) / 2);
-            int textY = (int)(screenRect.y + (screenRect.height - fontSize) / 2);
+          int textWidth = MeasureText(labelText.c_str(), (int)fontSize);
+          int textX = (int)(screenRect.x + (screenRect.width - textWidth) / 2);
+          int textY = (int)(screenRect.y + (screenRect.height - fontSize) / 2);
 
-            DrawText(labelText.c_str(), textX, textY, (int)fontSize, DARKGRAY);
-          }
+          DrawText(labelText.c_str(), textX, textY, (int)fontSize, DARKGRAY);
         }
       }
     }
