@@ -2,7 +2,19 @@
 
 - hardening especially for loop.cpp
 
-- configuration file loading and initing
+- code reviews for each system
+
+- Repurpose commands: See what is not being used.
+
+- Hardening for unit tests in cell logic: also combine cell namespaces.
+
+- Transparent window idea.
+
+- Configuration for visualization settings.
+
+- Auto update on configuration file save.
+
+
 
 # bugs
 
@@ -42,3 +54,5 @@ super + shift + e: exchange the currently selected cell with the cell that is se
 super + shift + m: move the cell selected to the operation using the currently selected cell as target, similar to m key in @src/multi_ui.xpp
 
 - a loop action where we only list the current windows that passed the filter.
+
+-- configuration file loading and initing
