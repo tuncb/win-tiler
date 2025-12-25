@@ -12,6 +12,7 @@
 #include "loop.h"
 #include "multi_cells.h"
 #include "multi_ui.h"
+#include "options.h"
 #include "process.h"
 #include "winapi.h"
 
@@ -26,12 +27,12 @@ struct TileResult {
   size_t monitorIndex;
 };
 
-std::vector<TileResult> computeTileLayout() {
+std::vector<TileResult> computeTileLayout(const IgnoreOptions& ignoreOptions) {
   std::vector<TileResult> results;
   auto monitors = winapi::get_monitors();
 
   // Build window title lookup
-  auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+  auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
   std::unordered_map<size_t, std::string> hwndToTitle;
   for (const auto& info : windowInfos) {
     hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
@@ -49,7 +50,7 @@ std::vector<TileResult> computeTileLayout() {
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
     // Get HWNDs for this monitor - these become the leafIds
-    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
+    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, ignoreOptions);
     std::vector<size_t> cellIds;
     for (auto hwnd : hwnds) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
@@ -96,16 +97,16 @@ std::vector<TileResult> computeTileLayout() {
   return results;
 }
 
-void runApplyMode() {
-  auto tiles = computeTileLayout();
+void runApplyMode(const IgnoreOptions& ignoreOptions) {
+  auto tiles = computeTileLayout(ignoreOptions);
   for (const auto& tile : tiles) {
     winapi::TileInfo tileInfo{tile.hwnd, tile.position};
     winapi::update_window_position(tileInfo);
   }
 }
 
-void runApplyTestMode() {
-  auto tiles = computeTileLayout();
+void runApplyTestMode(const IgnoreOptions& ignoreOptions) {
+  auto tiles = computeTileLayout(ignoreOptions);
 
   if (tiles.empty()) {
     spdlog::info("No windows to tile.");
@@ -131,6 +132,9 @@ void runApplyTestMode() {
 int main(int argc, char* argv[]) {
   // Flush spdlog on info-level messages to ensure immediate output
   spdlog::flush_on(spdlog::level::info);
+
+  // Get default global options
+  auto globalOptions = get_default_global_options();
 
   // Parse optional logging level argument (must be first)
   int argStart = 1;
@@ -159,22 +163,22 @@ int main(int argc, char* argv[]) {
     std::string arg = argv[i];
 
     if (arg == "apply") {
-      runApplyMode();
+      runApplyMode(globalOptions.ignoreOptions);
       return 0;
     }
 
     if (arg == "apply-test") {
-      runApplyTestMode();
+      runApplyTestMode(globalOptions.ignoreOptions);
       return 0;
     }
 
     if (arg == "loop-test") {
-      runLoopTestMode();
+      runLoopTestMode(globalOptions);
       return 0;
     }
 
     if (arg == "loop") {
-      runLoopMode();
+      runLoopMode(globalOptions);
       return 0;
     }
 
@@ -192,7 +196,7 @@ int main(int argc, char* argv[]) {
         float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
         // Get HWNDs for this monitor and convert to cell IDs
-        auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
+        auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, globalOptions.ignoreOptions);
         std::vector<size_t> cellIds;
         for (auto hwnd : hwnds) {
           cellIds.push_back(reinterpret_cast<size_t>(hwnd));
@@ -201,7 +205,7 @@ int main(int argc, char* argv[]) {
         infos.push_back({monitorIndex, x, y, w, h, cellIds});
       }
 
-      winapi::log_windows_per_monitor();
+      winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
       runRaylibUIMultiCluster(infos);
       return 0;
     }
@@ -238,7 +242,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  winapi::log_windows_per_monitor();
+  winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
   return 0;
 }
 

@@ -35,65 +35,48 @@ void timedVoid(const char* name, F&& func) {
                 std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 }
 
-// Hotkey IDs for vim-style navigation
-constexpr int HOTKEY_ID_LEFT = 1;          // Win+Shift+H
-constexpr int HOTKEY_ID_DOWN = 2;          // Win+Shift+J
-constexpr int HOTKEY_ID_UP = 3;            // Win+Shift+K
-constexpr int HOTKEY_ID_RIGHT = 4;         // Win+Shift+L
-constexpr int HOTKEY_ID_TOGGLE_SPLIT = 5;  // Win+Shift+Y
-constexpr int HOTKEY_ID_EXIT = 6;          // Win+Shift+ESC
-constexpr int HOTKEY_ID_TOGGLE_GLOBAL = 7; // Win+Shift+;
-constexpr int HOTKEY_ID_STORE_CELL = 8;    // Win+Shift+[
-constexpr int HOTKEY_ID_CLEAR_STORED = 9;  // Win+Shift+]
-constexpr int HOTKEY_ID_EXCHANGE = 10;     // Win+Shift+,
-constexpr int HOTKEY_ID_MOVE = 11;         // Win+Shift+.
+// Convert HotkeyAction to integer ID for Windows hotkey registration
+int hotkeyActionToId(HotkeyAction action) {
+  return static_cast<int>(action) + 1;  // Start from 1 to avoid 0
+}
 
-void registerHotkey(const std::string& text, int id) {
-  auto hotkey = winapi::create_hotkey(text, id);
-  if (hotkey) {
-    winapi::register_hotkey(*hotkey);
+// Convert integer ID back to HotkeyAction
+std::optional<HotkeyAction> idToHotkeyAction(int id) {
+  int index = id - 1;
+  if (index >= 0 && index <= static_cast<int>(HotkeyAction::Move)) {
+    return static_cast<HotkeyAction>(index);
+  }
+  return std::nullopt;
+}
+
+void registerNavigationHotkeys(const KeyboardOptions& keyboardOptions) {
+  for (const auto& binding : keyboardOptions.bindings) {
+    int id = hotkeyActionToId(binding.action);
+    auto hotkey = winapi::create_hotkey(binding.hotkey, id);
+    if (hotkey) {
+      winapi::register_hotkey(*hotkey);
+    }
+  }
+  spdlog::info("Registered {} hotkeys", keyboardOptions.bindings.size());
+}
+
+void unregisterNavigationHotkeys(const KeyboardOptions& keyboardOptions) {
+  for (const auto& binding : keyboardOptions.bindings) {
+    int id = hotkeyActionToId(binding.action);
+    winapi::unregister_hotkey(id);
   }
 }
 
-void registerNavigationHotkeys() {
-  registerHotkey("super+shift+h", HOTKEY_ID_LEFT);
-  registerHotkey("super+shift+j", HOTKEY_ID_DOWN);
-  registerHotkey("super+shift+k", HOTKEY_ID_UP);
-  registerHotkey("super+shift+l", HOTKEY_ID_RIGHT);
-  registerHotkey("super+shift+y", HOTKEY_ID_TOGGLE_SPLIT);
-  registerHotkey("super+shift+escape", HOTKEY_ID_EXIT);
-  registerHotkey("super+shift+;", HOTKEY_ID_TOGGLE_GLOBAL);
-  registerHotkey("super+shift+[", HOTKEY_ID_STORE_CELL);
-  registerHotkey("super+shift+]", HOTKEY_ID_CLEAR_STORED);
-  registerHotkey("super+shift+,", HOTKEY_ID_EXCHANGE);
-  registerHotkey("super+shift+.", HOTKEY_ID_MOVE);
-  spdlog::info("Registered hotkeys: Win+Shift+H/J/K/L/Y/ESC/;/[/]/,/.");
-}
-
-void unregisterNavigationHotkeys() {
-  winapi::unregister_hotkey(HOTKEY_ID_LEFT);
-  winapi::unregister_hotkey(HOTKEY_ID_DOWN);
-  winapi::unregister_hotkey(HOTKEY_ID_UP);
-  winapi::unregister_hotkey(HOTKEY_ID_RIGHT);
-  winapi::unregister_hotkey(HOTKEY_ID_TOGGLE_SPLIT);
-  winapi::unregister_hotkey(HOTKEY_ID_EXIT);
-  winapi::unregister_hotkey(HOTKEY_ID_TOGGLE_GLOBAL);
-  winapi::unregister_hotkey(HOTKEY_ID_STORE_CELL);
-  winapi::unregister_hotkey(HOTKEY_ID_CLEAR_STORED);
-  winapi::unregister_hotkey(HOTKEY_ID_EXCHANGE);
-  winapi::unregister_hotkey(HOTKEY_ID_MOVE);
-}
-
-// Convert hotkey ID to direction
-std::optional<cell_logic::Direction> hotkeyIdToDirection(int hotkeyId) {
-  switch (hotkeyId) {
-  case HOTKEY_ID_LEFT:
+// Convert HotkeyAction to direction (for navigation actions)
+std::optional<cell_logic::Direction> hotkeyActionToDirection(HotkeyAction action) {
+  switch (action) {
+  case HotkeyAction::NavigateLeft:
     return cell_logic::Direction::Left;
-  case HOTKEY_ID_DOWN:
+  case HotkeyAction::NavigateDown:
     return cell_logic::Direction::Down;
-  case HOTKEY_ID_UP:
+  case HotkeyAction::NavigateUp:
     return cell_logic::Direction::Up;
-  case HOTKEY_ID_RIGHT:
+  case HotkeyAction::NavigateRight:
     return cell_logic::Direction::Right;
   default:
     return std::nullopt;
@@ -184,12 +167,13 @@ void printTileLayout(const multi_cell_logic::System& system,
 }
 
 // Helper: Gather current window state for all monitors
-std::vector<multi_cell_logic::ClusterCellIds> gatherCurrentWindowState() {
+std::vector<multi_cell_logic::ClusterCellIds> gatherCurrentWindowState(
+    const IgnoreOptions& ignoreOptions) {
   std::vector<multi_cell_logic::ClusterCellIds> result;
   auto monitors = winapi::get_monitors();
 
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex);
+    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, ignoreOptions);
     std::vector<size_t> cellIds;
     for (auto hwnd : hwnds) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
@@ -237,12 +221,14 @@ bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd)
 
 } // namespace
 
-void runLoopTestMode() {
+void runLoopTestMode(const GlobalOptions& options) {
+  const auto& ignoreOptions = options.ignoreOptions;
+
   // 1. Build initial state (like computeTileLayout)
   auto monitors = winapi::get_monitors();
 
   // Build hwnd -> title lookup
-  auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+  auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
   std::unordered_map<size_t, std::string> hwndToTitle;
   for (const auto& info : windowInfos) {
     hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
@@ -257,7 +243,7 @@ void runLoopTestMode() {
     float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
-    auto hwnds = winapi::get_hwnds_for_monitor(i);
+    auto hwnds = winapi::get_hwnds_for_monitor(i, ignoreOptions);
     std::vector<size_t> cellIds;
     for (auto hwnd : hwnds) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
@@ -279,10 +265,10 @@ void runLoopTestMode() {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Re-gather window state
-    auto currentState = gatherCurrentWindowState();
+    auto currentState = gatherCurrentWindowState(ignoreOptions);
 
     // Update title lookup for any new windows
-    auto newWindowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+    auto newWindowInfos = winapi::gather_raw_window_data(ignoreOptions);
     for (const auto& info : newWindowInfos) {
       size_t key = reinterpret_cast<size_t>(info.handle);
       if (hwndToTitle.find(key) == hwndToTitle.end()) {
@@ -322,15 +308,18 @@ void runLoopTestMode() {
   }
 }
 
-void runLoopMode() {
+void runLoopMode(const GlobalOptions& options) {
+  const auto& ignoreOptions = options.ignoreOptions;
+  const auto& keyboardOptions = options.keyboardOptions;
+
   auto initStart = std::chrono::high_resolution_clock::now();
 
   // 1. Build initial state (like computeTileLayout)
   auto monitors = timed("get_monitors", [] { return winapi::get_monitors(); });
 
   // Build hwnd -> title lookup
-  auto hwndToTitle = timed("gather_raw_window_data + build lookup", [] {
-    auto windowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+  auto hwndToTitle = timed("gather_raw_window_data + build lookup", [&ignoreOptions] {
+    auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
     std::unordered_map<size_t, std::string> result;
     for (const auto& info : windowInfos) {
       result[reinterpret_cast<size_t>(info.handle)] = info.title;
@@ -339,7 +328,7 @@ void runLoopMode() {
   });
 
   // Create cluster init info
-  auto clusterInfos = timed("build cluster infos", [&monitors] {
+  auto clusterInfos = timed("build cluster infos", [&monitors, &ignoreOptions] {
     std::vector<multi_cell_logic::ClusterInitInfo> result;
     for (size_t i = 0; i < monitors.size(); ++i) {
       const auto& monitor = monitors[i];
@@ -348,7 +337,7 @@ void runLoopMode() {
       float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
       float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
-      auto hwnds = winapi::get_hwnds_for_monitor(i);
+      auto hwnds = winapi::get_hwnds_for_monitor(i, ignoreOptions);
       std::vector<size_t> cellIds;
       for (auto hwnd : hwnds) {
         cellIds.push_back(reinterpret_cast<size_t>(hwnd));
@@ -373,7 +362,7 @@ void runLoopMode() {
   timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
 
   // Register keyboard hotkeys
-  registerNavigationHotkeys();
+  registerNavigationHotkeys(keyboardOptions);
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
@@ -388,16 +377,22 @@ void runLoopMode() {
 
     // Check for keyboard hotkeys
     if (auto hotkeyId = winapi::check_keyboard_action()) {
-      if (auto dir = hotkeyIdToDirection(*hotkeyId)) {
+      auto actionOpt = idToHotkeyAction(*hotkeyId);
+      if (!actionOpt.has_value()) {
+        continue;  // Unknown hotkey ID
+      }
+      HotkeyAction action = *actionOpt;
+
+      if (auto dir = hotkeyActionToDirection(action)) {
         handleKeyboardNavigation(system, *dir);
-      } else if (*hotkeyId == HOTKEY_ID_TOGGLE_SPLIT) {
+      } else if (action == HotkeyAction::ToggleSplit) {
         if (multi_cell_logic::toggleSelectedSplitDir(system)) {
           spdlog::info("Toggled split direction");
         }
-      } else if (*hotkeyId == HOTKEY_ID_EXIT) {
+      } else if (action == HotkeyAction::Exit) {
         spdlog::info("Exit hotkey pressed, shutting down...");
         break;
-      } else if (*hotkeyId == HOTKEY_ID_TOGGLE_GLOBAL) {
+      } else if (action == HotkeyAction::ToggleGlobal) {
         if (multi_cell_logic::toggleClusterGlobalSplitDir(system)) {
           // Get the current global split direction after toggle
           if (system.selection.has_value()) {
@@ -409,7 +404,7 @@ void runLoopMode() {
             }
           }
         }
-      } else if (*hotkeyId == HOTKEY_ID_STORE_CELL) {
+      } else if (action == HotkeyAction::StoreCell) {
         if (system.selection.has_value()) {
           const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
@@ -421,10 +416,10 @@ void runLoopMode() {
             }
           }
         }
-      } else if (*hotkeyId == HOTKEY_ID_CLEAR_STORED) {
+      } else if (action == HotkeyAction::ClearStored) {
         storedCell.reset();
         spdlog::info("Cleared stored cell");
-      } else if (*hotkeyId == HOTKEY_ID_EXCHANGE) {
+      } else if (action == HotkeyAction::Exchange) {
         if (storedCell.has_value() && system.selection.has_value()) {
           const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
@@ -440,7 +435,7 @@ void runLoopMode() {
             }
           }
         }
-      } else if (*hotkeyId == HOTKEY_ID_MOVE) {
+      } else if (action == HotkeyAction::Move) {
         if (storedCell.has_value() && system.selection.has_value()) {
           const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
@@ -460,11 +455,11 @@ void runLoopMode() {
 
     // Re-gather window state
     auto currentState =
-        timed("gatherCurrentWindowState", [] { return gatherCurrentWindowState(); });
+        timed("gatherCurrentWindowState", [&ignoreOptions] { return gatherCurrentWindowState(ignoreOptions); });
 
     // Update title lookup for any new windows
-    timedVoid("update title lookup", [&hwndToTitle] {
-      auto newWindowInfos = winapi::gather_raw_window_data(winapi::get_default_ignore_options());
+    timedVoid("update title lookup", [&hwndToTitle, &ignoreOptions] {
+      auto newWindowInfos = winapi::gather_raw_window_data(ignoreOptions);
       for (const auto& info : newWindowInfos) {
         size_t key = reinterpret_cast<size_t>(info.handle);
         if (hwndToTitle.find(key) == hwndToTitle.end()) {
@@ -573,7 +568,7 @@ void runLoopMode() {
   }
 
   // Cleanup hotkeys before exit
-  unregisterNavigationHotkeys();
+  unregisterNavigationHotkeys(keyboardOptions);
   spdlog::info("Hotkeys unregistered, exiting...");
 }
 

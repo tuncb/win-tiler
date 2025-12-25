@@ -1,8 +1,10 @@
 #pragma once
 
+#include "options.h"
+
 namespace wintiler {
 
-void runLoopMode();
-void runLoopTestMode();
+void runLoopMode(const GlobalOptions& options);
+void runLoopTestMode(const GlobalOptions& options);
 
 }  // namespace wintiler

@@ -100,7 +100,7 @@ std::vector<WindowInfo> get_windows_list() {
   return windows;
 }
 
-bool is_ignored(const IgnoreOptions& options, const WindowInfo& win) {
+bool is_ignored(const wintiler::IgnoreOptions& options, const WindowInfo& win) {
   // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
     if (win.processName == proc)
@@ -135,7 +135,7 @@ bool is_ignored(const IgnoreOptions& options, const WindowInfo& win) {
   return false;
 }
 
-std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_options) {
+std::vector<WindowInfo> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
   auto windows = get_windows_list();
   std::vector<WindowInfo> filtered_windows;
 
@@ -157,27 +157,10 @@ std::vector<WindowInfo> gather_raw_window_data(const IgnoreOptions& ignore_optio
   return filtered_windows;
 }
 
-IgnoreOptions get_default_ignore_options() {
-  IgnoreOptions options;
-  options.ignored_processes = {
-      "TextInputHost.exe",
-      "ApplicationFrameHost.exe",
-      "Microsoft.CmdPal.UI.exe",
-      "PowerToys.PowerLauncher.exe",
-  };
-  options.ignored_window_titles = {};
-  options.ignored_process_title_pairs = {{"SystemSettings.exe", "Settings"},
-                                         {"explorer.exe", "Program Manager"},
-                                         {"explorer.exe", "System tray overflow window."},
-                                         {"explorer.exe", "PopupHost"}};
-  options.small_window_barrier = SmallWindowBarrier{50, 50};
-  return options;
-}
-
-void log_windows_per_monitor(std::optional<size_t> monitor_index) {
+void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
+                             std::optional<size_t> monitor_index) {
   auto monitors = get_monitors();
-  auto options = get_default_ignore_options();
-  auto windows = gather_raw_window_data(options);
+  auto windows = gather_raw_window_data(ignore_options);
 
   if (monitor_index.has_value() && *monitor_index >= monitors.size()) {
     spdlog::error("Monitor index {} is out of bounds. Available monitors: 0-{}", *monitor_index,
@@ -219,7 +202,8 @@ void update_window_position(const TileInfo& tile_info) {
                tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index) {
+std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
+                                          const wintiler::IgnoreOptions& ignore_options) {
   std::vector<HWND_T> hwnds;
   auto monitors = get_monitors();
 
@@ -227,8 +211,7 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index) {
     return hwnds;
   }
 
-  auto options = get_default_ignore_options();
-  auto windows = gather_raw_window_data(options);
+  auto windows = gather_raw_window_data(ignore_options);
   const auto& monitor = monitors[monitor_index];
 
   for (const auto& win : windows) {
