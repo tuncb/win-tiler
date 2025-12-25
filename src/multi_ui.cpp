@@ -246,7 +246,7 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
 
     // Keyboard input
-    if (IsKeyPressed(KEY_T)) {
+    if (IsKeyPressed(KEY_Y)) {
       multi_cell_logic::toggleSelectedSplitDir(appState.system);
     }
 
@@ -288,8 +288,8 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       }
     }
 
-    // S - Store currently selected cell for operation
-    if (IsKeyPressed(KEY_S) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+    // [ - Store currently selected cell for operation
+    if (IsKeyPressed(KEY_LEFT_BRACKET)) {
       if (appState.system.selection.has_value()) {
         auto* pc =
             multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
@@ -302,13 +302,13 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       }
     }
 
-    // Shift+S - Clear stored cell
-    if (IsKeyPressed(KEY_S) && IsKeyDown(KEY_LEFT_SHIFT)) {
+    // ] - Clear stored cell
+    if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
       storedCell.reset();
     }
 
-    // M - Move selected cell to stored cell
-    if (IsKeyPressed(KEY_M)) {
+    // . - Move selected cell to stored cell
+    if (IsKeyPressed(KEY_PERIOD)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
         auto* pc =
             multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
@@ -326,8 +326,8 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       }
     }
 
-    // E - Exchange/swap selected cell with stored cell
-    if (IsKeyPressed(KEY_E)) {
+    // , - Exchange/swap selected cell with stored cell
+    if (IsKeyPressed(KEY_COMMA)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
         auto* pc =
             multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
