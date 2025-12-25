@@ -10,9 +10,9 @@
 namespace wintiler {
 
 // ============================================================================
-// cell_logic Implementation (formerly in cells.cpp)
+// Cell Logic Implementation
 // ============================================================================
-namespace cell_logic {
+namespace cells {
 
 CellCluster createInitialState(float width, float height) {
   CellCluster state{};
@@ -458,12 +458,9 @@ bool validateState(const CellCluster& state) {
   return ok;
 }
 
-} // namespace cell_logic
-
 // ============================================================================
-// multi_cell_logic Implementation
+// Multi-Cluster System Implementation
 // ============================================================================
-namespace multi_cell_logic {
 
 // ============================================================================
 // Helper: Pre-create leaves in a cluster from initialCellIds
@@ -480,7 +477,7 @@ static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cel
     if (pc.cluster.cells.empty()) {
       // First cell: create root leaf (pass -1 for empty cluster)
       pc.cluster.nextLeafId = globalNextLeafId;
-      auto resultOpt = cell_logic::splitLeaf(pc.cluster, -1, gapHorizontal, gapVertical);
+      auto resultOpt = splitLeaf(pc.cluster, -1, gapHorizontal, gapVertical);
       if (resultOpt.has_value()) {
         // The root leaf was just created. Overwrite its leafId with the provided one.
         int idx = resultOpt->newSelectionIndex;
@@ -491,16 +488,16 @@ static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cel
     } else {
       // Subsequent cells: split current selection
       pc.cluster.nextLeafId = globalNextLeafId;
-      auto resultOpt = cell_logic::splitLeaf(pc.cluster, currentSelection, gapHorizontal, gapVertical);
+      auto resultOpt = splitLeaf(pc.cluster, currentSelection, gapHorizontal, gapVertical);
       if (resultOpt.has_value()) {
         // The new leaf (second child) was created. Find it and overwrite its leafId.
         // After split, selection moves to first child. The new leaf is the sibling.
         int firstChildIdx = resultOpt->newSelectionIndex;
-        cell_logic::Cell& firstChild =
+        Cell& firstChild =
             pc.cluster.cells[static_cast<size_t>(firstChildIdx)];
         if (firstChild.parent.has_value()) {
           int parentIdx = *firstChild.parent;
-          cell_logic::Cell& parent =
+          Cell& parent =
               pc.cluster.cells[static_cast<size_t>(parentIdx)];
           if (parent.secondChild.has_value()) {
             int secondChildIdx = *parent.secondChild;
@@ -530,7 +527,7 @@ System createSystem(const std::vector<ClusterInitInfo>& infos) {
     pc.id = info.id;
     pc.globalX = info.x;
     pc.globalY = info.y;
-    pc.cluster = cell_logic::createInitialState(info.width, info.height);
+    pc.cluster = createInitialState(info.width, info.height);
 
     int selectionIndex = -1;
     // Pre-create leaves if initialCellIds provided
@@ -555,7 +552,7 @@ ClusterId addCluster(System& system, const ClusterInitInfo& info) {
   pc.id = info.id;
   pc.globalX = info.x;
   pc.globalY = info.y;
-  pc.cluster = cell_logic::createInitialState(info.width, info.height);
+  pc.cluster = createInitialState(info.width, info.height);
 
   int selectionIndex = -1;
   if (!info.initialCellIds.empty()) {
@@ -590,7 +587,7 @@ bool removeCluster(System& system, ClusterId id) {
       if (!pc.cluster.cells.empty()) {
         // Find the first leaf in this cluster
         for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-          if (cell_logic::isLeaf(pc.cluster, i)) {
+          if (isLeaf(pc.cluster, i)) {
             system.selection = Selection{pc.id, i};
             break;
           }
@@ -627,22 +624,22 @@ const PositionedCluster* getCluster(const System& system, ClusterId id) {
 // Coordinate Conversion
 // ============================================================================
 
-cell_logic::Rect localToGlobal(const PositionedCluster& pc, const cell_logic::Rect& localRect) {
-  return cell_logic::Rect{localRect.x + pc.globalX, localRect.y + pc.globalY, localRect.width,
+Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect) {
+  return Rect{localRect.x + pc.globalX, localRect.y + pc.globalY, localRect.width,
                           localRect.height};
 }
 
-cell_logic::Rect globalToLocal(const PositionedCluster& pc, const cell_logic::Rect& globalRect) {
-  return cell_logic::Rect{globalRect.x - pc.globalX, globalRect.y - pc.globalY, globalRect.width,
+Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect) {
+  return Rect{globalRect.x - pc.globalX, globalRect.y - pc.globalY, globalRect.width,
                           globalRect.height};
 }
 
-cell_logic::Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex) {
+Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex) {
   if (cellIndex < 0 || static_cast<size_t>(cellIndex) >= pc.cluster.cells.size()) {
-    return cell_logic::Rect{0.0f, 0.0f, 0.0f, 0.0f};
+    return Rect{0.0f, 0.0f, 0.0f, 0.0f};
   }
 
-  const cell_logic::Cell& cell = pc.cluster.cells[static_cast<size_t>(cellIndex)];
+  const Cell& cell = pc.cluster.cells[static_cast<size_t>(cellIndex)];
   return localToGlobal(pc, cell.rect);
 }
 
@@ -650,24 +647,24 @@ cell_logic::Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex) {
 // Cross-Cluster Navigation Helpers
 // ============================================================================
 
-static bool isInDirectionGlobal(const cell_logic::Rect& from, const cell_logic::Rect& to,
-                                cell_logic::Direction dir) {
+static bool isInDirectionGlobal(const Rect& from, const Rect& to,
+                                Direction dir) {
   switch (dir) {
-  case cell_logic::Direction::Left:
+  case Direction::Left:
     return to.x + to.width <= from.x;
-  case cell_logic::Direction::Right:
+  case Direction::Right:
     return to.x >= from.x + from.width;
-  case cell_logic::Direction::Up:
+  case Direction::Up:
     return to.y + to.height <= from.y;
-  case cell_logic::Direction::Down:
+  case Direction::Down:
     return to.y >= from.y + from.height;
   default:
     return false;
   }
 }
 
-static float directionalDistanceGlobal(const cell_logic::Rect& from, const cell_logic::Rect& to,
-                                       cell_logic::Direction dir) {
+static float directionalDistanceGlobal(const Rect& from, const Rect& to,
+                                       Direction dir) {
   float dxCenter = (to.x + to.width * 0.5f) - (from.x + from.width * 0.5f);
   float dyCenter = (to.y + to.height * 0.5f) - (from.y + from.height * 0.5f);
 
@@ -677,9 +674,9 @@ static float directionalDistanceGlobal(const cell_logic::Rect& from, const cell_
   bool hasHorizontalOverlap = (to.x < from.x + from.width) && (to.x + to.width > from.x);
 
   switch (dir) {
-  case cell_logic::Direction::Left:
-  case cell_logic::Direction::Right: {
-    float primaryDist = (dir == cell_logic::Direction::Left) ? -dxCenter : dxCenter;
+  case Direction::Left:
+  case Direction::Right: {
+    float primaryDist = (dir == Direction::Left) ? -dxCenter : dxCenter;
     if (hasVerticalOverlap) {
       return primaryDist; // Overlapping cells get pure horizontal distance
     }
@@ -688,9 +685,9 @@ static float directionalDistanceGlobal(const cell_logic::Rect& from, const cell_
                          std::abs(from.y - (to.y + to.height)));
     return primaryDist + 10000.0f + gap;
   }
-  case cell_logic::Direction::Up:
-  case cell_logic::Direction::Down: {
-    float primaryDist = (dir == cell_logic::Direction::Up) ? -dyCenter : dyCenter;
+  case Direction::Up:
+  case Direction::Down: {
+    float primaryDist = (dir == Direction::Up) ? -dyCenter : dyCenter;
     if (hasHorizontalOverlap) {
       return primaryDist; // Overlapping cells get pure vertical distance
     }
@@ -703,9 +700,9 @@ static float directionalDistanceGlobal(const cell_logic::Rect& from, const cell_
   }
 }
 
-static bool isClusterInDirection(const PositionedCluster& pc, const cell_logic::Rect& fromGlobalRect,
-                                 cell_logic::Direction dir) {
-  cell_logic::Rect clusterBounds{pc.globalX, pc.globalY, pc.cluster.windowWidth,
+static bool isClusterInDirection(const PositionedCluster& pc, const Rect& fromGlobalRect,
+                                 Direction dir) {
+  Rect clusterBounds{pc.globalX, pc.globalY, pc.cluster.windowWidth,
                                  pc.cluster.windowHeight};
   return isInDirectionGlobal(fromGlobalRect, clusterBounds, dir);
 }
@@ -716,17 +713,17 @@ static bool isClusterInDirection(const PositionedCluster& pc, const cell_logic::
 
 std::optional<std::pair<ClusterId, int>>
 findNextLeafInDirection(const System& system, ClusterId currentClusterId, int currentCellIndex,
-                        cell_logic::Direction dir) {
+                        Direction dir) {
   const PositionedCluster* currentPC = getCluster(system, currentClusterId);
   if (!currentPC) {
     return std::nullopt;
   }
 
-  if (!cell_logic::isLeaf(currentPC->cluster, currentCellIndex)) {
+  if (!isLeaf(currentPC->cluster, currentCellIndex)) {
     return std::nullopt;
   }
 
-  cell_logic::Rect currentGlobalRect = getCellGlobalRect(*currentPC, currentCellIndex);
+  Rect currentGlobalRect = getCellGlobalRect(*currentPC, currentCellIndex);
 
   std::optional<std::pair<ClusterId, int>> bestCandidate;
   float bestScore = std::numeric_limits<float>::max();
@@ -742,7 +739,7 @@ findNextLeafInDirection(const System& system, ClusterId currentClusterId, int cu
     // Search all leaves in this cluster
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       // Skip non-leaves and dead cells
-      if (!cell_logic::isLeaf(pc.cluster, i)) {
+      if (!isLeaf(pc.cluster, i)) {
         continue;
       }
 
@@ -751,7 +748,7 @@ findNextLeafInDirection(const System& system, ClusterId currentClusterId, int cu
         continue;
       }
 
-      cell_logic::Rect candidateGlobalRect = getCellGlobalRect(pc, i);
+      Rect candidateGlobalRect = getCellGlobalRect(pc, i);
 
       if (!isInDirectionGlobal(currentGlobalRect, candidateGlobalRect, dir)) {
         continue;
@@ -768,7 +765,7 @@ findNextLeafInDirection(const System& system, ClusterId currentClusterId, int cu
   return bestCandidate;
 }
 
-bool moveSelection(System& system, cell_logic::Direction dir) {
+bool moveSelection(System& system, Direction dir) {
   if (!system.selection.has_value()) {
     return false;
   }
@@ -802,7 +799,7 @@ std::optional<size_t> splitSelectedLeaf(System& system) {
   // Sync the global leaf ID counter
   pc->cluster.nextLeafId = system.globalNextLeafId;
 
-  auto resultOpt = cell_logic::splitLeaf(pc->cluster, system.selection->cellIndex,
+  auto resultOpt = splitLeaf(pc->cluster, system.selection->cellIndex,
                                          system.gapHorizontal, system.gapVertical);
 
   // Sync back after split
@@ -827,7 +824,7 @@ bool deleteSelectedLeaf(System& system) {
     return false;
   }
 
-  auto newSelectionOpt = cell_logic::deleteLeaf(pc->cluster, system.selection->cellIndex,
+  auto newSelectionOpt = deleteLeaf(pc->cluster, system.selection->cellIndex,
                                                  system.gapHorizontal, system.gapVertical);
 
   if (newSelectionOpt.has_value()) {
@@ -841,7 +838,7 @@ bool deleteSelectedLeaf(System& system) {
   for (auto& otherPc : system.clusters) {
     if (!otherPc.cluster.cells.empty()) {
       for (int i = 0; i < static_cast<int>(otherPc.cluster.cells.size()); ++i) {
-        if (cell_logic::isLeaf(otherPc.cluster, i)) {
+        if (isLeaf(otherPc.cluster, i)) {
           system.selection = Selection{otherPc.id, i};
           return true;
         }
@@ -860,7 +857,7 @@ std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system) {
   return std::make_pair(system.selection->clusterId, system.selection->cellIndex);
 }
 
-std::optional<cell_logic::Rect> getSelectedCellGlobalRect(const System& system) {
+std::optional<Rect> getSelectedCellGlobalRect(const System& system) {
   auto selectedOpt = getSelectedCell(system);
   if (!selectedOpt.has_value()) {
     return std::nullopt;
@@ -885,7 +882,7 @@ bool toggleSelectedSplitDir(System& system) {
     return false;
   }
 
-  return cell_logic::toggleSplitDir(pc->cluster, system.selection->cellIndex,
+  return toggleSplitDir(pc->cluster, system.selection->cellIndex,
                                      system.gapHorizontal, system.gapVertical);
 }
 
@@ -897,9 +894,9 @@ bool toggleClusterGlobalSplitDir(System& system) {
   if (pc == nullptr) {
     return false;
   }
-  pc->cluster.globalSplitDir = (pc->cluster.globalSplitDir == cell_logic::SplitDir::Vertical)
-                                   ? cell_logic::SplitDir::Horizontal
-                                   : cell_logic::SplitDir::Vertical;
+  pc->cluster.globalSplitDir = (pc->cluster.globalSplitDir == SplitDir::Vertical)
+                                   ? SplitDir::Horizontal
+                                   : SplitDir::Vertical;
   return true;
 }
 
@@ -937,18 +934,18 @@ SwapResult swapCells(System& system,
   }
 
   // Validate both are leaves
-  if (!cell_logic::isLeaf(pc1->cluster, idx1)) {
+  if (!isLeaf(pc1->cluster, idx1)) {
     return {false, "Cell 1 is not a leaf"};
   }
-  if (!cell_logic::isLeaf(pc2->cluster, idx2)) {
+  if (!isLeaf(pc2->cluster, idx2)) {
     return {false, "Cell 2 is not a leaf"};
   }
 
   if (clusterId1 == clusterId2) {
     // Same-cluster swap: swap tree positions
-    cell_logic::CellCluster& cluster = pc1->cluster;
-    cell_logic::Cell& cell1 = cluster.cells[static_cast<size_t>(idx1)];
-    cell_logic::Cell& cell2 = cluster.cells[static_cast<size_t>(idx2)];
+    CellCluster& cluster = pc1->cluster;
+    Cell& cell1 = cluster.cells[static_cast<size_t>(idx1)];
+    Cell& cell2 = cluster.cells[static_cast<size_t>(idx2)];
 
     // Store original parent info
     auto parent1 = cell1.parent;
@@ -960,7 +957,7 @@ SwapResult swapCells(System& system,
 
     // Update parent's child pointers
     if (parent1.has_value()) {
-      cell_logic::Cell& p1 = cluster.cells[static_cast<size_t>(*parent1)];
+      Cell& p1 = cluster.cells[static_cast<size_t>(*parent1)];
       if (p1.firstChild.has_value() && *p1.firstChild == idx1) {
         p1.firstChild = idx2;
       } else if (p1.secondChild.has_value() && *p1.secondChild == idx1) {
@@ -968,7 +965,7 @@ SwapResult swapCells(System& system,
       }
     }
     if (parent2.has_value()) {
-      cell_logic::Cell& p2 = cluster.cells[static_cast<size_t>(*parent2)];
+      Cell& p2 = cluster.cells[static_cast<size_t>(*parent2)];
       if (p2.firstChild.has_value() && *p2.firstChild == idx2) {
         p2.firstChild = idx1;
       } else if (p2.secondChild.has_value() && *p2.secondChild == idx2) {
@@ -983,8 +980,8 @@ SwapResult swapCells(System& system,
     // still have the same leafIds - only their tree positions changed.
   } else {
     // Cross-cluster swap: exchange leafIds
-    cell_logic::Cell& cell1 = pc1->cluster.cells[static_cast<size_t>(idx1)];
-    cell_logic::Cell& cell2 = pc2->cluster.cells[static_cast<size_t>(idx2)];
+    Cell& cell1 = pc1->cluster.cells[static_cast<size_t>(idx1)];
+    Cell& cell2 = pc2->cluster.cells[static_cast<size_t>(idx2)];
 
     std::swap(cell1.leafId, cell2.leafId);
 
@@ -1026,10 +1023,10 @@ MoveResult moveCell(System& system,
   }
 
   // Validate both are leaves
-  if (!cell_logic::isLeaf(srcPC->cluster, *srcIdxOpt)) {
+  if (!isLeaf(srcPC->cluster, *srcIdxOpt)) {
     return {false, -1, 0, "Source cell is not a leaf"};
   }
-  if (!cell_logic::isLeaf(tgtPC->cluster, *tgtIdxOpt)) {
+  if (!isLeaf(tgtPC->cluster, *tgtIdxOpt)) {
     return {false, -1, 0, "Target cell is not a leaf"};
   }
 
@@ -1046,7 +1043,7 @@ MoveResult moveCell(System& system,
   size_t savedLeafId = sourceLeafId;
 
   // Delete source
-  auto deleteResult = cell_logic::deleteLeaf(srcPC->cluster, *srcIdxOpt,
+  auto deleteResult = deleteLeaf(srcPC->cluster, *srcIdxOpt,
                                               system.gapHorizontal, system.gapVertical);
 
   // Update srcPC pointer in case same-cluster operation moved things
@@ -1064,7 +1061,7 @@ MoveResult moveCell(System& system,
   tgtPC->cluster.nextLeafId = system.globalNextLeafId;
 
   // Split target
-  auto splitResult = cell_logic::splitLeaf(tgtPC->cluster, *tgtIdxOpt,
+  auto splitResult = splitLeaf(tgtPC->cluster, *tgtIdxOpt,
                                             system.gapHorizontal, system.gapVertical);
 
   // Sync back after split
@@ -1076,14 +1073,14 @@ MoveResult moveCell(System& system,
 
   // Find the second child (new leaf) and set its leafId to savedLeafId
   int firstChildIdx = splitResult->newSelectionIndex;
-  cell_logic::Cell& firstChild = tgtPC->cluster.cells[static_cast<size_t>(firstChildIdx)];
+  Cell& firstChild = tgtPC->cluster.cells[static_cast<size_t>(firstChildIdx)];
 
   if (!firstChild.parent.has_value()) {
     return {false, -1, 0, "Could not find parent after split"};
   }
 
   int parentIdx = *firstChild.parent;
-  cell_logic::Cell& parent = tgtPC->cluster.cells[static_cast<size_t>(parentIdx)];
+  Cell& parent = tgtPC->cluster.cells[static_cast<size_t>(parentIdx)];
 
   if (!parent.secondChild.has_value()) {
     return {false, -1, 0, "Could not find new cell after split"};
@@ -1127,7 +1124,7 @@ bool validateSystem(const System& system) {
     if (!selectedPc) {
       spdlog::error("[validate] ERROR: selection points to non-existent cluster");
       ok = false;
-    } else if (!cell_logic::isLeaf(selectedPc->cluster, system.selection->cellIndex)) {
+    } else if (!isLeaf(selectedPc->cluster, system.selection->cellIndex)) {
       spdlog::error("[validate] ERROR: selection points to non-leaf cell");
       ok = false;
     }
@@ -1136,7 +1133,7 @@ bool validateSystem(const System& system) {
   // Validate each cluster
   for (const auto& pc : system.clusters) {
     spdlog::debug("--- Cluster {} at ({}, {}) ---", pc.id, pc.globalX, pc.globalY);
-    if (!cell_logic::validateState(pc.cluster)) {
+    if (!validateState(pc.cluster)) {
       ok = false;
     }
   }
@@ -1197,7 +1194,7 @@ void debugPrintSystem(const System& system) {
   for (const auto& pc : system.clusters) {
     spdlog::debug("--- Cluster {} ---", pc.id);
     spdlog::debug("  globalX = {}, globalY = {}", pc.globalX, pc.globalY);
-    cell_logic::debugPrintState(pc.cluster);
+    debugPrintState(pc.cluster);
   }
 
   spdlog::debug("===== End MultiClusterSystem =====");
@@ -1207,7 +1204,7 @@ size_t countTotalLeaves(const System& system) {
   size_t count = 0;
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      if (cell_logic::isLeaf(pc.cluster, i)) {
+      if (isLeaf(pc.cluster, i)) {
         ++count;
       }
     }
@@ -1223,10 +1220,10 @@ std::optional<std::pair<ClusterId, int>>
 findCellAtPoint(const System& system, float globalX, float globalY) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      if (!cell_logic::isLeaf(pc.cluster, i)) {
+      if (!isLeaf(pc.cluster, i)) {
         continue;
       }
-      cell_logic::Rect globalRect = getCellGlobalRect(pc, i);
+      Rect globalRect = getCellGlobalRect(pc, i);
       if (globalX >= globalRect.x && globalX < globalRect.x + globalRect.width &&
           globalY >= globalRect.y && globalY < globalRect.y + globalRect.height) {
         return std::make_pair(pc.id, i);
@@ -1240,7 +1237,7 @@ findCellAtPoint(const System& system, float globalX, float globalY) {
 // System Update
 // ============================================================================
 
-std::vector<size_t> getClusterLeafIds(const cell_logic::CellCluster& cluster) {
+std::vector<size_t> getClusterLeafIds(const CellCluster& cluster) {
   std::vector<size_t> leafIds;
   for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
     const auto& cell = cluster.cells[static_cast<size_t>(i)];
@@ -1251,7 +1248,7 @@ std::vector<size_t> getClusterLeafIds(const cell_logic::CellCluster& cluster) {
   return leafIds;
 }
 
-std::optional<int> findCellByLeafId(const cell_logic::CellCluster& cluster, size_t leafId) {
+std::optional<int> findCellByLeafId(const CellCluster& cluster, size_t leafId) {
   for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
     const auto& cell = cluster.cells[static_cast<size_t>(i)];
     if (!cell.isDead && cell.leafId.has_value() && *cell.leafId == leafId) {
@@ -1316,7 +1313,7 @@ UpdateResult updateSystem(
         continue;
       }
 
-      auto newSelectionOpt = cell_logic::deleteLeaf(pc->cluster, *cellIndexOpt,
+      auto newSelectionOpt = deleteLeaf(pc->cluster, *cellIndexOpt,
                                                      system.gapHorizontal, system.gapVertical);
       result.deletedLeafIds.push_back(leafId);
 
@@ -1336,7 +1333,7 @@ UpdateResult updateSystem(
     int splitFromIndex = -1;
     if (system.selection.has_value() &&
         system.selection->clusterId == pc->id &&
-        cell_logic::isLeaf(pc->cluster, system.selection->cellIndex)) {
+        isLeaf(pc->cluster, system.selection->cellIndex)) {
       splitFromIndex = system.selection->cellIndex;
     }
 
@@ -1349,13 +1346,13 @@ UpdateResult updateSystem(
         // Cluster is empty - will create root with splitLeaf(-1)
         currentSelection = -1;
       } else if (splitFromIndex >= 0 &&
-                 cell_logic::isLeaf(pc->cluster, splitFromIndex)) {
+                 isLeaf(pc->cluster, splitFromIndex)) {
         // Use tracked split point (follows selection)
         currentSelection = splitFromIndex;
       } else {
         // Fallback: find the first available leaf
         for (int i = 0; i < static_cast<int>(pc->cluster.cells.size()); ++i) {
-          if (cell_logic::isLeaf(pc->cluster, i)) {
+          if (isLeaf(pc->cluster, i)) {
             currentSelection = i;
             break;
           }
@@ -1365,7 +1362,7 @@ UpdateResult updateSystem(
       // Sync the global leaf ID counter
       pc->cluster.nextLeafId = system.globalNextLeafId;
 
-      auto resultOpt = cell_logic::splitLeaf(pc->cluster, currentSelection,
+      auto resultOpt = splitLeaf(pc->cluster, currentSelection,
                                               system.gapHorizontal, system.gapVertical);
 
       // Sync back after split
@@ -1385,11 +1382,11 @@ UpdateResult updateSystem(
           // Update splitFromIndex to follow the first child for subsequent additions
           splitFromIndex = firstChildIdx;
 
-          cell_logic::Cell& firstChild =
+          Cell& firstChild =
               pc->cluster.cells[static_cast<size_t>(firstChildIdx)];
           if (firstChild.parent.has_value()) {
             int parentIdx = *firstChild.parent;
-            cell_logic::Cell& parent =
+            Cell& parent =
                 pc->cluster.cells[static_cast<size_t>(parentIdx)];
             if (parent.secondChild.has_value()) {
               int secondChildIdx = *parent.secondChild;
@@ -1431,5 +1428,5 @@ UpdateResult updateSystem(
   return result;
 }
 
-} // namespace multi_cell_logic
+} // namespace cells
 } // namespace wintiler

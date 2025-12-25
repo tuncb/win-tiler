@@ -8,9 +8,9 @@
 namespace wintiler {
 
 // ============================================================================
-// Basic Cell Types (formerly in cells.h)
+// Basic Cell Types
 // ============================================================================
-namespace cell_logic {
+namespace cells {
 
 enum class SplitDir {
   Vertical,
@@ -86,18 +86,15 @@ void debugPrintState(const CellCluster& state);
 // Validate internal invariants. Returns true if valid.
 bool validateState(const CellCluster& state);
 
-} // namespace cell_logic
-
 // ============================================================================
 // Multi-Cluster System
 // ============================================================================
-namespace multi_cell_logic {
 
 using ClusterId = size_t;
 
 struct PositionedCluster {
   ClusterId id;
-  cell_logic::CellCluster cluster;
+  CellCluster cluster;
   float globalX; // Global position of cluster's top-left
   float globalY;
 };
@@ -190,13 +187,13 @@ const PositionedCluster* getCluster(const System& system, ClusterId id);
 // ============================================================================
 
 // Convert a local rect to global coordinates.
-cell_logic::Rect localToGlobal(const PositionedCluster& pc, const cell_logic::Rect& localRect);
+Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect);
 
 // Convert a global rect to local coordinates.
-cell_logic::Rect globalToLocal(const PositionedCluster& pc, const cell_logic::Rect& globalRect);
+Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect);
 
 // Get the global rect of a cell in a positioned cluster.
-cell_logic::Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
+Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
 
 // ============================================================================
 // Cross-Cluster Navigation
@@ -205,10 +202,10 @@ cell_logic::Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
 // Find the next leaf in the given direction, searching across all clusters.
 [[nodiscard]] std::optional<std::pair<ClusterId, int>>
 findNextLeafInDirection(const System& system, ClusterId currentClusterId, int currentCellIndex,
-                        cell_logic::Direction dir);
+                        Direction dir);
 
 // Move selection across the multi-cluster system.
-bool moveSelection(System& system, cell_logic::Direction dir);
+bool moveSelection(System& system, Direction dir);
 
 // ============================================================================
 // Operations
@@ -224,7 +221,7 @@ bool deleteSelectedLeaf(System& system);
 [[nodiscard]] std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system);
 
 // Get the global rect of the currently selected cell.
-[[nodiscard]] std::optional<cell_logic::Rect> getSelectedCellGlobalRect(const System& system);
+[[nodiscard]] std::optional<Rect> getSelectedCellGlobalRect(const System& system);
 
 // Toggle the split direction of the selected cell's parent.
 bool toggleSelectedSplitDir(System& system);
@@ -277,10 +274,10 @@ findCellAtPoint(const System& system, float globalX, float globalY);
 // ============================================================================
 
 // Get all leaf IDs from a cluster.
-[[nodiscard]] std::vector<size_t> getClusterLeafIds(const cell_logic::CellCluster& cluster);
+[[nodiscard]] std::vector<size_t> getClusterLeafIds(const CellCluster& cluster);
 
 // Find cell index by leaf ID. Returns nullopt if not found.
-[[nodiscard]] std::optional<int> findCellByLeafId(const cell_logic::CellCluster& cluster, size_t leafId);
+[[nodiscard]] std::optional<int> findCellByLeafId(const CellCluster& cluster, size_t leafId);
 
 // Update the system to match the desired state.
 // - Deletes leaves that are not in the desired state
@@ -291,5 +288,5 @@ UpdateResult updateSystem(
     const std::vector<ClusterCellIds>& clusterCellIds,
     std::optional<std::pair<ClusterId, size_t>> newSelection);
 
-} // namespace multi_cell_logic
+} // namespace cells
 } // namespace wintiler

@@ -65,7 +65,7 @@ std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
   }
 
   // Build cluster infos for all monitors
-  std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
+  std::vector<cells::ClusterInitInfo> clusterInfos;
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
     const auto& monitor = monitors[monitorIndex];
 
@@ -86,7 +86,7 @@ std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
   }
 
   // Create multi-cluster system
-  auto system = multi_cell_logic::createSystem(clusterInfos);
+  auto system = cells::createSystem(clusterInfos);
   system.gapHorizontal = globalOptions.gapOptions.horizontal;
   system.gapVertical = globalOptions.gapOptions.vertical;
 
@@ -102,8 +102,8 @@ std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
 
       // Get global rect and convert to window position
-      cell_logic::Rect globalRect =
-          multi_cell_logic::getCellGlobalRect(pc, static_cast<int>(&cell - &pc.cluster.cells[0]));
+      cells::Rect globalRect =
+          cells::getCellGlobalRect(pc, static_cast<int>(&cell - &pc.cluster.cells[0]));
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(globalRect.x);
@@ -182,7 +182,7 @@ void applyLogLevel(LogLevel level) {
 
 void runUiTestMonitor(const GlobalOptions& globalOptions) {
   auto monitors = winapi::get_monitors();
-  std::vector<multi_cell_logic::ClusterInitInfo> infos;
+  std::vector<cells::ClusterInitInfo> infos;
 
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
     const auto& monitor = monitors[monitorIndex];
@@ -222,7 +222,7 @@ void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
 }
 
 void runUiTestMulti(const UiTestMultiCommand& cmd) {
-  std::vector<multi_cell_logic::ClusterInitInfo> infos;
+  std::vector<cells::ClusterInitInfo> infos;
 
   if (cmd.clusters.empty()) {
     // Default: two monitors side by side

@@ -39,10 +39,10 @@ struct ViewTransform {
 };
 
 struct MultiClusterAppState {
-  multi_cell_logic::System system;
+  cells::System system;
 };
 
-ViewTransform computeViewTransform(const multi_cell_logic::System& system, float screenW,
+ViewTransform computeViewTransform(const cells::System& system, float screenW,
                                    float screenH, float margin) {
   if (system.clusters.empty()) {
     return ViewTransform{0.0f, 0.0f, 1.0f, margin, screenW, screenH};
@@ -78,7 +78,7 @@ ViewTransform computeViewTransform(const multi_cell_logic::System& system, float
   return ViewTransform{minX, minY, scale, margin, screenW, screenH};
 }
 
-Rectangle toScreenRect(const ViewTransform& vt, const cell_logic::Rect& globalRect) {
+Rectangle toScreenRect(const ViewTransform& vt, const cells::Rect& globalRect) {
   return Rectangle{vt.margin + (globalRect.x - vt.offsetX) * vt.scale,
                    vt.margin + (globalRect.y - vt.offsetY) * vt.scale, globalRect.width * vt.scale,
                    globalRect.height * vt.scale};
@@ -97,15 +97,15 @@ void toScreenPoint(const ViewTransform& vt, float globalX, float globalY, float&
 }
 
 // Find the cluster and cell index at a global point
-std::optional<std::pair<multi_cell_logic::ClusterId, int>>
-findCellAtGlobalPoint(const multi_cell_logic::System& system, float globalX, float globalY) {
+std::optional<std::pair<cells::ClusterId, int>>
+findCellAtGlobalPoint(const cells::System& system, float globalX, float globalY) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      if (!cell_logic::isLeaf(pc.cluster, i)) {
+      if (!cells::isLeaf(pc.cluster, i)) {
         continue;
       }
 
-      cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, i);
+      cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
 
       if (globalX >= globalRect.x && globalX < globalRect.x + globalRect.width &&
           globalY >= globalRect.y && globalY < globalRect.y + globalRect.height) {
@@ -117,7 +117,7 @@ findCellAtGlobalPoint(const multi_cell_logic::System& system, float globalX, flo
 }
 
 void centerMouseOnSelection(const MultiClusterAppState& appState, const ViewTransform& vt) {
-  auto selectedRect = multi_cell_logic::getSelectedCellGlobalRect(appState.system);
+  auto selectedRect = cells::getSelectedCellGlobalRect(appState.system);
   if (selectedRect.has_value()) {
     float centerX = selectedRect->x + selectedRect->width / 2.0f;
     float centerY = selectedRect->y + selectedRect->height / 2.0f;
@@ -129,10 +129,10 @@ void centerMouseOnSelection(const MultiClusterAppState& appState, const ViewTran
   }
 }
 
-std::vector<multi_cell_logic::ClusterCellIds> buildCurrentState(const multi_cell_logic::System& system) {
-  std::vector<multi_cell_logic::ClusterCellIds> state;
+std::vector<cells::ClusterCellIds> buildCurrentState(const cells::System& system) {
+  std::vector<cells::ClusterCellIds> state;
   for (const auto& pc : system.clusters) {
-    state.push_back({pc.id, multi_cell_logic::getClusterLeafIds(pc.cluster)});
+    state.push_back({pc.id, cells::getClusterLeafIds(pc.cluster)});
   }
   return state;
 }
@@ -155,18 +155,18 @@ void addNewProcessMulti(MultiClusterAppState& appState, size_t& nextProcessId) {
   }
 
   // Update system and select the newly added cell
-  multi_cell_logic::updateSystem(appState.system, state,
+  cells::updateSystem(appState.system, state,
                                  std::make_pair(selectedClusterId, newLeafId));
 }
 
 void deleteSelectedProcessMulti(MultiClusterAppState& appState) {
-  auto selected = multi_cell_logic::getSelectedCell(appState.system);
+  auto selected = cells::getSelectedCell(appState.system);
   if (!selected.has_value()) {
     return;
   }
 
   auto [clusterId, cellIndex] = *selected;
-  const auto* pc = multi_cell_logic::getCluster(appState.system, clusterId);
+  const auto* pc = cells::getCluster(appState.system, clusterId);
   if (!pc || cellIndex < 0 || static_cast<size_t>(cellIndex) >= pc->cluster.cells.size()) {
     return;
   }
@@ -189,19 +189,19 @@ void deleteSelectedProcessMulti(MultiClusterAppState& appState) {
   }
 
   // Update system (selection will auto-update)
-  multi_cell_logic::updateSystem(appState.system, state, std::nullopt);
+  cells::updateSystem(appState.system, state, std::nullopt);
 }
 
-Color getClusterColor(multi_cell_logic::ClusterId id) {
+Color getClusterColor(cells::ClusterId id) {
   return CLUSTER_COLORS[id % NUM_CLUSTER_COLORS];
 }
 
 } // namespace
 
-void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo>& infos,
+void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
                               std::optional<GapOptions> gapOptions) {
   MultiClusterAppState appState;
-  appState.system = multi_cell_logic::createSystem(infos);
+  appState.system = cells::createSystem(infos);
   if (gapOptions.has_value()) {
     appState.system.gapHorizontal = gapOptions->horizontal;
     appState.system.gapVertical = gapOptions->vertical;
@@ -229,7 +229,7 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
   SetTargetFPS(60);
 
   // Store cell for swap/move operations (clusterId, leafId)
-  std::optional<std::pair<multi_cell_logic::ClusterId, size_t>> storedCell;
+  std::optional<std::pair<cells::ClusterId, size_t>> storedCell;
 
   while (!WindowShouldClose()) {
     // Mouse hover selection
@@ -242,18 +242,18 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       auto [clusterId, cellIndex] = *cellAtMouse;
 
       // Update selection if different
-      auto currentSel = multi_cell_logic::getSelectedCell(appState.system);
+      auto currentSel = cells::getSelectedCell(appState.system);
       if (!currentSel.has_value() || currentSel->first != clusterId ||
           currentSel->second != cellIndex) {
         // Set new selection
-        appState.system.selection = multi_cell_logic::Selection{clusterId, cellIndex};
+        appState.system.selection = cells::Selection{clusterId, cellIndex};
       }
     }
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
 
     // Keyboard input
     if (IsKeyPressed(KEY_Y)) {
-      multi_cell_logic::toggleSelectedSplitDir(appState.system);
+      cells::toggleSelectedSplitDir(appState.system);
     }
 
     if (IsKeyPressed(KEY_SPACE)) {
@@ -265,31 +265,31 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     }
 
     if (IsKeyPressed(KEY_I)) {
-      multi_cell_logic::debugPrintSystem(appState.system);
+      cells::debugPrintSystem(appState.system);
     }
 
     if (IsKeyPressed(KEY_C)) {
-      multi_cell_logic::validateSystem(appState.system);
+      cells::validateSystem(appState.system);
     }
 
     // Vim-style navigation: h=left, j=down, k=up, l=right
     if (IsKeyPressed(KEY_H)) {
-      if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Left)) {
+      if (cells::moveSelection(appState.system, cells::Direction::Left)) {
         centerMouseOnSelection(appState, vt);
       }
     }
     if (IsKeyPressed(KEY_L)) {
-      if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Right)) {
+      if (cells::moveSelection(appState.system, cells::Direction::Right)) {
         centerMouseOnSelection(appState, vt);
       }
     }
     if (IsKeyPressed(KEY_K)) {
-      if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Up)) {
+      if (cells::moveSelection(appState.system, cells::Direction::Up)) {
         centerMouseOnSelection(appState, vt);
       }
     }
     if (IsKeyPressed(KEY_J)) {
-      if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Down)) {
+      if (cells::moveSelection(appState.system, cells::Direction::Down)) {
         centerMouseOnSelection(appState, vt);
       }
     }
@@ -298,7 +298,7 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
       if (appState.system.selection.has_value()) {
         auto* pc =
-            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+            cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
@@ -317,12 +317,12 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     if (IsKeyPressed(KEY_PERIOD)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
         auto* pc =
-            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+            cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
             auto result =
-                multi_cell_logic::moveCell(appState.system, storedCell->first, storedCell->second,
+                cells::moveCell(appState.system, storedCell->first, storedCell->second,
                                            appState.system.selection->clusterId, *cell.leafId);
             if (result.success) {
               storedCell.reset();
@@ -336,12 +336,12 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     if (IsKeyPressed(KEY_COMMA)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
         auto* pc =
-            multi_cell_logic::getCluster(appState.system, appState.system.selection->clusterId);
+            cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
             auto result =
-                multi_cell_logic::swapCells(appState.system, appState.system.selection->clusterId,
+                cells::swapCells(appState.system, appState.system.selection->clusterId,
                                             *cell.leafId, storedCell->first, storedCell->second);
             if (result.success) {
               storedCell.reset();
@@ -357,7 +357,7 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
 
     // Draw cluster backgrounds first
     for (const auto& pc : appState.system.clusters) {
-      cell_logic::Rect clusterGlobalRect{pc.globalX, pc.globalY, pc.cluster.windowWidth,
+      cells::Rect clusterGlobalRect{pc.globalX, pc.globalY, pc.cluster.windowWidth,
                                          pc.cluster.windowHeight};
       Rectangle screenRect = toScreenRect(vt, clusterGlobalRect);
       DrawRectangleRec(screenRect, getClusterColor(pc.id));
@@ -365,16 +365,16 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
     }
 
     // Draw cells
-    auto selectedCell = multi_cell_logic::getSelectedCell(appState.system);
+    auto selectedCell = cells::getSelectedCell(appState.system);
 
     for (const auto& pc : appState.system.clusters) {
       for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-        if (!cell_logic::isLeaf(pc.cluster, i)) {
+        if (!cells::isLeaf(pc.cluster, i)) {
           continue;
         }
 
         const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-        cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, i);
+        cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
         Rectangle screenRect = toScreenRect(vt, globalRect);
 
         bool isSelected =
@@ -383,7 +383,7 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
         // Check if this cell is the stored cell
         bool isStoredCell = false;
         if (storedCell.has_value() && storedCell->first == pc.id) {
-          auto storedIdx = multi_cell_logic::findCellByLeafId(pc.cluster, storedCell->second);
+          auto storedIdx = cells::findCellByLeafId(pc.cluster, storedCell->second);
           if (storedIdx.has_value() && *storedIdx == i) {
             isStoredCell = true;
           }

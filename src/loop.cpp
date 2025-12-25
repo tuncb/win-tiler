@@ -98,38 +98,38 @@ const char* hotkeyActionToString(HotkeyAction action) {
 }
 
 // Convert HotkeyAction to direction (for navigation actions)
-std::optional<cell_logic::Direction> hotkeyActionToDirection(HotkeyAction action) {
+std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
-    return cell_logic::Direction::Left;
+    return cells::Direction::Left;
   case HotkeyAction::NavigateDown:
-    return cell_logic::Direction::Down;
+    return cells::Direction::Down;
   case HotkeyAction::NavigateUp:
-    return cell_logic::Direction::Up;
+    return cells::Direction::Up;
   case HotkeyAction::NavigateRight:
-    return cell_logic::Direction::Right;
+    return cells::Direction::Right;
   default:
     return std::nullopt;
   }
 }
 
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
-void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Direction dir) {
+void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
   // Try to move selection in the given direction
-  if (!multi_cell_logic::moveSelection(system, dir)) {
+  if (!cells::moveSelection(system, dir)) {
     spdlog::trace("Cannot move selection in direction");
     return;
   }
 
   // Get the newly selected cell
-  auto selectedCell = multi_cell_logic::getSelectedCell(system);
+  auto selectedCell = cells::getSelectedCell(system);
   if (!selectedCell.has_value()) {
     spdlog::error("No cell selected after moveSelection");
     return;
   }
 
   auto [clusterId, cellIndex] = *selectedCell;
-  const auto* pc = multi_cell_logic::getCluster(system, clusterId);
+  const auto* pc = cells::getCluster(system, clusterId);
   if (pc == nullptr) {
     spdlog::error("Failed to get cluster {}", clusterId);
     return;
@@ -151,7 +151,7 @@ void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Dire
   }
 
   // Get the cell's global rect and move mouse to center
-  cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(*pc, cellIndex);
+  cells::Rect globalRect = cells::getCellGlobalRect(*pc, cellIndex);
   long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
   long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
 
@@ -164,8 +164,8 @@ void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Dire
 }
 
 // Helper: Print tile layout from a multi-cluster system
-void printTileLayout(const multi_cell_logic::System& system) {
-  size_t totalWindows = multi_cell_logic::countTotalLeaves(system);
+void printTileLayout(const cells::System& system) {
+  size_t totalWindows = cells::countTotalLeaves(system);
   spdlog::debug("Total windows: {}", totalWindows);
 
   for (const auto& pc : system.clusters) {
@@ -178,7 +178,7 @@ void printTileLayout(const multi_cell_logic::System& system) {
       }
 
       size_t hwndValue = *cell.leafId;
-      cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, i);
+      cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
       std::string title = winapi::get_window_info(hwnd).title;
@@ -193,9 +193,9 @@ void printTileLayout(const multi_cell_logic::System& system) {
 }
 
 // Helper: Gather current window state for all monitors
-std::vector<multi_cell_logic::ClusterCellIds> gatherCurrentWindowState(
+std::vector<cells::ClusterCellIds> gatherCurrentWindowState(
     const IgnoreOptions& ignoreOptions) {
-  std::vector<multi_cell_logic::ClusterCellIds> result;
+  std::vector<cells::ClusterCellIds> result;
   auto monitors = winapi::get_monitors();
 
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
@@ -211,7 +211,7 @@ std::vector<multi_cell_logic::ClusterCellIds> gatherCurrentWindowState(
 }
 
 // Helper: Apply tile layout by updating window positions
-void applyTileLayout(const multi_cell_logic::System& system) {
+void applyTileLayout(const cells::System& system) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -221,7 +221,7 @@ void applyTileLayout(const multi_cell_logic::System& system) {
 
       size_t hwndValue = *cell.leafId;
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-      cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, i);
+      cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(globalRect.x);
@@ -235,10 +235,10 @@ void applyTileLayout(const multi_cell_logic::System& system) {
   }
 }
 
-bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd) {
+bool isHwndInSystem(const cells::System& system, winapi::HWND_T hwnd) {
   size_t hwndValue = reinterpret_cast<size_t>(hwnd);
   for (const auto& pc : system.clusters) {
-    if (multi_cell_logic::findCellByLeafId(pc.cluster, hwndValue).has_value()) {
+    if (cells::findCellByLeafId(pc.cluster, hwndValue).has_value()) {
       return true;
     }
   }
@@ -247,14 +247,14 @@ bool isHwndInSystem(const multi_cell_logic::System& system, winapi::HWND_T hwnd)
 
 // Redirect new windows to the selected cluster so they split from the selected cell
 void redirectNewWindowsToSelection(
-    const multi_cell_logic::System& system,
-    std::vector<multi_cell_logic::ClusterCellIds>& clusterCellIds) {
+    const cells::System& system,
+    std::vector<cells::ClusterCellIds>& clusterCellIds) {
 
   if (!system.selection.has_value()) {
     return;  // No selection, keep default behavior
   }
 
-  multi_cell_logic::ClusterId selectedClusterId = system.selection->clusterId;
+  cells::ClusterId selectedClusterId = system.selection->clusterId;
 
   // Collect new windows (not in any cluster)
   std::vector<size_t> newWindows;
@@ -262,7 +262,7 @@ void redirectNewWindowsToSelection(
     for (size_t leafId : update.leafIds) {
       bool isNew = true;
       for (const auto& pc : system.clusters) {
-        if (multi_cell_logic::findCellByLeafId(pc.cluster, leafId).has_value()) {
+        if (cells::findCellByLeafId(pc.cluster, leafId).has_value()) {
           isNew = false;
           break;
         }
@@ -309,7 +309,7 @@ void runLoopTestMode(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
 
   // Create cluster init info
-  std::vector<multi_cell_logic::ClusterInitInfo> clusterInfos;
+  std::vector<cells::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
     float x = static_cast<float>(monitor.workArea.left);
@@ -326,7 +326,7 @@ void runLoopTestMode(const GlobalOptions& options) {
     clusterInfos.push_back({i, x, y, w, h, cellIds});
   }
 
-  auto system = multi_cell_logic::createSystem(clusterInfos);
+  auto system = cells::createSystem(clusterInfos);
   system.gapHorizontal = options.gapOptions.horizontal;
   system.gapVertical = options.gapOptions.vertical;
 
@@ -344,7 +344,7 @@ void runLoopTestMode(const GlobalOptions& options) {
     auto currentState = gatherCurrentWindowState(ignoreOptions);
 
     // Use updateSystem to sync
-    auto result = multi_cell_logic::updateSystem(system, currentState, std::nullopt);
+    auto result = cells::updateSystem(system, currentState, std::nullopt);
 
     // If changes detected, log them
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
@@ -377,7 +377,7 @@ void runLoopMode(const GlobalOptions& options) {
 
   // Create cluster init info
   auto clusterInfos = timed("build cluster infos", [&monitors, &ignoreOptions] {
-    std::vector<multi_cell_logic::ClusterInitInfo> result;
+    std::vector<cells::ClusterInitInfo> result;
     for (size_t i = 0; i < monitors.size(); ++i) {
       const auto& monitor = monitors[i];
       float x = static_cast<float>(monitor.workArea.left);
@@ -397,7 +397,7 @@ void runLoopMode(const GlobalOptions& options) {
   });
 
   auto system = timed("createSystem",
-                      [&clusterInfos] { return multi_cell_logic::createSystem(clusterInfos); });
+                      [&clusterInfos] { return cells::createSystem(clusterInfos); });
   system.gapHorizontal = options.gapOptions.horizontal;
   system.gapVertical = options.gapOptions.vertical;
 
@@ -424,7 +424,7 @@ void runLoopMode(const GlobalOptions& options) {
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
   // Store cell for swap/move operations (clusterId, leafId)
-  std::optional<std::pair<multi_cell_logic::ClusterId, size_t>> storedCell;
+  std::optional<std::pair<cells::ClusterId, size_t>> storedCell;
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -442,19 +442,19 @@ void runLoopMode(const GlobalOptions& options) {
       if (auto dir = hotkeyActionToDirection(action)) {
         handleKeyboardNavigation(system, *dir);
       } else if (action == HotkeyAction::ToggleSplit) {
-        if (multi_cell_logic::toggleSelectedSplitDir(system)) {
+        if (cells::toggleSelectedSplitDir(system)) {
           spdlog::info("Toggled split direction");
         }
       } else if (action == HotkeyAction::Exit) {
         spdlog::info("Exit hotkey pressed, shutting down...");
         break;
       } else if (action == HotkeyAction::ToggleGlobal) {
-        if (multi_cell_logic::toggleClusterGlobalSplitDir(system)) {
+        if (cells::toggleClusterGlobalSplitDir(system)) {
           // Get the current global split direction after toggle
           if (system.selection.has_value()) {
-            const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+            const auto* pc = cells::getCluster(system, system.selection->clusterId);
             if (pc != nullptr) {
-              const char* dirStr = (pc->cluster.globalSplitDir == cell_logic::SplitDir::Vertical)
+              const char* dirStr = (pc->cluster.globalSplitDir == cells::SplitDir::Vertical)
                   ? "vertical" : "horizontal";
               spdlog::info("Toggled cluster global split direction: {}", dirStr);
             }
@@ -462,7 +462,7 @@ void runLoopMode(const GlobalOptions& options) {
         }
       } else if (action == HotkeyAction::StoreCell) {
         if (system.selection.has_value()) {
-          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          const auto* pc = cells::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
             const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
             if (cell.leafId.has_value()) {
@@ -477,11 +477,11 @@ void runLoopMode(const GlobalOptions& options) {
         spdlog::info("Cleared stored cell");
       } else if (action == HotkeyAction::Exchange) {
         if (storedCell.has_value() && system.selection.has_value()) {
-          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          const auto* pc = cells::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
             const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
             if (cell.leafId.has_value()) {
-              auto result = multi_cell_logic::swapCells(
+              auto result = cells::swapCells(
                   system, system.selection->clusterId, *cell.leafId, storedCell->first,
                   storedCell->second);
               if (result.success) {
@@ -493,11 +493,11 @@ void runLoopMode(const GlobalOptions& options) {
         }
       } else if (action == HotkeyAction::Move) {
         if (storedCell.has_value() && system.selection.has_value()) {
-          const auto* pc = multi_cell_logic::getCluster(system, system.selection->clusterId);
+          const auto* pc = cells::getCluster(system, system.selection->clusterId);
           if (pc != nullptr) {
             const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
             if (cell.leafId.has_value()) {
-              auto result = multi_cell_logic::moveCell(system, storedCell->first, storedCell->second,
+              auto result = cells::moveCell(system, storedCell->first, storedCell->second,
                                                        system.selection->clusterId, *cell.leafId);
               if (result.success) {
                 storedCell.reset();
@@ -518,7 +518,7 @@ void runLoopMode(const GlobalOptions& options) {
 
     // Use updateSystem to sync
     auto result = timed("updateSystem", [&system, &currentState] {
-      return multi_cell_logic::updateSystem(system, currentState, std::nullopt);
+      return cells::updateSystem(system, currentState, std::nullopt);
     });
 
     // === Foreground/Selection Update Logic ===
@@ -532,7 +532,7 @@ void runLoopMode(const GlobalOptions& options) {
       float cursorX = static_cast<float>(cursorPosOpt->x);
       float cursorY = static_cast<float>(cursorPosOpt->y);
 
-      auto cellAtCursor = multi_cell_logic::findCellAtPoint(system, cursorX, cursorY);
+      auto cellAtCursor = cells::findCellAtPoint(system, cursorX, cursorY);
 
       if (cellAtCursor.has_value()) {
         auto [clusterId, cellIndex] = *cellAtCursor;
@@ -542,9 +542,9 @@ void runLoopMode(const GlobalOptions& options) {
                            system.selection->cellIndex != cellIndex;
 
         if (needsUpdate) {
-          system.selection = multi_cell_logic::Selection{clusterId, cellIndex};
+          system.selection = cells::Selection{clusterId, cellIndex};
 
-          const auto* pc = multi_cell_logic::getCluster(system, clusterId);
+          const auto* pc = cells::getCluster(system, clusterId);
           if (pc != nullptr) {
             const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
             if (cell.leafId.has_value()) {
@@ -584,9 +584,9 @@ void runLoopMode(const GlobalOptions& options) {
         size_t lastAddedId = result.addedLeafIds.back();
         // Find which cluster contains this leaf
         for (const auto& pc : system.clusters) {
-          auto cellIndexOpt = multi_cell_logic::findCellByLeafId(pc.cluster, lastAddedId);
+          auto cellIndexOpt = cells::findCellByLeafId(pc.cluster, lastAddedId);
           if (cellIndexOpt.has_value()) {
-            cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(pc, *cellIndexOpt);
+            cells::Rect globalRect = cells::getCellGlobalRect(pc, *cellIndexOpt);
             long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
             long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
             winapi::set_cursor_pos(centerX, centerY);
