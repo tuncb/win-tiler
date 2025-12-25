@@ -9,12 +9,20 @@
 #include <unordered_map>
 #include <vector>
 
+#include "argument_parser.h"
 #include "loop.h"
 #include "multi_cells.h"
 #include "multi_ui.h"
 #include "options.h"
-#include "process.h"
 #include "winapi.h"
+
+// Helper for std::visit with lambdas
+template <class... Ts>
+struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 using namespace wintiler;
 
@@ -129,119 +137,107 @@ void runApplyTestMode(const IgnoreOptions& ignoreOptions) {
   }
 }
 
+void applyLogLevel(LogLevel level) {
+  switch (level) {
+    case LogLevel::Trace:
+      spdlog::set_level(spdlog::level::trace);
+      break;
+    case LogLevel::Debug:
+      spdlog::set_level(spdlog::level::debug);
+      break;
+    case LogLevel::Info:
+      spdlog::set_level(spdlog::level::info);
+      break;
+    case LogLevel::Warn:
+      spdlog::set_level(spdlog::level::warn);
+      break;
+    case LogLevel::Err:
+      spdlog::set_level(spdlog::level::err);
+      break;
+    case LogLevel::Off:
+      spdlog::set_level(spdlog::level::off);
+      break;
+  }
+}
+
+void runUiTestMonitor(const GlobalOptions& globalOptions) {
+  auto monitors = winapi::get_monitors();
+  std::vector<multi_cell_logic::ClusterInitInfo> infos;
+
+  for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
+    const auto& monitor = monitors[monitorIndex];
+
+    float x = static_cast<float>(monitor.workArea.left);
+    float y = static_cast<float>(monitor.workArea.top);
+    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
+    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+
+    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, globalOptions.ignoreOptions);
+    std::vector<size_t> cellIds;
+    for (auto hwnd : hwnds) {
+      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+    }
+
+    infos.push_back({monitorIndex, x, y, w, h, cellIds});
+  }
+
+  winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
+  runRaylibUIMultiCluster(infos);
+}
+
+void runUiTestMulti(const UiTestMultiCommand& cmd) {
+  std::vector<multi_cell_logic::ClusterInitInfo> infos;
+
+  if (cmd.clusters.empty()) {
+    // Default: two monitors side by side
+    infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+    infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+  } else {
+    size_t clusterId = 0;
+    for (const auto& cluster : cmd.clusters) {
+      infos.push_back({clusterId++, cluster.x, cluster.y, cluster.width, cluster.height, {}});
+    }
+  }
+
+  runRaylibUIMultiCluster(infos);
+}
+
 int main(int argc, char* argv[]) {
   // Flush spdlog on info-level messages to ensure immediate output
   spdlog::flush_on(spdlog::level::info);
 
+  // Parse command-line arguments
+  auto result = parseArgs(argc, argv);
+  if (!result.success) {
+    spdlog::error("{}", result.error);
+    return 1;
+  }
+
+  // Apply log level if specified
+  if (result.args.options.logLevel) {
+    applyLogLevel(*result.args.options.logLevel);
+  }
+
   // Get default global options
   auto globalOptions = get_default_global_options();
 
-  // Parse optional logging level argument (must be first)
-  int argStart = 1;
-  if (argc > 1) {
-    std::string firstArg = argv[1];
-    if (firstArg.rfind("logging:", 0) == 0) {
-      std::string level = firstArg.substr(8);
-      if (level == "trace") {
-        spdlog::set_level(spdlog::level::trace);
-      } else if (level == "debug") {
-        spdlog::set_level(spdlog::level::debug);
-      } else if (level == "info") {
-        spdlog::set_level(spdlog::level::info);
-      } else if (level == "warn") {
-        spdlog::set_level(spdlog::level::warn);
-      } else if (level == "err") {
-        spdlog::set_level(spdlog::level::err);
-      } else if (level == "off") {
-        spdlog::set_level(spdlog::level::off);
-      }
-      argStart = 2;
-    }
+  // Dispatch command
+  if (result.args.command) {
+    std::visit(
+        overloaded{
+            [](const HelpCommand&) { printUsage(); },
+            [&](const ApplyCommand&) { runApplyMode(globalOptions.ignoreOptions); },
+            [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions.ignoreOptions); },
+            [&](const LoopCommand&) { runLoopMode(globalOptions); },
+            [&](const LoopTestCommand&) { runLoopTestMode(globalOptions); },
+            [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
+            [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
+        },
+        *result.args.command);
+    return 0;
   }
 
-  for (int i = argStart; i < argc; ++i) {
-    std::string arg = argv[i];
-
-    if (arg == "apply") {
-      runApplyMode(globalOptions.ignoreOptions);
-      return 0;
-    }
-
-    if (arg == "apply-test") {
-      runApplyTestMode(globalOptions.ignoreOptions);
-      return 0;
-    }
-
-    if (arg == "loop-test") {
-      runLoopTestMode(globalOptions);
-      return 0;
-    }
-
-    if (arg == "loop") {
-      runLoopMode(globalOptions);
-      return 0;
-    }
-
-    if (arg == "ui-test-monitor") {
-      auto monitors = winapi::get_monitors();
-      std::vector<multi_cell_logic::ClusterInitInfo> infos;
-
-      for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-        const auto& monitor = monitors[monitorIndex];
-
-        // Get workArea bounds for this monitor
-        float x = static_cast<float>(monitor.workArea.left);
-        float y = static_cast<float>(monitor.workArea.top);
-        float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-        float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
-
-        // Get HWNDs for this monitor and convert to cell IDs
-        auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, globalOptions.ignoreOptions);
-        std::vector<size_t> cellIds;
-        for (auto hwnd : hwnds) {
-          cellIds.push_back(reinterpret_cast<size_t>(hwnd));
-        }
-
-        infos.push_back({monitorIndex, x, y, w, h, cellIds});
-      }
-
-      winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
-      runRaylibUIMultiCluster(infos);
-      return 0;
-    }
-
-    if (arg == "ui-test-multi") {
-      std::vector<multi_cell_logic::ClusterInitInfo> infos;
-
-      // Collect remaining arguments after "ui-test-multi"
-      int remaining = argc - (i + 1);
-
-      if (remaining == 0) {
-        // Default: two monitors side by side
-        infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
-        infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
-      } else if (remaining % 4 != 0) {
-        spdlog::error("ui-test-multi requires 4 numbers per cluster (x y width height)");
-        spdlog::error("Usage: ui-test-multi [x1 y1 w1 h1] [x2 y2 w2 h2] ...");
-        spdlog::error("Got {} arguments, which is not a multiple of 4", remaining);
-        return 1;
-      } else {
-        // Parse clusters from arguments
-        size_t clusterId = 0;
-        for (int j = i + 1; j + 3 < argc; j += 4) {
-          float x = std::stof(argv[j]);
-          float y = std::stof(argv[j + 1]);
-          float w = std::stof(argv[j + 2]);
-          float h = std::stof(argv[j + 3]);
-          infos.push_back({clusterId++, x, y, w, h, {}});
-        }
-      }
-
-      runRaylibUIMultiCluster(infos);
-      return 0;
-    }
-  }
-
+  // No command specified - show windows per monitor
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
   return 0;
 }
