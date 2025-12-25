@@ -12,6 +12,9 @@ build-run.bat build-run --Test-Debug  # Build and run unit tests
 
 The build script auto-detects MSBuild via vswhere.exe and copies required DLLs (raylib.dll, glfw3.dll) to the output directory `x64\{Configuration}\`.
 
+The development is going on windows OS, so use \\ for bash commands path separation.
+Ie. cmd //c "C:\\work\\win-tiler\\build-run.bat build --Debug"
+
 ## Running the Application
 
 ```batch

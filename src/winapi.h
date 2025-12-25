@@ -74,6 +74,7 @@ struct Point {
 
 HWND_T get_foreground_window();
 std::optional<Point> get_cursor_pos();
+bool set_cursor_pos(long x, long y);
 bool set_foreground_window(HWND_T hwnd);
 
 // Keyboard hotkey support

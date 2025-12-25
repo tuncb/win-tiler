@@ -19,8 +19,8 @@
       "Bash(cmd /c \"cd /d C:\\\\work\\\\win-tiler && build-run.bat build-run --Test-Debug\")",
       "Bash(cmd /c \"build-run.bat build --Debug\")",
       "Bash(cmd /c \"dir C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\")",
-      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\work\\\\win-tiler\\\\x64\\\\Debug'' | Select-Object Name,Length,LastWriteTime\")",
-      "Bash(powershell:*)"
+      "Bash(C:\\\\work\\\\win-tiler\\\\build-run.bat build --Debug)",
+      "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\build-run.bat build --Debug\")"
     ]
   }
 }

@@ -254,6 +254,29 @@ std::optional<Point> get_cursor_pos() {
   return std::nullopt;
 }
 
+bool set_cursor_pos(long x, long y) {
+  if (SetCursorPos(static_cast<int>(x), static_cast<int>(y)) == 0) {
+    return false;
+  }
+
+  // Send synthetic mouse move event to properly notify applications
+  // This fixes the "busy cursor" issue after programmatic cursor movement
+  // Use MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK for multi-monitor support
+  int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+  INPUT input = {};
+  input.type = INPUT_MOUSE;
+  input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+  input.mi.dx = static_cast<LONG>(((x - virtualLeft) * 65535) / virtualWidth);
+  input.mi.dy = static_cast<LONG>(((y - virtualTop) * 65535) / virtualHeight);
+  SendInput(1, &input, sizeof(INPUT));
+
+  return true;
+}
+
 bool set_foreground_window(HWND_T hwnd) {
   HWND targetHwnd = reinterpret_cast<HWND>(hwnd);
   HWND foregroundHwnd = GetForegroundWindow();

@@ -14,6 +14,121 @@ namespace wintiler {
 
 namespace {
 
+// Hotkey IDs for vim-style navigation
+constexpr int HOTKEY_ID_LEFT = 1;   // Win+Shift+H
+constexpr int HOTKEY_ID_DOWN = 2;   // Win+Shift+J
+constexpr int HOTKEY_ID_UP = 3;     // Win+Shift+K
+constexpr int HOTKEY_ID_RIGHT = 4;  // Win+Shift+L
+
+bool registerNavigationHotkeys() {
+  auto hotkeyLeft = winapi::create_hotkey("super+shift+h", HOTKEY_ID_LEFT);
+  auto hotkeyDown = winapi::create_hotkey("super+shift+j", HOTKEY_ID_DOWN);
+  auto hotkeyUp = winapi::create_hotkey("super+shift+k", HOTKEY_ID_UP);
+  auto hotkeyRight = winapi::create_hotkey("super+shift+l", HOTKEY_ID_RIGHT);
+
+  if (!hotkeyLeft || !hotkeyDown || !hotkeyUp || !hotkeyRight) {
+    spdlog::error("Failed to create hotkey info");
+    return false;
+  }
+
+  bool success = true;
+  if (!winapi::register_hotkey(*hotkeyLeft)) {
+    spdlog::error("Failed to register hotkey Win+Shift+H");
+    success = false;
+  }
+  if (!winapi::register_hotkey(*hotkeyDown)) {
+    spdlog::error("Failed to register hotkey Win+Shift+J");
+    success = false;
+  }
+  if (!winapi::register_hotkey(*hotkeyUp)) {
+    spdlog::error("Failed to register hotkey Win+Shift+K");
+    success = false;
+  }
+  if (!winapi::register_hotkey(*hotkeyRight)) {
+    spdlog::error("Failed to register hotkey Win+Shift+L");
+    success = false;
+  }
+
+  if (success) {
+    spdlog::info("Registered navigation hotkeys: Win+Shift+H/J/K/L");
+  }
+
+  return success;
+}
+
+void unregisterNavigationHotkeys() {
+  winapi::unregister_hotkey(HOTKEY_ID_LEFT);
+  winapi::unregister_hotkey(HOTKEY_ID_DOWN);
+  winapi::unregister_hotkey(HOTKEY_ID_UP);
+  winapi::unregister_hotkey(HOTKEY_ID_RIGHT);
+}
+
+// Convert hotkey ID to direction
+std::optional<cell_logic::Direction> hotkeyIdToDirection(int hotkeyId) {
+  switch (hotkeyId) {
+    case HOTKEY_ID_LEFT:
+      return cell_logic::Direction::Left;
+    case HOTKEY_ID_DOWN:
+      return cell_logic::Direction::Down;
+    case HOTKEY_ID_UP:
+      return cell_logic::Direction::Up;
+    case HOTKEY_ID_RIGHT:
+      return cell_logic::Direction::Right;
+    default:
+      return std::nullopt;
+  }
+}
+
+// Handle keyboard navigation: move selection, set foreground, move mouse to center
+void handleKeyboardNavigation(multi_cell_logic::System& system, cell_logic::Direction dir) {
+  // Try to move selection in the given direction
+  if (!multi_cell_logic::moveSelection(system, dir)) {
+    spdlog::trace("Cannot move selection in direction");
+    return;
+  }
+
+  // Get the newly selected cell
+  auto selectedCell = multi_cell_logic::getSelectedCell(system);
+  if (!selectedCell.has_value()) {
+    spdlog::error("No cell selected after moveSelection");
+    return;
+  }
+
+  auto [clusterId, cellIndex] = *selectedCell;
+  const auto* pc = multi_cell_logic::getCluster(system, clusterId);
+  if (pc == nullptr) {
+    spdlog::error("Failed to get cluster {}", clusterId);
+    return;
+  }
+
+  const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
+  if (!cell.leafId.has_value()) {
+    spdlog::error("Selected cell has no leafId");
+    return;
+  }
+
+  // Get the window handle
+  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+
+  // Set it as the foreground window
+  if (!winapi::set_foreground_window(hwnd)) {
+    spdlog::error("Failed to set foreground window");
+    return;
+  }
+
+  // Get the cell's global rect and move mouse to center
+  cell_logic::Rect globalRect = multi_cell_logic::getCellGlobalRect(*pc, cellIndex);
+  long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
+  long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
+
+  if (!winapi::set_cursor_pos(centerX, centerY)) {
+    spdlog::error("Failed to set cursor position");
+    return;
+  }
+
+  spdlog::trace("Navigated to cell {} in cluster {}", cellIndex, clusterId);
+}
+
 // Helper: Print tile layout from a multi-cluster system
 void printTileLayout(const multi_cell_logic::System& system,
                      const std::unordered_map<size_t, std::string>& hwndToTitle) {
@@ -255,6 +370,11 @@ void runLoopMode() {
       "initial applyTileLayout: {}us",
       std::chrono::duration_cast<std::chrono::microseconds>(applyEnd - applyStart).count());
 
+  // Register keyboard hotkeys
+  if (!registerNavigationHotkeys()) {
+    spdlog::warn("Some hotkeys failed to register - keyboard navigation may not work");
+  }
+
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
@@ -262,6 +382,13 @@ void runLoopMode() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     auto loopStart = std::chrono::high_resolution_clock::now();
+
+    // Check for keyboard hotkeys
+    if (auto hotkeyId = winapi::check_keyboard_action()) {
+      if (auto dir = hotkeyIdToDirection(*hotkeyId)) {
+        handleKeyboardNavigation(system, *dir);
+      }
+    }
 
     // Re-gather window state
     auto gatherStateStart = std::chrono::high_resolution_clock::now();

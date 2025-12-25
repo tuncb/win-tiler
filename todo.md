@@ -1,13 +1,19 @@
-- add swap and move operations to runRaylibUIMultiCluster function in @src/multi_ui.h.
-key s selects the currently selected cell for the operation
-key m(ove): moves the currently selected cell to previously selected cell
-key e(xchange): swaps the currently selected cell to previously selected cell
+- Add keyboard bindings to loop mode.
+-- We should register keyboard hooks at the beginning.
+-- during the loop we have to check if the shortcuts are pressed.
+-- we will start by the following shortcuts for moving between windows:
+Win + shift + H
+Win + shift + J
+Win + shift + K
+Win + shift + L
 
-key shift + s: clears the selected cell for operation
+These will indicate vim like short cuts for moving around.
+When one of the shortcuts is pressed we need to understand the direction, then find the cell in that direction, get the window attached to that cell, make it the foreground window and move the mouse in the middle of it.
 
-We need store the selected cell for operations in runRaylibUIMultiCluster as optional.
-we need draw it a bit differently then other cells.
+See winapi and multi_cell files for already implemented functionality.
 
-- update selected cell in the loop. check window activated, if it is from handle find the cluster and cell id and update the selected index.
+- shortcuts for
 
-- Add keyboard bindings
+- refactor loop mode and loop test mode.
+
+-
