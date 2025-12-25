@@ -266,22 +266,23 @@ void runRaylibUIMultiCluster(const std::vector<multi_cell_logic::ClusterInitInfo
       multi_cell_logic::validateSystem(appState.system);
     }
 
-    if (IsKeyPressed(KEY_LEFT)) {
+    // Vim-style navigation: h=left, j=down, k=up, l=right
+    if (IsKeyPressed(KEY_H)) {
       if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Left)) {
         centerMouseOnSelection(appState, vt);
       }
     }
-    if (IsKeyPressed(KEY_RIGHT)) {
+    if (IsKeyPressed(KEY_L)) {
       if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Right)) {
         centerMouseOnSelection(appState, vt);
       }
     }
-    if (IsKeyPressed(KEY_UP)) {
+    if (IsKeyPressed(KEY_K)) {
       if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Up)) {
         centerMouseOnSelection(appState, vt);
       }
     }
-    if (IsKeyPressed(KEY_DOWN)) {
+    if (IsKeyPressed(KEY_J)) {
       if (multi_cell_logic::moveSelection(appState.system, cell_logic::Direction::Down)) {
         centerMouseOnSelection(appState, vt);
       }
