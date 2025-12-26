@@ -239,6 +239,9 @@ void runUiTestMulti(const UiTestMultiCommand& cmd) {
 }
 
 int main(int argc, char* argv[]) {
+  // Set DPI awareness before any Windows API calls that return coordinates
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+
   // Flush spdlog on info-level messages to ensure immediate output
   spdlog::flush_on(spdlog::level::info);
 
