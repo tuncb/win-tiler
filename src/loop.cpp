@@ -42,7 +42,7 @@ void timedVoid(const char* name, F&& func) {
 
 // Convert HotkeyAction to integer ID for Windows hotkey registration
 int hotkeyActionToId(HotkeyAction action) {
-  return static_cast<int>(action) + 1;  // Start from 1 to avoid 0
+  return static_cast<int>(action) + 1; // Start from 1 to avoid 0
 }
 
 // Convert integer ID back to HotkeyAction
@@ -188,8 +188,8 @@ ActionResult handleToggleGlobal(cells::System& system) {
     if (system.selection.has_value()) {
       const auto* pc = cells::getCluster(system, system.selection->clusterId);
       if (pc != nullptr) {
-        const char* dirStr = (pc->cluster.globalSplitDir == cells::SplitDir::Vertical)
-            ? "vertical" : "horizontal";
+        const char* dirStr =
+            (pc->cluster.globalSplitDir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
         spdlog::info("Toggled cluster global split direction: {}", dirStr);
       }
     }
@@ -224,9 +224,8 @@ ActionResult handleExchange(cells::System& system, StoredCell& storedCell) {
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
       if (cell.leafId.has_value()) {
-        auto result = cells::swapCells(
-            system, system.selection->clusterId, *cell.leafId, storedCell->first,
-            storedCell->second);
+        auto result = cells::swapCells(system, system.selection->clusterId, *cell.leafId,
+                                       storedCell->first, storedCell->second);
         if (result.success) {
           storedCell.reset();
           spdlog::info("Exchanged cells successfully");
@@ -244,7 +243,7 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
       if (cell.leafId.has_value()) {
         auto result = cells::moveCell(system, storedCell->first, storedCell->second,
-                                                 system.selection->clusterId, *cell.leafId);
+                                      system.selection->clusterId, *cell.leafId);
         if (result.success) {
           storedCell.reset();
           spdlog::info("Moved cell successfully");
@@ -255,10 +254,8 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
   return ActionResult::Continue;
 }
 
-ActionResult dispatchHotkeyAction(
-    HotkeyAction action,
-    cells::System& system,
-    StoredCell& storedCell) {
+ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
+                                  StoredCell& storedCell) {
   // Handle navigation actions
   if (auto dir = hotkeyActionToDirection(action)) {
     handleKeyboardNavigation(system, *dir);
@@ -316,8 +313,7 @@ void printTileLayout(const cells::System& system) {
 }
 
 // Helper: Gather current window state for all monitors
-std::vector<cells::ClusterCellIds> gatherCurrentWindowState(
-    const IgnoreOptions& ignoreOptions) {
+std::vector<cells::ClusterCellIds> gatherCurrentWindowState(const IgnoreOptions& ignoreOptions) {
   std::vector<cells::ClusterCellIds> result;
   auto monitors = winapi::get_monitors();
 
@@ -416,8 +412,8 @@ void runLoopTestMode(const GlobalOptions& options) {
 
     // If changes detected, log them
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      spdlog::info("Window changes: +{} added, -{} removed",
-                   result.addedLeafIds.size(), result.deletedLeafIds.size());
+      spdlog::info("Window changes: +{} added, -{} removed", result.addedLeafIds.size(),
+                   result.deletedLeafIds.size());
 
       if (!result.addedLeafIds.empty()) {
         spdlog::info("Added windows:");
@@ -437,9 +433,7 @@ void runLoopTestMode(const GlobalOptions& options) {
 void runLoopMode(const GlobalOptions& options) {
   const auto& keyboardOptions = options.keyboardOptions;
 
-  auto system = timed("createInitialSystem", [&options] {
-    return createInitialSystem(options);
-  });
+  auto system = timed("createInitialSystem", [&options] { return createInitialSystem(options); });
 
   // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
@@ -474,7 +468,7 @@ void runLoopMode(const GlobalOptions& options) {
     if (auto hotkeyId = winapi::check_keyboard_action()) {
       auto actionOpt = idToHotkeyAction(*hotkeyId);
       if (!actionOpt.has_value()) {
-        continue;  // Unknown hotkey ID
+        continue; // Unknown hotkey ID
       }
       if (dispatchHotkeyAction(*actionOpt, system, storedCell) == ActionResult::Exit) {
         break;
@@ -482,8 +476,9 @@ void runLoopMode(const GlobalOptions& options) {
     }
 
     // Re-gather window state
-    auto currentState =
-        timed("gatherCurrentWindowState", [&options] { return gatherCurrentWindowState(options.ignoreOptions); });
+    auto currentState = timed("gatherCurrentWindowState", [&options] {
+      return gatherCurrentWindowState(options.ignoreOptions);
+    });
 
     // Use updateSystem to sync
     auto result = timed("updateSystem", [&system, &currentState] {
@@ -532,8 +527,8 @@ void runLoopMode(const GlobalOptions& options) {
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
       // One-line summary at info level
-      spdlog::info("Window changes: +{} added, -{} removed",
-                   result.addedLeafIds.size(), result.deletedLeafIds.size());
+      spdlog::info("Window changes: +{} added, -{} removed", result.addedLeafIds.size(),
+                   result.deletedLeafIds.size());
 
       // Detailed logging at debug level for added windows
       if (!result.addedLeafIds.empty()) {
