@@ -26,6 +26,8 @@
 
 - extra ignores option for config, ignores on top of the default ones.
 
+- assign gaps to the monitor boundaries as well.
+
 
 # bugs
 

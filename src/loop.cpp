@@ -366,6 +366,7 @@ bool isHwndInSystem(const cells::System& system, winapi::HWND_T hwnd) {
 
 cells::System createInitialSystem(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
+  winapi::log_monitors(monitors);
 
   std::vector<cells::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {

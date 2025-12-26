@@ -47,6 +47,7 @@ struct WindowInfo {
 };
 
 std::vector<MonitorInfo> get_monitors();
+void log_monitors(const std::vector<MonitorInfo>& monitors);
 std::optional<DWORD_T> get_window_pid(HWND_T hwnd);
 std::string get_process_name_from_pid(DWORD_T pid);
 bool is_window_maximized(HWND_T hwnd);
