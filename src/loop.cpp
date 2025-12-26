@@ -283,6 +283,54 @@ ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
   }
 }
 
+void updateForegroundSelectionFromMousePosition(cells::System& system) {
+  auto foregroundHwnd = winapi::get_foreground_window();
+
+  if (foregroundHwnd == nullptr ||
+      !cells::hasLeafId(system, reinterpret_cast<size_t>(foregroundHwnd))) {
+    return;
+  }
+
+  auto cursorPosOpt = winapi::get_cursor_pos();
+  if (!cursorPosOpt.has_value()) {
+    spdlog::error("Failed to get cursor position");
+    return;
+  }
+
+  float cursorX = static_cast<float>(cursorPosOpt->x);
+  float cursorY = static_cast<float>(cursorPosOpt->y);
+
+  auto cellAtCursor = cells::findCellAtPoint(system, cursorX, cursorY);
+
+  if (!cellAtCursor.has_value()) {
+    return;
+  }
+
+  auto [clusterId, cellIndex] = *cellAtCursor;
+
+  bool needsUpdate = !system.selection.has_value() || system.selection->clusterId != clusterId ||
+                     system.selection->cellIndex != cellIndex;
+
+  if (!needsUpdate) {
+    return;
+  }
+
+  system.selection = cells::Selection{clusterId, cellIndex};
+
+  const auto* pc = cells::getCluster(system, clusterId);
+  if (pc != nullptr) {
+    const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
+    if (cell.leafId.has_value()) {
+      winapi::HWND_T cellHwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+      if (!winapi::set_foreground_window(cellHwnd)) {
+        spdlog::error("Failed to set foreground window for HWND {}", cellHwnd);
+      }
+      spdlog::trace("======================Selection updated: cluster={}, cell={}", clusterId,
+                    cellIndex);
+    }
+  }
+}
+
 // Helper: Print tile layout from a multi-cluster system
 void printTileLayout(const cells::System& system) {
   size_t totalWindows = cells::countTotalLeaves(system);
@@ -437,45 +485,7 @@ void runLoopMode(const GlobalOptions& options) {
       return cells::updateSystem(system, currentState, std::nullopt);
     });
 
-    // === Foreground/Selection Update Logic ===
-    auto foregroundHwnd = winapi::get_foreground_window();
-
-    if (foregroundHwnd != nullptr &&
-        cells::hasLeafId(system, reinterpret_cast<size_t>(foregroundHwnd))) {
-      auto cursorPosOpt = winapi::get_cursor_pos();
-      if (!cursorPosOpt.has_value()) {
-        continue; // Skip this iteration if cursor pos unavailable
-      }
-      float cursorX = static_cast<float>(cursorPosOpt->x);
-      float cursorY = static_cast<float>(cursorPosOpt->y);
-
-      auto cellAtCursor = cells::findCellAtPoint(system, cursorX, cursorY);
-
-      if (cellAtCursor.has_value()) {
-        auto [clusterId, cellIndex] = *cellAtCursor;
-
-        bool needsUpdate = !system.selection.has_value() ||
-                           system.selection->clusterId != clusterId ||
-                           system.selection->cellIndex != cellIndex;
-
-        if (needsUpdate) {
-          system.selection = cells::Selection{clusterId, cellIndex};
-
-          const auto* pc = cells::getCluster(system, clusterId);
-          if (pc != nullptr) {
-            const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
-            if (cell.leafId.has_value()) {
-              winapi::HWND_T cellHwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
-              if (!winapi::set_foreground_window(cellHwnd)) {
-                spdlog::error("Failed to set foreground window for HWND {}", cellHwnd);
-              }
-              spdlog::trace("======================Selection updated: cluster={}, cell={}",
-                            clusterId, cellIndex);
-            }
-          }
-        }
-      }
-    }
+    updateForegroundSelectionFromMousePosition(system);
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
