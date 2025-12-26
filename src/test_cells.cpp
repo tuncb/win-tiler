@@ -259,6 +259,31 @@ TEST_SUITE("cells - multi-cluster") {
     auto result4 = cells::findCellAtPoint(system, 500.0f, 650.0f);
     CHECK(!result4.has_value());
   }
+
+  TEST_CASE("hasLeafId returns true for existing leaf") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    CHECK(cells::hasLeafId(system, 10));
+    CHECK(cells::hasLeafId(system, 20));
+  }
+
+  TEST_CASE("hasLeafId returns false for non-existent leaf") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = cells::createSystem({info});
+
+    CHECK(!cells::hasLeafId(system, 999));
+  }
+
+  TEST_CASE("hasLeafId finds leaf across multiple clusters") {
+    cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {10}};
+    cells::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
+    auto system = cells::createSystem({info1, info2});
+
+    CHECK(cells::hasLeafId(system, 10));
+    CHECK(cells::hasLeafId(system, 20));
+    CHECK(!cells::hasLeafId(system, 30));
+  }
 }
 
 // ============================================================================

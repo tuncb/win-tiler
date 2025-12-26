@@ -354,16 +354,6 @@ void applyTileLayout(const cells::System& system) {
   }
 }
 
-bool isHwndInSystem(const cells::System& system, winapi::HWND_T hwnd) {
-  size_t hwndValue = reinterpret_cast<size_t>(hwnd);
-  for (const auto& pc : system.clusters) {
-    if (cells::findCellByLeafId(pc.cluster, hwndValue).has_value()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 cells::System createInitialSystem(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
@@ -450,7 +440,8 @@ void runLoopMode(const GlobalOptions& options) {
     // === Foreground/Selection Update Logic ===
     auto foregroundHwnd = winapi::get_foreground_window();
 
-    if (foregroundHwnd != nullptr && isHwndInSystem(system, foregroundHwnd)) {
+    if (foregroundHwnd != nullptr &&
+        cells::hasLeafId(system, reinterpret_cast<size_t>(foregroundHwnd))) {
       auto cursorPosOpt = winapi::get_cursor_pos();
       if (!cursorPosOpt.has_value()) {
         continue; // Skip this iteration if cursor pos unavailable

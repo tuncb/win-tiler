@@ -1102,6 +1102,15 @@ size_t countTotalLeaves(const System& system) {
   return count;
 }
 
+bool hasLeafId(const System& system, size_t leafId) {
+  for (const auto& pc : system.clusters) {
+    if (findCellByLeafId(pc.cluster, leafId).has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ============================================================================
 // Hit Testing
 // ============================================================================

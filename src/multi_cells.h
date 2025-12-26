@@ -215,6 +215,9 @@ void debugPrintSystem(const System& system);
 // Count total leaves across all clusters.
 [[nodiscard]] size_t countTotalLeaves(const System& system);
 
+// Check if a leafId exists in the system (in any non-dead cell).
+[[nodiscard]] bool hasLeafId(const System& system, size_t leafId);
+
 // ============================================================================
 // Hit Testing
 // ============================================================================
