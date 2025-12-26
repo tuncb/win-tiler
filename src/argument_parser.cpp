@@ -96,8 +96,6 @@ ParseResult parseArgs(int argc, char* argv[]) {
       args.command = ApplyTestCommand{};
     } else if (cmd == "loop") {
       args.command = LoopCommand{};
-    } else if (cmd == "loop-test") {
-      args.command = LoopTestCommand{};
     } else if (cmd == "ui-test-monitor") {
       args.command = UiTestMonitorCommand{};
     } else if (cmd == "ui-test-multi") {
@@ -156,7 +154,6 @@ void printUsage() {
             << "  apply                   Apply tiling to actual windows\n"
             << "  apply-test              Preview tiling layout in console\n"
             << "  loop                    Run in loop mode (hotkey-driven)\n"
-            << "  loop-test               Run loop mode for testing\n"
             << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
             << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"

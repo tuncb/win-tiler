@@ -392,45 +392,6 @@ cells::System createInitialSystem(const GlobalOptions& options) {
 
 } // namespace
 
-void runLoopTestMode(const GlobalOptions& options) {
-  auto system = createInitialSystem(options);
-
-  // Print initial layout
-  spdlog::info("=== Initial Tile Layout ===");
-  printTileLayout(system);
-
-  // 3. Enter monitoring loop
-  spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
-
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-    // Re-gather window state
-    auto currentState = gatherCurrentWindowState(options.ignoreOptions);
-
-    // Use updateSystem to sync
-    auto result = cells::updateSystem(system, currentState, std::nullopt);
-
-    // If changes detected, log them
-    if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
-      spdlog::info("Window changes: +{} added, -{} removed", result.addedLeafIds.size(),
-                   result.deletedLeafIds.size());
-
-      if (!result.addedLeafIds.empty()) {
-        spdlog::info("Added windows:");
-        for (size_t id : result.addedLeafIds) {
-          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-          std::string title = winapi::get_window_info(hwnd).title;
-          spdlog::info("  + \"{}\"", title);
-        }
-      }
-
-      spdlog::info("=== Updated Tile Layout ===");
-      printTileLayout(system);
-    }
-  }
-}
-
 void runLoopMode(const GlobalOptions& options) {
   const auto& keyboardOptions = options.keyboardOptions;
 

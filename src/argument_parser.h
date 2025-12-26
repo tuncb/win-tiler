@@ -16,8 +16,6 @@ struct ApplyTestCommand {};
 
 struct LoopCommand {};
 
-struct LoopTestCommand {};
-
 struct UiTestMonitorCommand {};
 
 struct UiTestMultiCommand {
@@ -35,8 +33,8 @@ struct InitConfigCommand {
 
 // Variant holding all possible commands
 using Command =
-    std::variant<HelpCommand, ApplyCommand, ApplyTestCommand, LoopCommand, LoopTestCommand,
-                 UiTestMonitorCommand, UiTestMultiCommand, TrackWindowsCommand, InitConfigCommand>;
+    std::variant<HelpCommand, ApplyCommand, ApplyTestCommand, LoopCommand, UiTestMonitorCommand,
+                 UiTestMultiCommand, TrackWindowsCommand, InitConfigCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

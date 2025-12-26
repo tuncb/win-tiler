@@ -295,7 +295,6 @@ int main(int argc, char* argv[]) {
             [&](const ApplyCommand&) { runApplyMode(globalOptions); },
             [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions); },
             [&](const LoopCommand&) { runLoopMode(globalOptions); },
-            [&](const LoopTestCommand&) { runLoopTestMode(globalOptions); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
