@@ -1,6 +1,7 @@
 #include "options.h"
 
 #include <fstream>
+#include <spdlog/spdlog.h>
 #include <toml++/toml.hpp>
 
 namespace wintiler {
@@ -236,6 +237,19 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       if (auto vertical = (*gap)["vertical"].as_floating_point()) {
         options.gapOptions.vertical = static_cast<float>(vertical->get());
       }
+    }
+
+    // Validate gap values - negative values not allowed
+    if (options.gapOptions.horizontal < 0) {
+      spdlog::error("Invalid gap.horizontal value ({}): must be non-negative. Using default.",
+                    options.gapOptions.horizontal);
+      options.gapOptions.horizontal = kDefaultGapHorizontal;
+    }
+
+    if (options.gapOptions.vertical < 0) {
+      spdlog::error("Invalid gap.vertical value ({}): must be non-negative. Using default.",
+                    options.gapOptions.vertical);
+      options.gapOptions.vertical = kDefaultGapVertical;
     }
 
     return ReadResult{true, "", options};

@@ -47,10 +47,14 @@ struct KeyboardOptions {
   std::vector<HotkeyBinding> bindings;
 };
 
+// Default gap values
+constexpr float kDefaultGapHorizontal = 10.0f;
+constexpr float kDefaultGapVertical = 10.0f;
+
 // Gap configuration for window spacing
 struct GapOptions {
-  float horizontal = 10.0f;
-  float vertical = 10.0f;
+  float horizontal = kDefaultGapHorizontal;
+  float vertical = kDefaultGapVertical;
 };
 
 // Global options container
