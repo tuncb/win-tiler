@@ -110,7 +110,7 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(notFound == nullptr);
   }
 
-  TEST_CASE("getCellGlobalRect returns correct global rect") {
+  TEST_CASE("getCellGlobalRect returns correct global rect with edge margins") {
     cells::ClusterInitInfo info{1, 100.0f, 50.0f, 800.0f, 600.0f, {1}};
     auto system = cells::createSystem({info});
 
@@ -120,10 +120,11 @@ TEST_SUITE("cells - multi-cluster") {
 
     auto globalRect = cells::getCellGlobalRect(*pc, 0);
 
-    CHECK(globalRect.x == 100.0f);
-    CHECK(globalRect.y == 50.0f);
-    CHECK(globalRect.width == 800.0f);
-    CHECK(globalRect.height == 600.0f);
+    // Cell rect is inset by gapHorizontal/gapVertical (10px) on all edges
+    CHECK(globalRect.x == 100.0f + TEST_GAP_H);
+    CHECK(globalRect.y == 50.0f + TEST_GAP_V);
+    CHECK(globalRect.width == 800.0f - 2.0f * TEST_GAP_H);
+    CHECK(globalRect.height == 600.0f - 2.0f * TEST_GAP_V);
   }
 
   TEST_CASE("getSelectedCell returns current selection") {
@@ -229,22 +230,29 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(!result.has_value());
   }
 
-  TEST_CASE("findCellAtPoint handles edge coordinates") {
+  TEST_CASE("findCellAtPoint handles edge coordinates with margins") {
     cells::ClusterInitInfo info{1, 100.0f, 50.0f, 800.0f, 600.0f, {1}};
     auto system = cells::createSystem({info});
 
-    // Point exactly at top-left corner (inclusive)
-    auto result1 = cells::findCellAtPoint(system, 100.0f, 50.0f);
+    // Cell rect is inset by gap (10px) on all edges
+    // Cell starts at (110, 60), size (780, 580), ends at (890, 640)
+
+    // Point in edge margin (outside cell)
+    auto result0 = cells::findCellAtPoint(system, 100.0f, 50.0f);
+    CHECK(!result0.has_value());
+
+    // Point exactly at cell top-left corner (inclusive)
+    auto result1 = cells::findCellAtPoint(system, 110.0f, 60.0f);
     REQUIRE(result1.has_value());
     CHECK(result1->first == 1);
 
-    // Point just before bottom-right edge (exclusive)
-    auto result2 = cells::findCellAtPoint(system, 899.0f, 649.0f);
+    // Point just before cell bottom-right edge (exclusive)
+    auto result2 = cells::findCellAtPoint(system, 889.0f, 639.0f);
     REQUIRE(result2.has_value());
     CHECK(result2->first == 1);
 
-    // Point exactly at right edge (exclusive - outside)
-    auto result3 = cells::findCellAtPoint(system, 900.0f, 300.0f);
+    // Point exactly at cell right edge (exclusive - outside)
+    auto result3 = cells::findCellAtPoint(system, 890.0f, 300.0f);
     CHECK(!result3.has_value());
 
     // Point exactly at bottom edge (exclusive - outside)

@@ -199,7 +199,10 @@ static std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedInde
 
     float rootW = state.windowWidth;
     float rootH = state.windowHeight;
-    root.rect = Rect{0.0f, 0.0f, rootW > 0.0f ? rootW : 0.0f, rootH > 0.0f ? rootH : 0.0f};
+    float insetW = rootW - 2.0f * gapHorizontal;
+    float insetH = rootH - 2.0f * gapVertical;
+    root.rect = Rect{gapHorizontal, gapVertical, insetW > 0.0f ? insetW : 0.0f,
+                     insetH > 0.0f ? insetH : 0.0f};
 
     int index = addCell(state, root);
 
