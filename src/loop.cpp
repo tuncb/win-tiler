@@ -421,15 +421,9 @@ void redirectNewWindowsToSelection(
   }
 }
 
-} // namespace
-
-void runLoopTestMode(const GlobalOptions& options) {
-  const auto& ignoreOptions = options.ignoreOptions;
-
-  // 1. Build initial state (like computeTileLayout)
+cells::System createInitialSystem(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
 
-  // Create cluster init info
   std::vector<cells::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
@@ -438,20 +432,26 @@ void runLoopTestMode(const GlobalOptions& options) {
     float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
-    auto hwnds = winapi::get_hwnds_for_monitor(i, ignoreOptions);
+    auto hwnds = winapi::get_hwnds_for_monitor(i, options.ignoreOptions);
     std::vector<size_t> cellIds;
     for (auto hwnd : hwnds) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
     }
-
     clusterInfos.push_back({i, x, y, w, h, cellIds});
   }
 
   auto system = cells::createSystem(clusterInfos);
   system.gapHorizontal = options.gapOptions.horizontal;
   system.gapVertical = options.gapOptions.vertical;
+  return system;
+}
 
-  // 2. Print initial layout
+} // namespace
+
+void runLoopTestMode(const GlobalOptions& options) {
+  auto system = createInitialSystem(options);
+
+  // Print initial layout
   spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system);
 
@@ -462,7 +462,7 @@ void runLoopTestMode(const GlobalOptions& options) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Re-gather window state
-    auto currentState = gatherCurrentWindowState(ignoreOptions);
+    auto currentState = gatherCurrentWindowState(options.ignoreOptions);
 
     // Use updateSystem to sync
     auto result = cells::updateSystem(system, currentState, std::nullopt);
@@ -488,45 +488,13 @@ void runLoopTestMode(const GlobalOptions& options) {
 }
 
 void runLoopMode(const GlobalOptions& options) {
-  const auto& ignoreOptions = options.ignoreOptions;
   const auto& keyboardOptions = options.keyboardOptions;
 
-  auto initStart = std::chrono::high_resolution_clock::now();
-
-  // 1. Build initial state (like computeTileLayout)
-  auto monitors = timed("get_monitors", [] { return winapi::get_monitors(); });
-
-  // Create cluster init info
-  auto clusterInfos = timed("build cluster infos", [&monitors, &ignoreOptions] {
-    std::vector<cells::ClusterInitInfo> result;
-    for (size_t i = 0; i < monitors.size(); ++i) {
-      const auto& monitor = monitors[i];
-      float x = static_cast<float>(monitor.workArea.left);
-      float y = static_cast<float>(monitor.workArea.top);
-      float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-      float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
-
-      auto hwnds = winapi::get_hwnds_for_monitor(i, ignoreOptions);
-      std::vector<size_t> cellIds;
-      for (auto hwnd : hwnds) {
-        cellIds.push_back(reinterpret_cast<size_t>(hwnd));
-      }
-
-      result.push_back({i, x, y, w, h, cellIds});
-    }
-    return result;
+  auto system = timed("createInitialSystem", [&options] {
+    return createInitialSystem(options);
   });
 
-  auto system = timed("createSystem",
-                      [&clusterInfos] { return cells::createSystem(clusterInfos); });
-  system.gapHorizontal = options.gapOptions.horizontal;
-  system.gapVertical = options.gapOptions.vertical;
-
-  auto initEnd = std::chrono::high_resolution_clock::now();
-  spdlog::trace("total initialization: {}us",
-                std::chrono::duration_cast<std::chrono::microseconds>(initEnd - initStart).count());
-
-  // 2. Print initial layout and apply
+  // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
   printTileLayout(system);
 
@@ -565,7 +533,7 @@ void runLoopMode(const GlobalOptions& options) {
 
     // Re-gather window state
     auto currentState =
-        timed("gatherCurrentWindowState", [&ignoreOptions] { return gatherCurrentWindowState(ignoreOptions); });
+        timed("gatherCurrentWindowState", [&options] { return gatherCurrentWindowState(options.ignoreOptions); });
 
     // Redirect new windows to the selected cluster so they split from the selected cell
     redirectNewWindowsToSelection(system, currentState);
