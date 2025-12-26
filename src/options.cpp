@@ -1,7 +1,8 @@
 #include "options.h"
 
-#include <fstream>
 #include <spdlog/spdlog.h>
+
+#include <fstream>
 #include <toml++/toml.hpp>
 
 namespace wintiler {
