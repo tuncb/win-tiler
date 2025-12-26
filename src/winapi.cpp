@@ -197,7 +197,14 @@ void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
 }
 
 void update_window_position(const TileInfo& tile_info) {
-  SetWindowPos((HWND)tile_info.handle, NULL, tile_info.window_position.x,
+  HWND hwnd = (HWND)tile_info.handle;
+
+  // Restore maximized or minimized windows to normal state before repositioning
+  if (IsZoomed(hwnd) || IsIconic(hwnd)) {
+    ShowWindow(hwnd, SW_RESTORE);
+  }
+
+  SetWindowPos(hwnd, NULL, tile_info.window_position.x,
                tile_info.window_position.y, tile_info.window_position.width,
                tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
