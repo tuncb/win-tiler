@@ -7,9 +7,9 @@ namespace renderer {
 
 RenderConfig defaultConfig() {
   return RenderConfig{
-      .normalColor = {255, 255, 255, 100},   // Semi-transparent white
-      .selectedColor = {0, 120, 255, 200},   // Blue
-      .storedColor = {255, 180, 0, 200},     // Orange
+      .normalColor = {255, 255, 255, 100}, // Semi-transparent white
+      .selectedColor = {0, 120, 255, 200}, // Blue
+      .storedColor = {255, 180, 0, 200},   // Orange
       .borderWidth = 3.0f,
   };
 }
@@ -75,9 +75,9 @@ void render(const cells::System& system, const RenderConfig& config,
             message,
             textX,
             textY,
-            {40, 40, 40, 200},      // Dark background
-            {255, 255, 255, 255},   // White text
-            200.0f,                 // Short duration, refreshed each frame
+            {40, 40, 40, 200},    // Dark background
+            {255, 255, 255, 255}, // White text
+            200.0f,               // Short duration, refreshed each frame
         });
         break;
       }

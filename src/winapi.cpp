@@ -220,9 +220,9 @@ void update_window_position(const TileInfo& tile_info) {
     ShowWindow(hwnd, SW_RESTORE);
   }
 
-  SetWindowPos(hwnd, NULL, tile_info.window_position.x,
-               tile_info.window_position.y, tile_info.window_position.width,
-               tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
+  SetWindowPos(hwnd, NULL, tile_info.window_position.x, tile_info.window_position.y,
+               tile_info.window_position.width, tile_info.window_position.height,
+               SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
@@ -397,27 +397,27 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
     char c = keyStr[0];
     // Handle special characters that need OEM virtual key codes
     if (c == ';') {
-      key = VK_OEM_1;  // ;:
+      key = VK_OEM_1; // ;:
     } else if (c == ',') {
       key = VK_OEM_COMMA;
     } else if (c == '.') {
       key = VK_OEM_PERIOD;
     } else if (c == '/') {
-      key = VK_OEM_2;  // /?
+      key = VK_OEM_2; // /?
     } else if (c == '[') {
-      key = VK_OEM_4;  // [{
+      key = VK_OEM_4; // [{
     } else if (c == '\\') {
-      key = VK_OEM_5;  // \|
+      key = VK_OEM_5; // \|
     } else if (c == ']') {
-      key = VK_OEM_6;  // ]}
+      key = VK_OEM_6; // ]}
     } else if (c == '\'') {
-      key = VK_OEM_7;  // '"
+      key = VK_OEM_7; // '"
     } else if (c == '-') {
       key = VK_OEM_MINUS;
     } else if (c == '=') {
       key = VK_OEM_PLUS;
     } else if (c == '`') {
-      key = VK_OEM_3;  // `~
+      key = VK_OEM_3; // `~
     } else {
       key = static_cast<unsigned int>(std::toupper(static_cast<unsigned char>(c)));
     }
@@ -462,8 +462,9 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
 bool register_hotkey(const HotKeyInfo& hotkey) {
   BOOL result = RegisterHotKey(nullptr, hotkey.id, hotkey.modifiers, hotkey.key);
   if (result == 0) {
-    spdlog::error("register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
-                  hotkey.id, hotkey.key, hotkey.modifiers, GetLastError());
+    spdlog::error(
+        "register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
+        hotkey.id, hotkey.key, hotkey.modifiers, GetLastError());
     return false;
   }
   return true;

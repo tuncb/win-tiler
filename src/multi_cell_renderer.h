@@ -1,21 +1,21 @@
 #pragma once
 
-#include "multi_cells.h"
-#include "overlay.h"
-
 #include <optional>
 #include <string>
 #include <utility>
+
+#include "multi_cells.h"
+#include "overlay.h"
 
 namespace wintiler {
 namespace renderer {
 
 // Configuration for cell rendering colors
 struct RenderConfig {
-  overlay::Color normalColor;    // Color for normal leaf cells
-  overlay::Color selectedColor;  // Color for the selected cell
-  overlay::Color storedColor;    // Color for the stored cell (swap/move target)
-  float borderWidth;             // Border width for cell outlines
+  overlay::Color normalColor;   // Color for normal leaf cells
+  overlay::Color selectedColor; // Color for the selected cell
+  overlay::Color storedColor;   // Color for the stored cell (swap/move target)
+  float borderWidth;            // Border width for cell outlines
 };
 
 // Create default render configuration

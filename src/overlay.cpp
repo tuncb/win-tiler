@@ -130,9 +130,9 @@ bool create_window() {
   DWORD exStyle = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
   DWORD style = WS_POPUP;
 
-  g_hwnd = CreateWindowExW(exStyle, WINDOW_CLASS_NAME, L"WinTilerOverlay", style, g_virtualX,
-                           g_virtualY, g_virtualWidth, g_virtualHeight, nullptr, nullptr,
-                           g_hInstance, nullptr);
+  g_hwnd =
+      CreateWindowExW(exStyle, WINDOW_CLASS_NAME, L"WinTilerOverlay", style, g_virtualX, g_virtualY,
+                      g_virtualWidth, g_virtualHeight, nullptr, nullptr, g_hInstance, nullptr);
 
   if (!g_hwnd) {
     spdlog::error("Failed to create overlay window: {}", GetLastError());
@@ -236,9 +236,8 @@ bool create_d2d_resources() {
   options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
 #endif
 
-  HRESULT hr =
-      D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &options,
-                        reinterpret_cast<void**>(&g_d2dFactory));
+  HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1),
+                                 &options, reinterpret_cast<void**>(&g_d2dFactory));
 
   if (FAILED(hr)) {
     spdlog::error("Failed to create D2D factory: 0x{:08X}", static_cast<unsigned int>(hr));
@@ -301,9 +300,8 @@ bool create_render_target() {
 }
 
 bool create_dwrite_resources() {
-  HRESULT hr =
-      DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-                          reinterpret_cast<IUnknown**>(&g_dwriteFactory));
+  HRESULT hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                                   reinterpret_cast<IUnknown**>(&g_dwriteFactory));
 
   if (FAILED(hr)) {
     spdlog::error("Failed to create DWrite factory: 0x{:08X}", static_cast<unsigned int>(hr));
@@ -492,9 +490,9 @@ void draw_toast_internal(const Toast& toast) {
 
   // Create text layout to measure
   IDWriteTextLayout* layout = nullptr;
-  HRESULT hr = g_dwriteFactory->CreateTextLayout(wideText.c_str(),
-                                                 static_cast<UINT32>(wideText.length()),
-                                                 g_textFormat, 1000.0f, 100.0f, &layout);
+  HRESULT hr =
+      g_dwriteFactory->CreateTextLayout(wideText.c_str(), static_cast<UINT32>(wideText.length()),
+                                        g_textFormat, 1000.0f, 100.0f, &layout);
   if (FAILED(hr) || !layout) {
     return;
   }
@@ -678,10 +676,9 @@ void render() {
   // Draw rectangles
   for (const auto& rect : g_rects) {
     ID2D1SolidColorBrush* brush = nullptr;
-    g_d2dContext->CreateSolidColorBrush(
-        D2D1::ColorF(rect.color.r / 255.0f, rect.color.g / 255.0f, rect.color.b / 255.0f,
-                     rect.color.a / 255.0f),
-        &brush);
+    g_d2dContext->CreateSolidColorBrush(D2D1::ColorF(rect.color.r / 255.0f, rect.color.g / 255.0f,
+                                                     rect.color.b / 255.0f, rect.color.a / 255.0f),
+                                        &brush);
 
     if (brush) {
       // Adjust coordinates relative to virtual screen origin
@@ -701,14 +698,15 @@ void render() {
 
   // Remove expired toasts and draw active ones
   auto now = std::chrono::steady_clock::now();
-  g_toasts.erase(std::remove_if(g_toasts.begin(), g_toasts.end(),
-                                [now](const ActiveToast& t) {
-                                  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                     now - t.start_time)
-                                                     .count();
-                                  return static_cast<float>(elapsed) >= t.toast.duration_ms;
-                                }),
-                 g_toasts.end());
+  g_toasts.erase(
+      std::remove_if(
+          g_toasts.begin(), g_toasts.end(),
+          [now](const ActiveToast& t) {
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - t.start_time).count();
+            return static_cast<float>(elapsed) >= t.toast.duration_ms;
+          }),
+      g_toasts.end());
 
   for (const auto& active : g_toasts) {
     draw_toast_internal(active.toast);

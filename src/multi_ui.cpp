@@ -42,8 +42,8 @@ struct MultiClusterAppState {
   cells::System system;
 };
 
-ViewTransform computeViewTransform(const cells::System& system, float screenW,
-                                   float screenH, float margin) {
+ViewTransform computeViewTransform(const cells::System& system, float screenW, float screenH,
+                                   float margin) {
   if (system.clusters.empty()) {
     return ViewTransform{0.0f, 0.0f, 1.0f, margin, screenW, screenH};
   }
@@ -155,8 +155,7 @@ void addNewProcessMulti(MultiClusterAppState& appState, size_t& nextProcessId) {
   }
 
   // Update system and select the newly added cell
-  cells::updateSystem(appState.system, state,
-                                 std::make_pair(selectedClusterId, newLeafId));
+  cells::updateSystem(appState.system, state, std::make_pair(selectedClusterId, newLeafId));
 }
 
 void deleteSelectedProcessMulti(MultiClusterAppState& appState) {
@@ -199,7 +198,7 @@ Color getClusterColor(cells::ClusterId id) {
 } // namespace
 
 void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
-                              std::optional<GapOptions> gapOptions) {
+                             std::optional<GapOptions> gapOptions) {
   MultiClusterAppState appState;
   appState.system = cells::createSystem(infos);
   if (gapOptions.has_value()) {
@@ -297,8 +296,7 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
     // [ - Store currently selected cell for operation
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
       if (appState.system.selection.has_value()) {
-        auto* pc =
-            cells::getCluster(appState.system, appState.system.selection->clusterId);
+        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
@@ -316,14 +314,12 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
     // . - Move selected cell to stored cell
     if (IsKeyPressed(KEY_PERIOD)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
-        auto* pc =
-            cells::getCluster(appState.system, appState.system.selection->clusterId);
+        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
-            auto result =
-                cells::moveCell(appState.system, storedCell->first, storedCell->second,
-                                           appState.system.selection->clusterId, *cell.leafId);
+            auto result = cells::moveCell(appState.system, storedCell->first, storedCell->second,
+                                          appState.system.selection->clusterId, *cell.leafId);
             if (result.success) {
               storedCell.reset();
             }
@@ -335,14 +331,12 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
     // , - Exchange/swap selected cell with stored cell
     if (IsKeyPressed(KEY_COMMA)) {
       if (storedCell.has_value() && appState.system.selection.has_value()) {
-        auto* pc =
-            cells::getCluster(appState.system, appState.system.selection->clusterId);
+        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
         if (pc) {
           auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
           if (cell.leafId.has_value()) {
-            auto result =
-                cells::swapCells(appState.system, appState.system.selection->clusterId,
-                                            *cell.leafId, storedCell->first, storedCell->second);
+            auto result = cells::swapCells(appState.system, appState.system.selection->clusterId,
+                                           *cell.leafId, storedCell->first, storedCell->second);
             if (result.success) {
               storedCell.reset();
             }
@@ -358,7 +352,7 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
     // Draw cluster backgrounds first
     for (const auto& pc : appState.system.clusters) {
       cells::Rect clusterGlobalRect{pc.globalX, pc.globalY, pc.cluster.windowWidth,
-                                         pc.cluster.windowHeight};
+                                    pc.cluster.windowHeight};
       Rectangle screenRect = toScreenRect(vt, clusterGlobalRect);
       DrawRectangleRec(screenRect, getClusterColor(pc.id));
       DrawRectangleLinesEx(screenRect, 2.0f, DARKGRAY);

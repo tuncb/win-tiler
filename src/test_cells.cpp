@@ -15,13 +15,11 @@ using namespace wintiler;
 constexpr float TEST_GAP_H = 10.0f;
 constexpr float TEST_GAP_V = 10.0f;
 
-
 // ============================================================================
 // Multi-Cluster System Tests
 // ============================================================================
 
 TEST_SUITE("cells - multi-cluster") {
-
   TEST_CASE("createSystem creates empty system") {
     auto system = cells::createSystem({});
 
@@ -253,7 +251,6 @@ TEST_SUITE("cells - multi-cluster") {
     auto result4 = cells::findCellAtPoint(system, 500.0f, 650.0f);
     CHECK(!result4.has_value());
   }
-
 }
 
 // ============================================================================
@@ -261,7 +258,6 @@ TEST_SUITE("cells - multi-cluster") {
 // ============================================================================
 
 TEST_SUITE("cells - navigation") {
-
   TEST_CASE("moveSelection moves within single cluster horizontally") {
     // Create a cluster with 2 cells side by side
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
@@ -277,7 +273,7 @@ TEST_SUITE("cells - navigation") {
 
     auto newSelected = cells::getSelectedCell(system);
     REQUIRE(newSelected.has_value());
-    CHECK(newSelected->first == 1); // Same cluster
+    CHECK(newSelected->first == 1);                 // Same cluster
     CHECK(newSelected->second != selected->second); // Different cell
   }
 
@@ -386,10 +382,9 @@ TEST_SUITE("cells - navigation") {
     bool result = cells::toggleClusterGlobalSplitDir(system);
     CHECK(result);
 
-    CHECK(pc1->cluster.globalSplitDir != initialDir1);  // Changed
-    CHECK(pc2->cluster.globalSplitDir == initialDir2);  // Unchanged
+    CHECK(pc1->cluster.globalSplitDir != initialDir1); // Changed
+    CHECK(pc2->cluster.globalSplitDir == initialDir2); // Unchanged
   }
-
 }
 
 // ============================================================================
@@ -397,7 +392,6 @@ TEST_SUITE("cells - navigation") {
 // ============================================================================
 
 TEST_SUITE("cells - updateSystem") {
-
   TEST_CASE("findCellByLeafId finds existing leaf") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
@@ -430,9 +424,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(cells::countTotalLeaves(system) == 0);
 
-    std::vector<cells::ClusterCellIds> updates = {
-        {1, {100, 200}}
-    };
+    std::vector<cells::ClusterCellIds> updates = {{1, {100, 200}}};
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
 
@@ -449,7 +441,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(cells::countTotalLeaves(system) == 1);
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {10, 20, 30}}  // Keep 10, add 20 and 30
+        {1, {10, 20, 30}} // Keep 10, add 20 and 30
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -467,7 +459,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(cells::countTotalLeaves(system) == 3);
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {10}}  // Keep only 10, delete 20 and 30
+        {1, {10}} // Keep only 10, delete 20 and 30
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -483,7 +475,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info});
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {10, 30}}  // Keep 10, delete 20, add 30
+        {1, {10, 30}} // Keep 10, delete 20, add 30
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -501,7 +493,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info});
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {10, 20}}  // No changes, just update selection
+        {1, {10, 20}} // No changes, just update selection
     };
 
     auto result = cells::updateSystem(system, updates, {{1, 20}});
@@ -524,7 +516,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info});
 
     std::vector<cells::ClusterCellIds> updates = {
-        {999, {10, 20}}  // Cluster 999 doesn't exist
+        {999, {10, 20}} // Cluster 999 doesn't exist
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -538,9 +530,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::createSystem({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
-        {1, {10}}
-    };
+    std::vector<cells::ClusterCellIds> updates = {{1, {10}}};
 
     auto result = cells::updateSystem(system, updates, {{999, 10}});
 
@@ -553,9 +543,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::createSystem({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
-        {1, {10}}
-    };
+    std::vector<cells::ClusterCellIds> updates = {{1, {10}}};
 
     auto result = cells::updateSystem(system, updates, {{1, 999}});
 
@@ -571,8 +559,8 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info1, info2});
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {10, 11}},  // Add 11 to cluster 1
-        {2, {20, 21}}   // Add 21 to cluster 2
+        {1, {10, 11}}, // Add 11 to cluster 1
+        {2, {20, 21}}  // Add 21 to cluster 2
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -588,9 +576,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info1, info2});
 
     // Only update cluster 2, leave cluster 1 alone
-    std::vector<cells::ClusterCellIds> updates = {
-        {2, {20, 21}}
-    };
+    std::vector<cells::ClusterCellIds> updates = {{2, {20, 21}}};
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
 
@@ -614,7 +600,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::createSystem({info});
 
     std::vector<cells::ClusterCellIds> updates = {
-        {1, {}}  // Empty - delete all leaves
+        {1, {}} // Empty - delete all leaves
     };
 
     auto result = cells::updateSystem(system, updates, std::nullopt);
@@ -623,7 +609,6 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(result.deletedLeafIds.size() == 1);
     CHECK(cells::countTotalLeaves(system) == 0);
   }
-
 }
 
 // ============================================================================
@@ -631,7 +616,6 @@ TEST_SUITE("cells - updateSystem") {
 // ============================================================================
 
 TEST_SUITE("cells - swap and move") {
-
   TEST_CASE("swapCells swaps two cells in same cluster") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
@@ -923,5 +907,4 @@ TEST_SUITE("cells - swap and move") {
     // Cluster 2 should have 2 leaves
     CHECK(cells::countTotalLeaves(system) == 2);
   }
-
 }

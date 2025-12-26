@@ -7,12 +7,18 @@ namespace wintiler {
 namespace {
 
 std::optional<LogLevel> parseLogLevel(const std::string& level) {
-  if (level == "trace") return LogLevel::Trace;
-  if (level == "debug") return LogLevel::Debug;
-  if (level == "info") return LogLevel::Info;
-  if (level == "warn") return LogLevel::Warn;
-  if (level == "err") return LogLevel::Err;
-  if (level == "off") return LogLevel::Off;
+  if (level == "trace")
+    return LogLevel::Trace;
+  if (level == "debug")
+    return LogLevel::Debug;
+  if (level == "info")
+    return LogLevel::Info;
+  if (level == "warn")
+    return LogLevel::Warn;
+  if (level == "err")
+    return LogLevel::Err;
+  if (level == "off")
+    return LogLevel::Off;
   return std::nullopt;
 }
 
@@ -30,7 +36,7 @@ ParseResult makeSuccess(ParsedArgs args) {
   return result;
 }
 
-}  // namespace
+} // namespace
 
 ParseResult parseArgs(int argc, char* argv[]) {
   ParsedArgs args;
@@ -100,10 +106,9 @@ ParseResult parseArgs(int argc, char* argv[]) {
       // Parse optional cluster definitions (groups of 4: x y w h)
       int remaining = argc - i;
       if (remaining > 0 && remaining % 4 != 0) {
-        return makeError(
-            "ui-test-multi requires 4 numbers per cluster (x y width height). "
-            "Got " +
-            std::to_string(remaining) + " arguments.");
+        return makeError("ui-test-multi requires 4 numbers per cluster (x y width height). "
+                         "Got " +
+                         std::to_string(remaining) + " arguments.");
       }
 
       while (i + 3 < argc) {
@@ -167,4 +172,4 @@ void printUsage() {
             << "  win-tiler --config config.toml loop\n";
 }
 
-}  // namespace wintiler
+} // namespace wintiler
