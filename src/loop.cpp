@@ -301,9 +301,9 @@ void printTileLayout(const cells::System& system) {
       cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-      std::string title = winapi::get_window_info(hwnd).title;
+      auto windowInfo = winapi::get_window_info(hwnd);
 
-      spdlog::debug("  Window: \"{}\"", title);
+      spdlog::debug("  Window: \"{}\" ({})", windowInfo.title, windowInfo.processName);
       spdlog::debug("    Position: x={}, y={}", static_cast<int>(globalRect.x),
                     static_cast<int>(globalRect.y));
       spdlog::debug("    Size: {}x{}", static_cast<int>(globalRect.width),
