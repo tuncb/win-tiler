@@ -542,61 +542,6 @@ System createSystem(const std::vector<ClusterInitInfo>& infos) {
   return system;
 }
 
-static ClusterId addCluster(System& system, const ClusterInitInfo& info) {
-  PositionedCluster pc;
-  pc.id = info.id;
-  pc.globalX = info.x;
-  pc.globalY = info.y;
-  pc.cluster = createInitialState(info.width, info.height);
-
-  int selectionIndex = -1;
-  if (!info.initialCellIds.empty()) {
-    selectionIndex = preCreateLeaves(pc, info.initialCellIds, system.globalNextLeafId,
-                                     system.gapHorizontal, system.gapVertical);
-  }
-
-  if (!system.selection.has_value() && selectionIndex >= 0) {
-    system.selection = Selection{pc.id, selectionIndex};
-  }
-
-  system.clusters.push_back(std::move(pc));
-  return info.id;
-}
-
-static bool removeCluster(System& system, ClusterId id) {
-  auto it = std::find_if(system.clusters.begin(), system.clusters.end(),
-                         [id](const PositionedCluster& pc) { return pc.id == id; });
-
-  if (it == system.clusters.end()) {
-    return false;
-  }
-
-  bool wasSelected = system.selection.has_value() && system.selection->clusterId == id;
-
-  system.clusters.erase(it);
-
-  // If the removed cluster was selected, move selection to another cluster with cells
-  if (wasSelected) {
-    system.selection.reset();
-    for (auto& pc : system.clusters) {
-      if (!pc.cluster.cells.empty()) {
-        // Find the first leaf in this cluster
-        for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-          if (isLeaf(pc.cluster, i)) {
-            system.selection = Selection{pc.id, i};
-            break;
-          }
-        }
-        if (system.selection.has_value()) {
-          break;
-        }
-      }
-    }
-  }
-
-  return true;
-}
-
 PositionedCluster* getCluster(System& system, ClusterId id) {
   for (auto& pc : system.clusters) {
     if (pc.id == id) {
@@ -622,11 +567,6 @@ const PositionedCluster* getCluster(const System& system, ClusterId id) {
 static Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect) {
   return Rect{localRect.x + pc.globalX, localRect.y + pc.globalY, localRect.width,
                           localRect.height};
-}
-
-static Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect) {
-  return Rect{globalRect.x - pc.globalX, globalRect.y - pc.globalY, globalRect.width,
-                          globalRect.height};
 }
 
 Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex) {
@@ -802,41 +742,6 @@ static std::optional<size_t> splitSelectedLeaf(System& system) {
   }
 
   return std::nullopt;
-}
-
-static bool deleteSelectedLeaf(System& system) {
-  if (!system.selection.has_value()) {
-    return false;
-  }
-
-  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
-  if (!pc) {
-    return false;
-  }
-
-  auto newSelectionOpt = deleteLeaf(pc->cluster, system.selection->cellIndex,
-                                                 system.gapHorizontal, system.gapVertical);
-
-  if (newSelectionOpt.has_value()) {
-    // Update selection to new cell in same cluster
-    system.selection->cellIndex = *newSelectionOpt;
-    return true;
-  }
-
-  // Cluster became empty (or deletion failed for root), find another cluster with cells
-  system.selection.reset();
-  for (auto& otherPc : system.clusters) {
-    if (!otherPc.cluster.cells.empty()) {
-      for (int i = 0; i < static_cast<int>(otherPc.cluster.cells.size()); ++i) {
-        if (isLeaf(otherPc.cluster, i)) {
-          system.selection = Selection{otherPc.id, i};
-          return true;
-        }
-      }
-    }
-  }
-
-  return true;  // Deletion occurred even if no new selection found
 }
 
 std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system) {
