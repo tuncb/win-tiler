@@ -7,7 +7,9 @@
 #include <thread>
 #include <vector>
 
+#include "multi_cell_renderer.h"
 #include "multi_cells.h"
+#include "overlay.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -448,6 +450,9 @@ void runLoopMode(const GlobalOptions& options) {
   // Register keyboard hotkeys
   registerNavigationHotkeys(keyboardOptions);
 
+  // Initialize overlay for rendering
+  overlay::init();
+
   // Print keyboard shortcuts
   spdlog::info("=== Keyboard Shortcuts ===");
   for (const auto& binding : keyboardOptions.bindings) {
@@ -563,15 +568,19 @@ void runLoopMode(const GlobalOptions& options) {
 
     timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
 
+    // Render cell system overlay
+    renderer::render(system, renderer::defaultConfig(), storedCell, "");
+
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(
         "loop iteration total: {}us",
         std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count());
   }
 
-  // Cleanup hotkeys before exit
+  // Cleanup hotkeys and overlay before exit
   unregisterNavigationHotkeys(keyboardOptions);
-  spdlog::info("Hotkeys unregistered, exiting...");
+  overlay::shutdown();
+  spdlog::info("Hotkeys unregistered, overlay shutdown, exiting...");
 }
 
 } // namespace wintiler
