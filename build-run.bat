@@ -5,6 +5,7 @@ REM Default config
 set CONFIG=Debug
 set ACTION=
 set APP_ARGS=
+set CONFIG_PARSED=0
 
 REM Parse arguments
 :parse_args
@@ -16,7 +17,13 @@ if /I "!ARG!"=="build" (
 ) else if /I "!ARG!"=="build-run" (
     set ACTION=build-run
 ) else if "!ARG:~0,2!"=="--" (
-    set CONFIG=!ARG:~2!
+    if !CONFIG_PARSED!==0 (
+        set CONFIG=!ARG:~2!
+        set CONFIG_PARSED=1
+    ) else (
+        REM This --arg is for the app, not config
+        goto collect_app_args
+    )
 ) else (
     REM Collect remaining arguments for the application
     :collect_app_args
