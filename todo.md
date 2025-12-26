@@ -10,8 +10,6 @@
 
 - Auto update on configuration file save.
 
-- what to do with maximized windows. maybe do not ignore them.
-
 - move selected for operation cell to the system.
 
 - what happens when a window spawns on multiple monitors.
@@ -43,3 +41,5 @@
 - This could be a potential issue - if you call update_window_position() on a maximized window, SetWindowPos may not behave as expected since maximized windows have special positioning behavior in Windows.
 
 - assign gaps to the monitor boundaries as well.
+
+- what to do with maximized windows. maybe do not ignore them.

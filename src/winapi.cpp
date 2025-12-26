@@ -220,9 +220,27 @@ void update_window_position(const TileInfo& tile_info) {
     ShowWindow(hwnd, SW_RESTORE);
   }
 
-  SetWindowPos(hwnd, NULL, tile_info.window_position.x, tile_info.window_position.y,
-               tile_info.window_position.width, tile_info.window_position.height,
-               SWP_NOZORDER | SWP_NOACTIVATE);
+  // Get DWM frame bounds to compensate for invisible borders
+  RECT windowRect, frameRect;
+  GetWindowRect(hwnd, &windowRect);
+  if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frameRect,
+                                      sizeof(frameRect)))) {
+    int borderLeft = frameRect.left - windowRect.left;
+    int borderTop = frameRect.top - windowRect.top;
+    int borderRight = windowRect.right - frameRect.right;
+    int borderBottom = windowRect.bottom - frameRect.bottom;
+
+    SetWindowPos(hwnd, NULL, tile_info.window_position.x - borderLeft,
+                 tile_info.window_position.y - borderTop,
+                 tile_info.window_position.width + borderLeft + borderRight,
+                 tile_info.window_position.height + borderTop + borderBottom,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  } else {
+    // Fallback if DWM query fails
+    SetWindowPos(hwnd, NULL, tile_info.window_position.x, tile_info.window_position.y,
+                 tile_info.window_position.width, tile_info.window_position.height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  }
 }
 
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
