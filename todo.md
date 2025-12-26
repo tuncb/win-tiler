@@ -14,6 +14,8 @@
 
 - Auto update on configuration file save.
 
+- what to do with maximized windows. maybe do not ignore them.
+
 
 
 # bugs

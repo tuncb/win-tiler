@@ -1251,8 +1251,66 @@ UpdateResult updateSystem(
   UpdateResult result;
   result.selectionUpdated = false;
 
+  // Make a mutable copy for redirection
+  std::vector<ClusterCellIds> redirectedCellIds = clusterCellIds;
+
+  // Redirect new windows to selection if present
+  if (system.selection.has_value()) {
+    ClusterId selectedClusterId = system.selection->clusterId;
+
+    // Check if selected cluster is in the updates list
+    bool selectedClusterInUpdates = false;
+    for (const auto& update : redirectedCellIds) {
+      if (update.clusterId == selectedClusterId) {
+        selectedClusterInUpdates = true;
+        break;
+      }
+    }
+
+    // Only redirect if selected cluster is in updates
+    if (selectedClusterInUpdates) {
+      // Collect new windows (not in any cluster)
+      std::vector<size_t> newWindows;
+      for (const auto& update : redirectedCellIds) {
+        for (size_t leafId : update.leafIds) {
+          bool isNew = true;
+          for (const auto& pc : system.clusters) {
+            if (findCellByLeafId(pc.cluster, leafId).has_value()) {
+              isNew = false;
+              break;
+            }
+          }
+          if (isNew) {
+            newWindows.push_back(leafId);
+          }
+        }
+      }
+
+      if (!newWindows.empty()) {
+        // Remove from detected clusters
+        for (auto& update : redirectedCellIds) {
+          auto& ids = update.leafIds;
+          ids.erase(std::remove_if(ids.begin(), ids.end(),
+              [&newWindows](size_t id) {
+                return std::find(newWindows.begin(), newWindows.end(), id) != newWindows.end();
+              }), ids.end());
+        }
+
+        // Add to selected cluster
+        for (auto& update : redirectedCellIds) {
+          if (update.clusterId == selectedClusterId) {
+            for (size_t id : newWindows) {
+              update.leafIds.push_back(id);
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // Process each cluster update
-  for (const auto& clusterUpdate : clusterCellIds) {
+  for (const auto& clusterUpdate : redirectedCellIds) {
     PositionedCluster* pc = getCluster(system, clusterUpdate.clusterId);
 
     if (!pc) {
