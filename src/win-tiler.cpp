@@ -1,7 +1,6 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
 #include <spdlog/spdlog.h>
-
 #include <Windows.h>
 
 #include <algorithm>
@@ -31,7 +30,7 @@ std::filesystem::path getDefaultConfigPath() {
   return getExecutableDirectory() / "win-tiler.toml";
 }
 
-}  // namespace
+} // namespace
 
 // Helper for std::visit with lambdas
 template <class... Ts>
@@ -159,24 +158,24 @@ void runApplyTestMode(const GlobalOptions& globalOptions) {
 
 void applyLogLevel(LogLevel level) {
   switch (level) {
-    case LogLevel::Trace:
-      spdlog::set_level(spdlog::level::trace);
-      break;
-    case LogLevel::Debug:
-      spdlog::set_level(spdlog::level::debug);
-      break;
-    case LogLevel::Info:
-      spdlog::set_level(spdlog::level::info);
-      break;
-    case LogLevel::Warn:
-      spdlog::set_level(spdlog::level::warn);
-      break;
-    case LogLevel::Err:
-      spdlog::set_level(spdlog::level::err);
-      break;
-    case LogLevel::Off:
-      spdlog::set_level(spdlog::level::off);
-      break;
+  case LogLevel::Trace:
+    spdlog::set_level(spdlog::level::trace);
+    break;
+  case LogLevel::Debug:
+    spdlog::set_level(spdlog::level::debug);
+    break;
+  case LogLevel::Info:
+    spdlog::set_level(spdlog::level::info);
+    break;
+  case LogLevel::Warn:
+    spdlog::set_level(spdlog::level::warn);
+    break;
+  case LogLevel::Err:
+    spdlog::set_level(spdlog::level::err);
+    break;
+  case LogLevel::Off:
+    spdlog::set_level(spdlog::level::off);
+    break;
   }
 }
 
@@ -239,6 +238,9 @@ void runUiTestMulti(const UiTestMultiCommand& cmd) {
 }
 
 int main(int argc, char* argv[]) {
+  // Set DPI awareness before any Windows API calls that return coordinates
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
   // Flush spdlog on info-level messages to ensure immediate output
   spdlog::flush_on(spdlog::level::info);
 
@@ -298,9 +300,8 @@ int main(int argc, char* argv[]) {
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
             [](const InitConfigCommand& cmd) {
-              auto targetPath = cmd.filepath
-                  ? std::filesystem::path(*cmd.filepath)
-                  : getDefaultConfigPath();
+              auto targetPath =
+                  cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
               auto writeResult = write_options_toml(get_default_global_options(), targetPath);
               if (writeResult.success) {
                 spdlog::info("Config written to: {}", targetPath.string());

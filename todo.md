@@ -6,8 +6,6 @@
 
 - Repurpose commands: See what is not being used.
 
-- Hardening for unit tests in cell logic: also combine cell namespaces.
-
 - Transparent window idea.
 
 - Configuration for visualization settings.
@@ -16,6 +14,19 @@
 
 - what to do with maximized windows. maybe do not ignore them.
 
+- move selected for operation cell to the system.
+
+- what happens when a window spawns on multiple monitors.
+
+- wait until window moving is done.
+
+- exchange windows with mouse.
+
+- This could be a potential issue - if you call update_window_position() on a maximized window, SetWindowPos may not behave as expected since maximized windows have special positioning behavior in Windows.
+
+- extra ignores option for config, ignores on top of the default ones.
+
+- assign gaps to the monitor boundaries as well.
 
 - what happens when a window spawns on multiple monitors.
 
@@ -31,7 +42,7 @@
 # bugs
 
 - exchange should also work reverse direction, exchange + exchange should undo the first operation.
--
+- negative gap values can be used in configuration
 
 
 
@@ -68,3 +79,5 @@ super + shift + m: move the cell selected to the operation using the currently s
 - a loop action where we only list the current windows that passed the filter.
 
 -- configuration file loading and initing
+
+- Hardening for unit tests in cell logic: also combine cell namespaces.

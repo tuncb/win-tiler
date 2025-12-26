@@ -66,7 +66,6 @@ struct SplitResult {
 // Returns true if the cell at cellIndex exists and has no children.
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
-
 // ============================================================================
 // Multi-Cluster System
 // ============================================================================
@@ -83,13 +82,13 @@ struct PositionedCluster {
 // System-wide selection tracking.
 struct Selection {
   ClusterId clusterId;
-  int cellIndex;  // always a leaf index
+  int cellIndex; // always a leaf index
 };
 
 struct System {
   std::vector<PositionedCluster> clusters;
-  std::optional<Selection> selection;  // System-wide selection
-  size_t globalNextLeafId = 1;         // Shared across all clusters
+  std::optional<Selection> selection; // System-wide selection
+  size_t globalNextLeafId = 1;        // Shared across all clusters
   float gapHorizontal = 10.0f;
   float gapVertical = 10.0f;
 };
@@ -109,7 +108,7 @@ struct ClusterInitInfo {
 
 struct ClusterCellIds {
   ClusterId clusterId;
-  std::vector<size_t> leafIds;  // Desired leaf IDs for this cluster
+  std::vector<size_t> leafIds; // Desired leaf IDs for this cluster
 };
 
 struct UpdateError {
@@ -120,7 +119,7 @@ struct UpdateError {
   };
   Type type;
   ClusterId clusterId;
-  size_t leafId;  // relevant leaf ID (if applicable)
+  size_t leafId; // relevant leaf ID (if applicable)
 };
 
 struct UpdateResult {
@@ -136,14 +135,14 @@ struct UpdateResult {
 
 struct SwapResult {
   bool success;
-  std::string errorMessage;  // Empty if success
+  std::string errorMessage; // Empty if success
 };
 
 struct MoveResult {
   bool success;
-  int newCellIndex;          // Index of source cell in its new position
-  ClusterId newClusterId;    // Cluster where source ended up
-  std::string errorMessage;  // Empty if success
+  int newCellIndex;         // Index of source cell in its new position
+  ClusterId newClusterId;   // Cluster where source ended up
+  std::string errorMessage; // Empty if success
 };
 
 // ============================================================================
@@ -192,17 +191,15 @@ bool toggleClusterGlobalSplitDir(System& system);
 // For same-cluster: actual tree position swap.
 // For cross-cluster: leafIds are exchanged between the two positions.
 // If both arguments refer to the same cell, this is a no-op and returns success.
-SwapResult swapCells(System& system,
-                     ClusterId clusterId1, size_t leafId1,
-                     ClusterId clusterId2, size_t leafId2);
+SwapResult swapCells(System& system, ClusterId clusterId1, size_t leafId1, ClusterId clusterId2,
+                     size_t leafId2);
 
 // Move source cell to target cell's location.
 // - Deletes source from its current position
 // - Splits target to create a new slot
 // - Source's content (leafId) appears in the new split slot
 // If source and target are the same cell, this is a no-op and returns success.
-MoveResult moveCell(System& system,
-                    ClusterId sourceClusterId, size_t sourceLeafId,
+MoveResult moveCell(System& system, ClusterId sourceClusterId, size_t sourceLeafId,
                     ClusterId targetClusterId, size_t targetLeafId);
 
 // ============================================================================
@@ -241,10 +238,8 @@ findCellAtPoint(const System& system, float globalX, float globalY);
 // - Deletes leaves that are not in the desired state
 // - Adds leaves that are in the desired state but not currently present
 // - Updates the selection if provided
-UpdateResult updateSystem(
-    System& system,
-    const std::vector<ClusterCellIds>& clusterCellIds,
-    std::optional<std::pair<ClusterId, size_t>> newSelection);
+UpdateResult updateSystem(System& system, const std::vector<ClusterCellIds>& clusterCellIds,
+                          std::optional<std::pair<ClusterId, size_t>> newSelection);
 
 } // namespace cells
 } // namespace wintiler

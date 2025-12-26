@@ -44,6 +44,22 @@ std::vector<MonitorInfo> get_monitors() {
   return monitors;
 }
 
+void log_monitors(const std::vector<MonitorInfo>& monitors) {
+  spdlog::info("=== Monitor Info ({} monitors) ===", monitors.size());
+  for (size_t i = 0; i < monitors.size(); ++i) {
+    const auto& m = monitors[i];
+    long rectW = m.rect.right - m.rect.left;
+    long rectH = m.rect.bottom - m.rect.top;
+    long workW = m.workArea.right - m.workArea.left;
+    long workH = m.workArea.bottom - m.workArea.top;
+    spdlog::info("Monitor {}: handle={}, primary={}", i, m.handle, m.isPrimary);
+    spdlog::info("  rect: [{}, {}, {}, {}] ({}x{})", m.rect.left, m.rect.top, m.rect.right,
+                 m.rect.bottom, rectW, rectH);
+    spdlog::info("  workArea: [{}, {}, {}, {}] ({}x{})", m.workArea.left, m.workArea.top,
+                 m.workArea.right, m.workArea.bottom, workW, workH);
+  }
+}
+
 std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
   DWORD pid = 0;
   GetWindowThreadProcessId((HWND)hwnd, &pid);
@@ -204,9 +220,9 @@ void update_window_position(const TileInfo& tile_info) {
     ShowWindow(hwnd, SW_RESTORE);
   }
 
-  SetWindowPos(hwnd, NULL, tile_info.window_position.x,
-               tile_info.window_position.y, tile_info.window_position.width,
-               tile_info.window_position.height, SWP_NOZORDER | SWP_NOACTIVATE);
+  SetWindowPos(hwnd, NULL, tile_info.window_position.x, tile_info.window_position.y,
+               tile_info.window_position.width, tile_info.window_position.height,
+               SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
@@ -446,7 +462,8 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
 bool register_hotkey(const HotKeyInfo& hotkey) {
   BOOL result = RegisterHotKey(nullptr, hotkey.id, hotkey.modifiers, hotkey.key);
   if (result == 0) {
-    spdlog::error("register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
+    spdlog::error(
+        "register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
                   hotkey.id, hotkey.key, hotkey.modifiers, GetLastError());
     return false;
   }

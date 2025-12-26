@@ -71,6 +71,7 @@ IgnoreOptions get_default_ignore_options() {
       "Microsoft.CmdPal.UI.exe", "PowerToys.PowerLauncher.exe",
       "win-tiler.exe",
   };
+  // options.ignored_window_titles = {"Windows Widgets", "MSN"};
   options.ignored_window_titles = {};
   options.ignored_process_title_pairs = {
       {"SystemSettings.exe", "Settings"},
@@ -78,6 +79,8 @@ IgnoreOptions get_default_ignore_options() {
       {"explorer.exe", "System tray overflow window."},
       {"explorer.exe", "PopupHost"},
       {"claude.exe", "Title: Claude"},
+      {"WidgetBoard.exe", "Windows Widgets"},
+      {"msedgewebview2.exe", "MSN"},
   };
   options.small_window_barrier = SmallWindowBarrier{50, 50};
   return options;

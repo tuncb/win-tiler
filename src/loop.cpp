@@ -7,7 +7,9 @@
 #include <thread>
 #include <vector>
 
+#include "multi_cell_renderer.h"
 #include "multi_cells.h"
+#include "overlay.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -299,9 +301,9 @@ void printTileLayout(const cells::System& system) {
       cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-      std::string title = winapi::get_window_info(hwnd).title;
+      auto windowInfo = winapi::get_window_info(hwnd);
 
-      spdlog::debug("  Window: \"{}\"", title);
+      spdlog::debug("  Window: \"{}\" ({})", windowInfo.title, windowInfo.processName);
       spdlog::debug("    Position: x={}, y={}", static_cast<int>(globalRect.x),
                     static_cast<int>(globalRect.y));
       spdlog::debug("    Size: {}x{}", static_cast<int>(globalRect.width),
@@ -364,6 +366,7 @@ bool isHwndInSystem(const cells::System& system, winapi::HWND_T hwnd) {
 
 cells::System createInitialSystem(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
+  winapi::log_monitors(monitors);
 
   std::vector<cells::ClusterInitInfo> clusterInfos;
   for (size_t i = 0; i < monitors.size(); ++i) {
@@ -441,6 +444,9 @@ void runLoopMode(const GlobalOptions& options) {
 
   // Register keyboard hotkeys
   registerNavigationHotkeys(keyboardOptions);
+
+  // Initialize overlay for rendering
+  overlay::init();
 
   // Print keyboard shortcuts
   spdlog::info("=== Keyboard Shortcuts ===");
@@ -558,15 +564,19 @@ void runLoopMode(const GlobalOptions& options) {
 
     timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
 
+    // Render cell system overlay
+    renderer::render(system, renderer::defaultConfig(), storedCell, "");
+
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(
         "loop iteration total: {}us",
         std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count());
   }
 
-  // Cleanup hotkeys before exit
+  // Cleanup hotkeys and overlay before exit
   unregisterNavigationHotkeys(keyboardOptions);
-  spdlog::info("Hotkeys unregistered, exiting...");
+  overlay::shutdown();
+  spdlog::info("Hotkeys unregistered, overlay shutdown, exiting...");
 }
 
 } // namespace wintiler
