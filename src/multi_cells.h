@@ -63,27 +63,9 @@ struct SplitResult {
   int newSelectionIndex;
 };
 
-// Create initial CellCluster with given width/height (no cells yet).
-CellCluster createInitialState(float width, float height);
-
 // Returns true if the cell at cellIndex exists and has no children.
 [[nodiscard]] bool isLeaf(const CellCluster& state, int cellIndex);
 
-// Delete the given leaf cell. Returns new selection index (or nullopt if cluster empty).
-std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
-
-// Split the given leaf cell. Returns SplitResult with new leaf ID and new selection index.
-// nextLeafId is incremented for each new leaf created.
-std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical, size_t& nextLeafId);
-
-// Toggle the splitDir of the given cell's parent.
-bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
-
-// Debug: print the entire CellCluster to stdout.
-void debugPrintState(const CellCluster& state);
-
-// Validate internal invariants. Returns true if valid.
-bool validateState(const CellCluster& state);
 
 // ============================================================================
 // Multi-Cluster System
@@ -171,12 +153,6 @@ struct MoveResult {
 // Create a multi-cluster system from cluster initialization info.
 System createSystem(const std::vector<ClusterInitInfo>& infos);
 
-// Add a new cluster to an existing system.
-ClusterId addCluster(System& system, const ClusterInitInfo& info);
-
-// Remove a cluster from the system. Returns true if removed.
-bool removeCluster(System& system, ClusterId id);
-
 // Get a pointer to a cluster by ID. Returns nullptr if not found.
 PositionedCluster* getCluster(System& system, ClusterId id);
 const PositionedCluster* getCluster(const System& system, ClusterId id);
@@ -185,12 +161,6 @@ const PositionedCluster* getCluster(const System& system, ClusterId id);
 // Coordinate Conversion
 // ============================================================================
 
-// Convert a local rect to global coordinates.
-Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect);
-
-// Convert a global rect to local coordinates.
-Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect);
-
 // Get the global rect of a cell in a positioned cluster.
 Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
 
@@ -198,23 +168,12 @@ Rect getCellGlobalRect(const PositionedCluster& pc, int cellIndex);
 // Cross-Cluster Navigation
 // ============================================================================
 
-// Find the next leaf in the given direction, searching across all clusters.
-[[nodiscard]] std::optional<std::pair<ClusterId, int>>
-findNextLeafInDirection(const System& system, ClusterId currentClusterId, int currentCellIndex,
-                        Direction dir);
-
 // Move selection across the multi-cluster system.
 bool moveSelection(System& system, Direction dir);
 
 // ============================================================================
 // Operations
 // ============================================================================
-
-// Split the selected leaf in the currently selected cluster.
-std::optional<size_t> splitSelectedLeaf(System& system);
-
-// Delete the selected leaf in the currently selected cluster.
-bool deleteSelectedLeaf(System& system);
 
 // Get the currently selected cell across the entire system.
 [[nodiscard]] std::optional<std::pair<ClusterId, int>> getSelectedCell(const System& system);

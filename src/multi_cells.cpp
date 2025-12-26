@@ -14,7 +14,7 @@ namespace wintiler {
 // ============================================================================
 namespace cells {
 
-CellCluster createInitialState(float width, float height) {
+static CellCluster createInitialState(float width, float height) {
   CellCluster state{};
 
   state.cells.clear();
@@ -102,7 +102,7 @@ static void recomputeSubtreeRects(CellCluster& state, int nodeIndex,
   }
 }
 
-std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+static std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
   if (!isLeaf(state, selectedIndex)) {
     return std::nullopt;
   }
@@ -183,7 +183,7 @@ std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHo
   return current;  // New selection index
 }
 
-std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical, size_t& nextLeafId) {
+static std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical, size_t& nextLeafId) {
   // Special case: if cluster is empty and selectedIndex is -1, create root
   if (state.cells.empty() && selectedIndex == -1) {
     Cell root{};
@@ -266,7 +266,7 @@ std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, floa
   return SplitResult{secondChild.leafId.value(), firstIndex};
 }
 
-bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+static bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
   if (!isLeaf(state, selectedIndex)) {
     return false;
   }
@@ -314,7 +314,7 @@ bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, 
   return true;
 }
 
-void debugPrintState(const CellCluster& state) {
+static void debugPrintState(const CellCluster& state) {
   spdlog::debug("===== CellCluster =====");
   spdlog::debug("cells.size = {}", state.cells.size());
   spdlog::debug("globalSplitDir = {}",
@@ -340,7 +340,7 @@ void debugPrintState(const CellCluster& state) {
   spdlog::debug("===== End CellCluster =====");
 }
 
-bool validateState(const CellCluster& state) {
+static bool validateState(const CellCluster& state) {
   bool ok = true;
 
   if (state.cells.empty()) {
@@ -542,7 +542,7 @@ System createSystem(const std::vector<ClusterInitInfo>& infos) {
   return system;
 }
 
-ClusterId addCluster(System& system, const ClusterInitInfo& info) {
+static ClusterId addCluster(System& system, const ClusterInitInfo& info) {
   PositionedCluster pc;
   pc.id = info.id;
   pc.globalX = info.x;
@@ -563,7 +563,7 @@ ClusterId addCluster(System& system, const ClusterInitInfo& info) {
   return info.id;
 }
 
-bool removeCluster(System& system, ClusterId id) {
+static bool removeCluster(System& system, ClusterId id) {
   auto it = std::find_if(system.clusters.begin(), system.clusters.end(),
                          [id](const PositionedCluster& pc) { return pc.id == id; });
 
@@ -619,12 +619,12 @@ const PositionedCluster* getCluster(const System& system, ClusterId id) {
 // Coordinate Conversion
 // ============================================================================
 
-Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect) {
+static Rect localToGlobal(const PositionedCluster& pc, const Rect& localRect) {
   return Rect{localRect.x + pc.globalX, localRect.y + pc.globalY, localRect.width,
                           localRect.height};
 }
 
-Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect) {
+static Rect globalToLocal(const PositionedCluster& pc, const Rect& globalRect) {
   return Rect{globalRect.x - pc.globalX, globalRect.y - pc.globalY, globalRect.width,
                           globalRect.height};
 }
@@ -706,7 +706,7 @@ static bool isClusterInDirection(const PositionedCluster& pc, const Rect& fromGl
 // Cross-Cluster Navigation
 // ============================================================================
 
-std::optional<std::pair<ClusterId, int>>
+static std::optional<std::pair<ClusterId, int>>
 findNextLeafInDirection(const System& system, ClusterId currentClusterId, int currentCellIndex,
                         Direction dir) {
   const PositionedCluster* currentPC = getCluster(system, currentClusterId);
@@ -781,7 +781,7 @@ bool moveSelection(System& system, Direction dir) {
 // Operations
 // ============================================================================
 
-std::optional<size_t> splitSelectedLeaf(System& system) {
+static std::optional<size_t> splitSelectedLeaf(System& system) {
   if (!system.selection.has_value()) {
     return std::nullopt;
   }
@@ -804,7 +804,7 @@ std::optional<size_t> splitSelectedLeaf(System& system) {
   return std::nullopt;
 }
 
-bool deleteSelectedLeaf(System& system) {
+static bool deleteSelectedLeaf(System& system) {
   if (!system.selection.has_value()) {
     return false;
   }
