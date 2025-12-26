@@ -16,6 +16,16 @@
 
 - move selected for operation cell to the system.
 
+- what happens when a window spawns on multiple monitors.
+
+- wait until window moving is done.
+
+- exchange windows with mouse.
+
+- This could be a potential issue - if you call update_window_position() on a maximized window, SetWindowPos may not behave as expected since maximized windows have special positioning behavior in Windows.
+
+- extra ignores option for config, ignores on top of the default ones.
+
 
 # bugs
 

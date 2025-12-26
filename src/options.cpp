@@ -1,8 +1,7 @@
 #include "options.h"
 
-#include <toml++/toml.hpp>
-
 #include <fstream>
+#include <toml++/toml.hpp>
 
 namespace wintiler {
 
@@ -10,33 +9,55 @@ namespace {
 
 std::string hotkey_action_to_string(HotkeyAction action) {
   switch (action) {
-    case HotkeyAction::NavigateLeft: return "NavigateLeft";
-    case HotkeyAction::NavigateDown: return "NavigateDown";
-    case HotkeyAction::NavigateUp: return "NavigateUp";
-    case HotkeyAction::NavigateRight: return "NavigateRight";
-    case HotkeyAction::ToggleSplit: return "ToggleSplit";
-    case HotkeyAction::Exit: return "Exit";
-    case HotkeyAction::ToggleGlobal: return "ToggleGlobal";
-    case HotkeyAction::StoreCell: return "StoreCell";
-    case HotkeyAction::ClearStored: return "ClearStored";
-    case HotkeyAction::Exchange: return "Exchange";
-    case HotkeyAction::Move: return "Move";
+  case HotkeyAction::NavigateLeft:
+    return "NavigateLeft";
+  case HotkeyAction::NavigateDown:
+    return "NavigateDown";
+  case HotkeyAction::NavigateUp:
+    return "NavigateUp";
+  case HotkeyAction::NavigateRight:
+    return "NavigateRight";
+  case HotkeyAction::ToggleSplit:
+    return "ToggleSplit";
+  case HotkeyAction::Exit:
+    return "Exit";
+  case HotkeyAction::ToggleGlobal:
+    return "ToggleGlobal";
+  case HotkeyAction::StoreCell:
+    return "StoreCell";
+  case HotkeyAction::ClearStored:
+    return "ClearStored";
+  case HotkeyAction::Exchange:
+    return "Exchange";
+  case HotkeyAction::Move:
+    return "Move";
   }
   return "Unknown";
 }
 
 std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
-  if (str == "NavigateLeft") return HotkeyAction::NavigateLeft;
-  if (str == "NavigateDown") return HotkeyAction::NavigateDown;
-  if (str == "NavigateUp") return HotkeyAction::NavigateUp;
-  if (str == "NavigateRight") return HotkeyAction::NavigateRight;
-  if (str == "ToggleSplit") return HotkeyAction::ToggleSplit;
-  if (str == "Exit") return HotkeyAction::Exit;
-  if (str == "ToggleGlobal") return HotkeyAction::ToggleGlobal;
-  if (str == "StoreCell") return HotkeyAction::StoreCell;
-  if (str == "ClearStored") return HotkeyAction::ClearStored;
-  if (str == "Exchange") return HotkeyAction::Exchange;
-  if (str == "Move") return HotkeyAction::Move;
+  if (str == "NavigateLeft")
+    return HotkeyAction::NavigateLeft;
+  if (str == "NavigateDown")
+    return HotkeyAction::NavigateDown;
+  if (str == "NavigateUp")
+    return HotkeyAction::NavigateUp;
+  if (str == "NavigateRight")
+    return HotkeyAction::NavigateRight;
+  if (str == "ToggleSplit")
+    return HotkeyAction::ToggleSplit;
+  if (str == "Exit")
+    return HotkeyAction::Exit;
+  if (str == "ToggleGlobal")
+    return HotkeyAction::ToggleGlobal;
+  if (str == "StoreCell")
+    return HotkeyAction::StoreCell;
+  if (str == "ClearStored")
+    return HotkeyAction::ClearStored;
+  if (str == "Exchange")
+    return HotkeyAction::Exchange;
+  if (str == "Move")
+    return HotkeyAction::Move;
   return std::nullopt;
 }
 
@@ -45,10 +66,9 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
 IgnoreOptions get_default_ignore_options() {
   IgnoreOptions options;
   options.ignored_processes = {
-      "TextInputHost.exe",
-      "ApplicationFrameHost.exe",
-      "Microsoft.CmdPal.UI.exe",
-      "PowerToys.PowerLauncher.exe",
+      "TextInputHost.exe",       "ApplicationFrameHost.exe",
+      "Microsoft.CmdPal.UI.exe", "PowerToys.PowerLauncher.exe",
+      "win-tiler.exe",
   };
   options.ignored_window_titles = {};
   options.ignored_process_title_pairs = {
@@ -76,9 +96,8 @@ GlobalOptions get_default_global_options() {
   return options;
 }
 
-WriteResult write_options_toml(
-    const GlobalOptions& options,
-    const std::filesystem::path& filepath) {
+WriteResult write_options_toml(const GlobalOptions& options,
+                               const std::filesystem::path& filepath) {
   try {
     toml::table root;
 
@@ -174,8 +193,8 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
             auto process = (*tbl)["process"].as_string();
             auto title = (*tbl)["title"].as_string();
             if (process && title) {
-              options.ignoreOptions.ignored_process_title_pairs.emplace_back(
-                  process->get(), title->get());
+              options.ignoreOptions.ignored_process_title_pairs.emplace_back(process->get(),
+                                                                             title->get());
             }
           }
         }
@@ -185,9 +204,8 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
         auto width = (*barrier)["width"].as_integer();
         auto height = (*barrier)["height"].as_integer();
         if (width && height) {
-          options.ignoreOptions.small_window_barrier = SmallWindowBarrier{
-              static_cast<int>(width->get()),
-              static_cast<int>(height->get())};
+          options.ignoreOptions.small_window_barrier =
+              SmallWindowBarrier{static_cast<int>(width->get()), static_cast<int>(height->get())};
         }
       }
     }
