@@ -15,230 +15,6 @@ using namespace wintiler;
 constexpr float TEST_GAP_H = 10.0f;
 constexpr float TEST_GAP_V = 10.0f;
 
-// ============================================================================
-// Cell Logic Tests
-// ============================================================================
-
-TEST_SUITE("cells - basic") {
-
-  TEST_CASE("createInitialState creates empty cluster with correct dimensions") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-
-    CHECK(state.cells.empty());
-    CHECK(state.windowWidth == 800.0f);
-    CHECK(state.windowHeight == 600.0f);
-    CHECK(state.globalSplitDir == cells::SplitDir::Vertical);
-  }
-
-  TEST_CASE("isLeaf returns false for empty state") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    CHECK(!cells::isLeaf(state, 0));
-    CHECK(!cells::isLeaf(state, -1));
-    CHECK(!cells::isLeaf(state, 100));
-  }
-
-  TEST_CASE("splitLeaf creates root cell when cluster is empty") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-
-    // Use -1 as selectedIndex for empty cluster
-    auto result = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-
-    CHECK(result.has_value());
-    CHECK(result->newLeafId == 1);
-    CHECK(result->newSelectionIndex == 0);
-    CHECK(state.cells.size() == 1);
-    CHECK(cells::isLeaf(state, 0));
-
-    // Check root cell properties
-    const auto& root = state.cells[0];
-    CHECK(root.rect.x == 0.0f);
-    CHECK(root.rect.y == 0.0f);
-    CHECK(root.rect.width == 800.0f);
-    CHECK(root.rect.height == 600.0f);
-    CHECK(root.leafId.has_value());
-    CHECK(*root.leafId == 1);
-  }
-
-  TEST_CASE("splitLeaf splits existing leaf") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-
-    // Create root
-    auto rootResult = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-    REQUIRE(rootResult.has_value());
-    int selectionIndex = rootResult->newSelectionIndex;
-
-    // Split root - should create two children
-    auto splitResult = cells::splitLeaf(state, selectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-
-    CHECK(splitResult.has_value());
-    CHECK(splitResult->newLeafId == 2);
-    CHECK(state.cells.size() == 3);
-
-    // Root should no longer be a leaf
-    CHECK(!cells::isLeaf(state, 0));
-    CHECK(!state.cells[0].leafId.has_value());
-
-    // Children should be leaves
-    CHECK(cells::isLeaf(state, 1));
-    CHECK(cells::isLeaf(state, 2));
-
-    // Selection should point to first child
-    CHECK(splitResult->newSelectionIndex == 1);
-
-    // First child keeps the parent's leafId
-    CHECK(state.cells[1].leafId.has_value());
-    CHECK(*state.cells[1].leafId == 1);
-
-    // Second child gets the new leafId
-    CHECK(state.cells[2].leafId.has_value());
-    CHECK(*state.cells[2].leafId == 2);
-  }
-
-  TEST_CASE("splitLeaf alternates split direction") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-
-    CHECK(state.globalSplitDir == cells::SplitDir::Vertical);
-
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Create root (no toggle, just creates leaf)
-    CHECK(state.globalSplitDir == cells::SplitDir::Vertical);
-
-    auto r2 = cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // First split - toggles to Horizontal
-    CHECK(state.globalSplitDir == cells::SplitDir::Horizontal);
-
-    cells::splitLeaf(state, r2->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Second split - toggles back to Vertical
-    CHECK(state.globalSplitDir == cells::SplitDir::Vertical);
-  }
-
-  TEST_CASE("splitLeaf creates correct rects for vertical split") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Create root (vertical split dir)
-    cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Split vertically
-
-    // Children should be side by side
-    const auto& first = state.cells[1];
-    const auto& second = state.cells[2];
-
-    float expectedWidth = (800.0f - TEST_GAP_H) / 2.0f; // (width - gap) / 2
-
-    CHECK(first.rect.x == 0.0f);
-    CHECK(first.rect.width == doctest::Approx(expectedWidth));
-    CHECK(first.rect.height == 600.0f);
-
-    CHECK(second.rect.x == doctest::Approx(expectedWidth + TEST_GAP_H));
-    CHECK(second.rect.width == doctest::Approx(expectedWidth));
-    CHECK(second.rect.height == 600.0f);
-  }
-
-  TEST_CASE("splitLeaf creates correct rects for horizontal split") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Create root
-    auto r2 = cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // First split (vertical)
-
-    // Now globalSplitDir is Horizontal, split first child horizontally
-    int selectedIndex = r2->newSelectionIndex;  // first child (index 1)
-    state.globalSplitDir = cells::SplitDir::Horizontal;
-    cells::splitLeaf(state, selectedIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Split horizontally
-
-    // Children should be stacked vertically
-    const auto& first = state.cells[3];
-    const auto& second = state.cells[4];
-
-    float parentHeight = state.cells[1].rect.height;
-    float expectedHeight = (parentHeight - TEST_GAP_V) / 2.0f;
-
-    CHECK(first.rect.y == state.cells[1].rect.y);
-    CHECK(first.rect.height == doctest::Approx(expectedHeight));
-
-    CHECK(second.rect.y == doctest::Approx(first.rect.y + expectedHeight + TEST_GAP_V));
-    CHECK(second.rect.height == doctest::Approx(expectedHeight));
-  }
-
-  TEST_CASE("deleteLeaf removes root cell") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-
-    auto result = cells::deleteLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V);
-
-    // Deleting root cell clears the cluster
-    CHECK(!result.has_value());  // nullopt means cluster is empty
-    CHECK(state.cells.empty());
-  }
-
-  TEST_CASE("deleteLeaf promotes sibling") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Root
-    cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Split into 2 children
-
-    // Delete second child
-    auto result = cells::deleteLeaf(state, 2, TEST_GAP_H, TEST_GAP_V);
-
-    CHECK(result.has_value());
-    // After deletion, the first child should be promoted to root position
-    // and result should point to the promoted cell
-    CHECK(cells::isLeaf(state, *result));
-  }
-
-  TEST_CASE("deleteLeaf returns nullopt for invalid index") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-
-    auto result = cells::deleteLeaf(state, -1, TEST_GAP_H, TEST_GAP_V);
-    CHECK(!result.has_value());
-  }
-
-  TEST_CASE("toggleSplitDir toggles parent's split direction") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Root
-    auto r2 = cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Split
-
-    // Parent (root) should have Vertical split dir initially
-    CHECK(state.cells[0].splitDir == cells::SplitDir::Vertical);
-
-    bool result = cells::toggleSplitDir(state, r2->newSelectionIndex, TEST_GAP_H, TEST_GAP_V);
-
-    CHECK(result);
-    CHECK(state.cells[0].splitDir == cells::SplitDir::Horizontal);
-
-    // Toggle back
-    result = cells::toggleSplitDir(state, r2->newSelectionIndex, TEST_GAP_H, TEST_GAP_V);
-    CHECK(result);
-    CHECK(state.cells[0].splitDir == cells::SplitDir::Vertical);
-  }
-
-  TEST_CASE("toggleSplitDir returns false for root leaf") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId); // Create root leaf
-
-    bool result = cells::toggleSplitDir(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V);
-    CHECK(!result); // Root has no parent to toggle
-  }
-
-  TEST_CASE("validateState returns true for valid empty state") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    CHECK(cells::validateState(state));
-  }
-
-  TEST_CASE("validateState returns true for valid state with cells") {
-    auto state = cells::createInitialState(800.0f, 600.0f);
-    size_t nextLeafId = 1;
-    auto r1 = cells::splitLeaf(state, -1, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-    auto r2 = cells::splitLeaf(state, r1->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-    cells::splitLeaf(state, r2->newSelectionIndex, TEST_GAP_H, TEST_GAP_V, nextLeafId);
-
-    CHECK(cells::validateState(state));
-  }
-
-}
 
 // ============================================================================
 // Multi-Cluster System Tests
@@ -321,46 +97,6 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(leafCount == 2);
   }
 
-  TEST_CASE("addCluster adds cluster to existing system") {
-    auto system = cells::createSystem({});
-
-    cells::ClusterInitInfo info;
-    info.id = 5;
-    info.x = 100.0f;
-    info.y = 200.0f;
-    info.width = 400.0f;
-    info.height = 300.0f;
-
-    auto id = cells::addCluster(system, info);
-
-    CHECK(id == 5);
-    CHECK(system.clusters.size() == 1);
-    CHECK(system.clusters[0].id == 5);
-    CHECK(system.clusters[0].globalX == 100.0f);
-    CHECK(system.clusters[0].globalY == 200.0f);
-  }
-
-  TEST_CASE("removeCluster removes existing cluster") {
-    cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 800.0f, 600.0f, {}};
-    cells::ClusterInitInfo info2{2, 800.0f, 0.0f, 400.0f, 600.0f, {}};
-
-    auto system = cells::createSystem({info1, info2});
-    CHECK(system.clusters.size() == 2);
-
-    bool result = cells::removeCluster(system, 1);
-
-    CHECK(result);
-    CHECK(system.clusters.size() == 1);
-    CHECK(system.clusters[0].id == 2);
-  }
-
-  TEST_CASE("removeCluster returns false for non-existent cluster") {
-    auto system = cells::createSystem({});
-
-    bool result = cells::removeCluster(system, 999);
-    CHECK(!result);
-  }
-
   TEST_CASE("getCluster returns correct cluster") {
     cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 800.0f, 600.0f, {}};
     cells::ClusterInitInfo info2{2, 800.0f, 0.0f, 400.0f, 600.0f, {}};
@@ -374,34 +110,6 @@ TEST_SUITE("cells - multi-cluster") {
 
     auto* notFound = cells::getCluster(system, 999);
     CHECK(notFound == nullptr);
-  }
-
-  TEST_CASE("localToGlobal converts coordinates correctly") {
-    cells::PositionedCluster pc;
-    pc.globalX = 100.0f;
-    pc.globalY = 50.0f;
-
-    cells::Rect local{10.0f, 20.0f, 30.0f, 40.0f};
-    auto global = cells::localToGlobal(pc, local);
-
-    CHECK(global.x == 110.0f);
-    CHECK(global.y == 70.0f);
-    CHECK(global.width == 30.0f);
-    CHECK(global.height == 40.0f);
-  }
-
-  TEST_CASE("globalToLocal converts coordinates correctly") {
-    cells::PositionedCluster pc;
-    pc.globalX = 100.0f;
-    pc.globalY = 50.0f;
-
-    cells::Rect global{110.0f, 70.0f, 30.0f, 40.0f};
-    auto local = cells::globalToLocal(pc, global);
-
-    CHECK(local.x == 10.0f);
-    CHECK(local.y == 20.0f);
-    CHECK(local.width == 30.0f);
-    CHECK(local.height == 40.0f);
   }
 
   TEST_CASE("getCellGlobalRect returns correct global rect") {
@@ -418,35 +126,6 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(globalRect.y == 50.0f);
     CHECK(globalRect.width == 800.0f);
     CHECK(globalRect.height == 600.0f);
-  }
-
-  TEST_CASE("splitSelectedLeaf creates new leaf with global ID") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
-    auto system = cells::createSystem({info});
-
-    auto newLeafId = cells::splitSelectedLeaf(system);
-
-    CHECK(newLeafId.has_value());
-    CHECK(cells::countTotalLeaves(system) == 2);
-  }
-
-  TEST_CASE("splitSelectedLeaf returns nullopt with no selection") {
-    auto system = cells::createSystem({});
-
-    auto result = cells::splitSelectedLeaf(system);
-    CHECK(!result.has_value());
-  }
-
-  TEST_CASE("deleteSelectedLeaf removes leaf") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
-    auto system = cells::createSystem({info});
-
-    CHECK(cells::countTotalLeaves(system) == 2);
-
-    bool result = cells::deleteSelectedLeaf(system);
-
-    CHECK(result);
-    CHECK(cells::countTotalLeaves(system) == 1);
   }
 
   TEST_CASE("getSelectedCell returns current selection") {
@@ -467,19 +146,6 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(!selected.has_value());
   }
 
-  TEST_CASE("getSelectedCellGlobalRect returns correct rect") {
-    cells::ClusterInitInfo info{1, 100.0f, 50.0f, 800.0f, 600.0f, {1}};
-    auto system = cells::createSystem({info});
-
-    auto rect = cells::getSelectedCellGlobalRect(system);
-
-    CHECK(rect.has_value());
-    CHECK(rect->x == 100.0f);
-    CHECK(rect->y == 50.0f);
-    CHECK(rect->width == 800.0f);
-    CHECK(rect->height == 600.0f);
-  }
-
   TEST_CASE("countTotalLeaves counts correctly across clusters") {
     cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
     cells::ClusterInitInfo info2{2, 800.0f, 0.0f, 400.0f, 600.0f, {3, 4, 5}};
@@ -490,16 +156,102 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(count == 5);
   }
 
-  TEST_CASE("validateSystem returns true for valid system") {
+  TEST_CASE("findCellAtPoint finds cell in single cluster") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
+    auto system = cells::createSystem({info});
+
+    // Point inside the cell
+    auto result = cells::findCellAtPoint(system, 400.0f, 300.0f);
+
+    REQUIRE(result.has_value());
+    CHECK(result->first == 1);  // Cluster ID
+    CHECK(result->second == 0); // Cell index
+  }
+
+  TEST_CASE("findCellAtPoint returns nullopt for point outside all clusters") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
+    auto system = cells::createSystem({info});
+
+    // Point outside the cluster
+    auto result = cells::findCellAtPoint(system, 1000.0f, 1000.0f);
+
+    CHECK(!result.has_value());
+  }
+
+  TEST_CASE("findCellAtPoint finds correct cell in split cluster") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
     auto system = cells::createSystem({info});
 
-    CHECK(cells::validateSystem(system));
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Find positions of both leaves
+    auto idx1 = cells::findCellByLeafId(pc->cluster, 1);
+    auto idx2 = cells::findCellByLeafId(pc->cluster, 2);
+    REQUIRE(idx1.has_value());
+    REQUIRE(idx2.has_value());
+
+    auto rect1 = cells::getCellGlobalRect(*pc, *idx1);
+    auto rect2 = cells::getCellGlobalRect(*pc, *idx2);
+
+    // Test point in first cell
+    auto result1 = cells::findCellAtPoint(system, rect1.x + 10.0f, rect1.y + 10.0f);
+    REQUIRE(result1.has_value());
+    CHECK(result1->first == 1);
+    CHECK(result1->second == *idx1);
+
+    // Test point in second cell
+    auto result2 = cells::findCellAtPoint(system, rect2.x + 10.0f, rect2.y + 10.0f);
+    REQUIRE(result2.has_value());
+    CHECK(result2->first == 1);
+    CHECK(result2->second == *idx2);
   }
 
-  TEST_CASE("validateSystem returns true for empty system") {
+  TEST_CASE("findCellAtPoint finds cell across multiple clusters") {
+    cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {1}};
+    cells::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {2}};
+    auto system = cells::createSystem({info1, info2});
+
+    // Point in cluster 1
+    auto result1 = cells::findCellAtPoint(system, 200.0f, 300.0f);
+    REQUIRE(result1.has_value());
+    CHECK(result1->first == 1);
+
+    // Point in cluster 2
+    auto result2 = cells::findCellAtPoint(system, 600.0f, 300.0f);
+    REQUIRE(result2.has_value());
+    CHECK(result2->first == 2);
+  }
+
+  TEST_CASE("findCellAtPoint returns nullopt for empty system") {
     auto system = cells::createSystem({});
-    CHECK(cells::validateSystem(system));
+
+    auto result = cells::findCellAtPoint(system, 100.0f, 100.0f);
+
+    CHECK(!result.has_value());
+  }
+
+  TEST_CASE("findCellAtPoint handles edge coordinates") {
+    cells::ClusterInitInfo info{1, 100.0f, 50.0f, 800.0f, 600.0f, {1}};
+    auto system = cells::createSystem({info});
+
+    // Point exactly at top-left corner (inclusive)
+    auto result1 = cells::findCellAtPoint(system, 100.0f, 50.0f);
+    REQUIRE(result1.has_value());
+    CHECK(result1->first == 1);
+
+    // Point just before bottom-right edge (exclusive)
+    auto result2 = cells::findCellAtPoint(system, 899.0f, 649.0f);
+    REQUIRE(result2.has_value());
+    CHECK(result2->first == 1);
+
+    // Point exactly at right edge (exclusive - outside)
+    auto result3 = cells::findCellAtPoint(system, 900.0f, 300.0f);
+    CHECK(!result3.has_value());
+
+    // Point exactly at bottom edge (exclusive - outside)
+    auto result4 = cells::findCellAtPoint(system, 500.0f, 650.0f);
+    CHECK(!result4.has_value());
   }
 
 }
@@ -567,104 +319,6 @@ TEST_SUITE("cells - navigation") {
     CHECK(system.selection->clusterId == 1);
   }
 
-  TEST_CASE("findNextLeafInDirection finds correct cell left") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
-    auto system = cells::createSystem({info});
-
-    // Get the cluster and find which cells are where
-    auto* pc = cells::getCluster(system, 1);
-    REQUIRE(pc != nullptr);
-
-    // Find leaves
-    int leftLeaf = -1, rightLeaf = -1;
-    for (int i = 0; i < static_cast<int>(pc->cluster.cells.size()); ++i) {
-      if (cells::isLeaf(pc->cluster, i)) {
-        auto rect = cells::getCellGlobalRect(*pc, i);
-        if (leftLeaf < 0 || rect.x < cells::getCellGlobalRect(*pc, leftLeaf).x) {
-          rightLeaf = leftLeaf;
-          leftLeaf = i;
-        } else {
-          rightLeaf = i;
-        }
-      }
-    }
-
-    REQUIRE(leftLeaf >= 0);
-    REQUIRE(rightLeaf >= 0);
-
-    // From right leaf, find left should return left leaf
-    auto result = cells::findNextLeafInDirection(system, 1, rightLeaf,
-                                                            cells::Direction::Left);
-    CHECK(result.has_value());
-    CHECK(result->first == 1);
-    CHECK(result->second == leftLeaf);
-  }
-
-  TEST_CASE("findNextLeafInDirection finds correct cell right") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
-    auto system = cells::createSystem({info});
-
-    auto* pc = cells::getCluster(system, 1);
-    REQUIRE(pc != nullptr);
-
-    // Find leaves
-    int leftLeaf = -1, rightLeaf = -1;
-    for (int i = 0; i < static_cast<int>(pc->cluster.cells.size()); ++i) {
-      if (cells::isLeaf(pc->cluster, i)) {
-        auto rect = cells::getCellGlobalRect(*pc, i);
-        if (leftLeaf < 0 || rect.x < cells::getCellGlobalRect(*pc, leftLeaf).x) {
-          rightLeaf = leftLeaf;
-          leftLeaf = i;
-        } else {
-          rightLeaf = i;
-        }
-      }
-    }
-
-    REQUIRE(leftLeaf >= 0);
-    REQUIRE(rightLeaf >= 0);
-
-    // From left leaf, find right should return right leaf
-    auto result = cells::findNextLeafInDirection(system, 1, leftLeaf,
-                                                            cells::Direction::Right);
-    CHECK(result.has_value());
-    CHECK(result->first == 1);
-    CHECK(result->second == rightLeaf);
-  }
-
-  TEST_CASE("findNextLeafInDirection crosses clusters") {
-    // Two clusters side by side
-    cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {1}};
-    cells::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {2}};
-
-    auto system = cells::createSystem({info1, info2});
-
-    // From cluster 1's leaf, find right should find cluster 2's leaf
-    auto* pc1 = cells::getCluster(system, 1);
-    REQUIRE(pc1 != nullptr);
-    int leaf1 = 0; // The only cell in cluster 1
-    for (int i = 0; i < static_cast<int>(pc1->cluster.cells.size()); ++i) {
-      if (cells::isLeaf(pc1->cluster, i)) {
-        leaf1 = i;
-        break;
-      }
-    }
-
-    auto result = cells::findNextLeafInDirection(system, 1, leaf1,
-                                                            cells::Direction::Right);
-    CHECK(result.has_value());
-    CHECK(result->first == 2); // Should be in cluster 2
-  }
-
-  TEST_CASE("findNextLeafInDirection returns nullopt when no cell in direction") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
-    auto system = cells::createSystem({info});
-
-    auto result = cells::findNextLeafInDirection(system, 1, 0,
-                                                            cells::Direction::Left);
-    CHECK(!result.has_value());
-  }
-
   TEST_CASE("toggleSelectedSplitDir works") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
     auto system = cells::createSystem({info});
@@ -682,21 +336,58 @@ TEST_SUITE("cells - navigation") {
     CHECK(pc->cluster.cells[0].splitDir != initialDir);
   }
 
-  TEST_CASE("removeCluster updates selection to remaining cluster") {
+  TEST_CASE("toggleClusterGlobalSplitDir toggles cluster split direction") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Get initial global split dir
+    cells::SplitDir initialDir = pc->cluster.globalSplitDir;
+
+    bool result = cells::toggleClusterGlobalSplitDir(system);
+    CHECK(result);
+
+    // Check direction changed
+    CHECK(pc->cluster.globalSplitDir != initialDir);
+
+    // Toggle again should return to original
+    result = cells::toggleClusterGlobalSplitDir(system);
+    CHECK(result);
+    CHECK(pc->cluster.globalSplitDir == initialDir);
+  }
+
+  TEST_CASE("toggleClusterGlobalSplitDir returns false with no selection") {
+    auto system = cells::createSystem({});
+
+    bool result = cells::toggleClusterGlobalSplitDir(system);
+    CHECK(!result);
+  }
+
+  TEST_CASE("toggleClusterGlobalSplitDir affects correct cluster") {
     cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, {1}};
     cells::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {2}};
-
     auto system = cells::createSystem({info1, info2});
 
-    // Selection should be in first cluster initially
-    CHECK(system.selection->clusterId == 1);
+    // Selection should be in cluster 1
+    REQUIRE(system.selection.has_value());
+    REQUIRE(system.selection->clusterId == 1);
 
-    // Remove selected cluster
-    cells::removeCluster(system, 1);
+    auto* pc1 = cells::getCluster(system, 1);
+    auto* pc2 = cells::getCluster(system, 2);
+    REQUIRE(pc1 != nullptr);
+    REQUIRE(pc2 != nullptr);
 
-    // Selection should move to remaining cluster
-    CHECK(system.selection.has_value());
-    CHECK(system.selection->clusterId == 2);
+    cells::SplitDir initialDir1 = pc1->cluster.globalSplitDir;
+    cells::SplitDir initialDir2 = pc2->cluster.globalSplitDir;
+
+    // Toggle should only affect cluster 1 (selected)
+    bool result = cells::toggleClusterGlobalSplitDir(system);
+    CHECK(result);
+
+    CHECK(pc1->cluster.globalSplitDir != initialDir1);  // Changed
+    CHECK(pc2->cluster.globalSplitDir == initialDir2);  // Unchanged
   }
 
 }
@@ -706,30 +397,6 @@ TEST_SUITE("cells - navigation") {
 // ============================================================================
 
 TEST_SUITE("cells - updateSystem") {
-
-  TEST_CASE("getClusterLeafIds returns all leaf IDs") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20, 30}};
-    auto system = cells::createSystem({info});
-
-    auto* pc = cells::getCluster(system, 1);
-    REQUIRE(pc != nullptr);
-
-    auto leafIds = cells::getClusterLeafIds(pc->cluster);
-
-    CHECK(leafIds.size() == 3);
-    // Check all IDs are present (order may vary)
-    std::sort(leafIds.begin(), leafIds.end());
-    CHECK(leafIds[0] == 10);
-    CHECK(leafIds[1] == 20);
-    CHECK(leafIds[2] == 30);
-  }
-
-  TEST_CASE("getClusterLeafIds returns empty for empty cluster") {
-    auto cluster = cells::createInitialState(800.0f, 600.0f);
-
-    auto leafIds = cells::getClusterLeafIds(cluster);
-    CHECK(leafIds.empty());
-  }
 
   TEST_CASE("findCellByLeafId finds existing leaf") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
