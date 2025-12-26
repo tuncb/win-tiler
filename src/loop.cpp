@@ -183,7 +183,7 @@ ActionResult handleExit() {
   return ActionResult::Exit;
 }
 
-ActionResult handleToggleGlobal(cells::System& system) {
+ActionResult handleToggleGlobal(cells::System& system, std::string& outMessage) {
   if (cells::toggleClusterGlobalSplitDir(system)) {
     if (system.selection.has_value()) {
       const auto* pc = cells::getCluster(system, system.selection->clusterId);
@@ -191,6 +191,7 @@ ActionResult handleToggleGlobal(cells::System& system) {
         const char* dirStr =
             (pc->cluster.globalSplitDir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
         spdlog::info("Toggled cluster global split direction: {}", dirStr);
+        outMessage = std::string("Toggled: ") + dirStr;
       }
     }
   }
@@ -255,7 +256,7 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
 }
 
 ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
-                                  StoredCell& storedCell) {
+                                  StoredCell& storedCell, std::string& outMessage) {
   // Handle navigation actions
   if (auto dir = hotkeyActionToDirection(action)) {
     handleKeyboardNavigation(system, *dir);
@@ -269,7 +270,7 @@ ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
   case HotkeyAction::Exit:
     return handleExit();
   case HotkeyAction::ToggleGlobal:
-    return handleToggleGlobal(system);
+    return handleToggleGlobal(system, outMessage);
   case HotkeyAction::StoreCell:
     return handleStoreCell(system, storedCell);
   case HotkeyAction::ClearStored:
@@ -459,6 +460,11 @@ void runLoopMode(const GlobalOptions& options) {
   // Store cell for swap/move operations
   StoredCell storedCell;
 
+  // Toast message state
+  std::string toastMessage;
+  auto toastExpiry = std::chrono::steady_clock::now();
+  const auto toastDuration = std::chrono::milliseconds(2000);
+
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -470,8 +476,14 @@ void runLoopMode(const GlobalOptions& options) {
       if (!actionOpt.has_value()) {
         continue; // Unknown hotkey ID
       }
-      if (dispatchHotkeyAction(*actionOpt, system, storedCell) == ActionResult::Exit) {
+      std::string actionMessage;
+      if (dispatchHotkeyAction(*actionOpt, system, storedCell, actionMessage) ==
+          ActionResult::Exit) {
         break;
+      }
+      if (!actionMessage.empty()) {
+        toastMessage = actionMessage;
+        toastExpiry = std::chrono::steady_clock::now() + toastDuration;
       }
     }
 
@@ -527,7 +539,8 @@ void runLoopMode(const GlobalOptions& options) {
     timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
 
     // Render cell system overlay
-    renderer::render(system, renderer::defaultConfig(), storedCell, "");
+    std::string currentToast = (std::chrono::steady_clock::now() < toastExpiry) ? toastMessage : "";
+    renderer::render(system, renderer::defaultConfig(), storedCell, currentToast);
 
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(

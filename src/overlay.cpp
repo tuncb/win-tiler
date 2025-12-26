@@ -309,9 +309,9 @@ bool create_dwrite_resources() {
   }
 
   // Create default text format
-  hr = g_dwriteFactory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+  hr = g_dwriteFactory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
                                          DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                         14.0f, L"en-us", &g_textFormat);
+                                         60.0f, L"en-us", &g_textFormat);
 
   if (FAILED(hr)) {
     spdlog::error("Failed to create text format: 0x{:08X}", static_cast<unsigned int>(hr));

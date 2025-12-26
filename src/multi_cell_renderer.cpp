@@ -67,15 +67,20 @@ void render(const cells::System& system, const RenderConfig& config,
     for (const auto& monitor : monitors) {
       if (monitor.isPrimary) {
         // Position at bottom-right of work area with padding
+        // Estimate toast width: ~30px per character (60pt font) + 16px padding
+        float estimatedWidth = static_cast<float>(message.length()) * 30.0f + 16.0f;
+        float toastHeight = 90.0f; // Approximate height for 60pt font + padding
         float padding = 20.0f;
-        float textX = static_cast<float>(monitor.workArea.right) - padding;
-        float textY = static_cast<float>(monitor.workArea.bottom) - padding - 30.0f;
+
+        // Position so the RIGHT edge is at workArea.right - padding
+        float textX = static_cast<float>(monitor.workArea.right) - padding - estimatedWidth;
+        float textY = static_cast<float>(monitor.workArea.bottom) - padding - toastHeight;
 
         overlay::show_toast({
             message,
             textX,
             textY,
-            {40, 40, 40, 200},    // Dark background
+            {40, 40, 40, 220},    // Dark background
             {255, 255, 255, 255}, // White text
             200.0f,               // Short duration, refreshed each frame
         });
