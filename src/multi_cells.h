@@ -48,8 +48,6 @@ struct CellCluster {
   // when the first cell is created lazily on a split.
   float windowWidth = 0.0f;
   float windowHeight = 0.0f;
-
-  size_t nextLeafId = 1; // Counter for unique leaf IDs
 };
 
 enum class Direction {
@@ -75,7 +73,8 @@ CellCluster createInitialState(float width, float height);
 std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
 
 // Split the given leaf cell. Returns SplitResult with new leaf ID and new selection index.
-std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);
+// nextLeafId is incremented for each new leaf created.
+std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical, size_t& nextLeafId);
 
 // Toggle the splitDir of the given cell's parent.
 bool toggleSplitDir(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical);

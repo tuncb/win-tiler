@@ -18,7 +18,6 @@ CellCluster createInitialState(float width, float height) {
   CellCluster state{};
 
   state.cells.clear();
-  state.nextLeafId = 1;
 
   state.windowWidth = width;
   state.windowHeight = height;
@@ -184,7 +183,7 @@ std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, float gapHo
   return current;  // New selection index
 }
 
-std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical) {
+std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, float gapHorizontal, float gapVertical, size_t& nextLeafId) {
   // Special case: if cluster is empty and selectedIndex is -1, create root
   if (state.cells.empty() && selectedIndex == -1) {
     Cell root{};
@@ -193,7 +192,7 @@ std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, floa
     root.parent = std::nullopt;
     root.firstChild = std::nullopt;
     root.secondChild = std::nullopt;
-    root.leafId = state.nextLeafId++;
+    root.leafId = nextLeafId++;
 
     float rootW = state.windowWidth;
     float rootH = state.windowHeight;
@@ -250,7 +249,7 @@ std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex, floa
   secondChild.firstChild = std::nullopt;
   secondChild.secondChild = std::nullopt;
   secondChild.rect = secondRect;
-  secondChild.leafId = state.nextLeafId++;
+  secondChild.leafId = nextLeafId++;
 
   int firstIndex = addCell(state, firstChild);
   int secondIndex = addCell(state, secondChild);
@@ -476,19 +475,16 @@ static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cel
 
     if (pc.cluster.cells.empty()) {
       // First cell: create root leaf (pass -1 for empty cluster)
-      pc.cluster.nextLeafId = globalNextLeafId;
-      auto resultOpt = splitLeaf(pc.cluster, -1, gapHorizontal, gapVertical);
+      auto resultOpt = splitLeaf(pc.cluster, -1, gapHorizontal, gapVertical, globalNextLeafId);
       if (resultOpt.has_value()) {
         // The root leaf was just created. Overwrite its leafId with the provided one.
         int idx = resultOpt->newSelectionIndex;
         pc.cluster.cells[static_cast<size_t>(idx)].leafId = cellId;
         currentSelection = idx;
-        globalNextLeafId = pc.cluster.nextLeafId;
       }
     } else {
       // Subsequent cells: split current selection
-      pc.cluster.nextLeafId = globalNextLeafId;
-      auto resultOpt = splitLeaf(pc.cluster, currentSelection, gapHorizontal, gapVertical);
+      auto resultOpt = splitLeaf(pc.cluster, currentSelection, gapHorizontal, gapVertical, globalNextLeafId);
       if (resultOpt.has_value()) {
         // The new leaf (second child) was created. Find it and overwrite its leafId.
         // After split, selection moves to first child. The new leaf is the sibling.
@@ -505,7 +501,6 @@ static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cel
           }
         }
         currentSelection = firstChildIdx;
-        globalNextLeafId = pc.cluster.nextLeafId;
       }
     }
   }
@@ -796,14 +791,9 @@ std::optional<size_t> splitSelectedLeaf(System& system) {
     return std::nullopt;
   }
 
-  // Sync the global leaf ID counter
-  pc->cluster.nextLeafId = system.globalNextLeafId;
-
   auto resultOpt = splitLeaf(pc->cluster, system.selection->cellIndex,
-                                         system.gapHorizontal, system.gapVertical);
-
-  // Sync back after split
-  system.globalNextLeafId = pc->cluster.nextLeafId;
+                             system.gapHorizontal, system.gapVertical,
+                             system.globalNextLeafId);
 
   if (resultOpt.has_value()) {
     // Update selection to the new selection index
@@ -1057,15 +1047,10 @@ MoveResult moveCell(System& system,
     return {false, -1, 0, "Target lost after delete"};
   }
 
-  // Sync the global leaf ID counter
-  tgtPC->cluster.nextLeafId = system.globalNextLeafId;
-
   // Split target
   auto splitResult = splitLeaf(tgtPC->cluster, *tgtIdxOpt,
-                                            system.gapHorizontal, system.gapVertical);
-
-  // Sync back after split
-  system.globalNextLeafId = tgtPC->cluster.nextLeafId;
+                               system.gapHorizontal, system.gapVertical,
+                               system.globalNextLeafId);
 
   if (!splitResult.has_value()) {
     return {false, -1, 0, "Split failed"};
@@ -1359,14 +1344,9 @@ UpdateResult updateSystem(
         }
       }
 
-      // Sync the global leaf ID counter
-      pc->cluster.nextLeafId = system.globalNextLeafId;
-
       auto resultOpt = splitLeaf(pc->cluster, currentSelection,
-                                              system.gapHorizontal, system.gapVertical);
-
-      // Sync back after split
-      system.globalNextLeafId = pc->cluster.nextLeafId;
+                                 system.gapHorizontal, system.gapVertical,
+                                 system.globalNextLeafId);
 
       if (resultOpt.has_value()) {
         // Override the new leaf's ID with the desired one
