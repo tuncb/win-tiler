@@ -14,6 +14,9 @@ namespace wintiler {
 
 namespace {
 
+// Result type for action handlers - signals whether the main loop should continue or exit
+enum class ActionResult { Continue, Exit };
+
 // Helper to time a function and log its duration
 template <typename F>
 auto timed(const char* name, F&& func) {
@@ -161,6 +164,124 @@ void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
   }
 
   spdlog::trace("Navigated to cell {} in cluster {}", cellIndex, clusterId);
+}
+
+// Type alias for stored cell used in swap/move operations
+using StoredCell = std::optional<std::pair<cells::ClusterId, size_t>>;
+
+ActionResult handleToggleSplit(cells::System& system) {
+  if (cells::toggleSelectedSplitDir(system)) {
+    spdlog::info("Toggled split direction");
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult handleExit() {
+  spdlog::info("Exit hotkey pressed, shutting down...");
+  return ActionResult::Exit;
+}
+
+ActionResult handleToggleGlobal(cells::System& system) {
+  if (cells::toggleClusterGlobalSplitDir(system)) {
+    if (system.selection.has_value()) {
+      const auto* pc = cells::getCluster(system, system.selection->clusterId);
+      if (pc != nullptr) {
+        const char* dirStr = (pc->cluster.globalSplitDir == cells::SplitDir::Vertical)
+            ? "vertical" : "horizontal";
+        spdlog::info("Toggled cluster global split direction: {}", dirStr);
+      }
+    }
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult handleStoreCell(cells::System& system, StoredCell& storedCell) {
+  if (system.selection.has_value()) {
+    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    if (pc != nullptr) {
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+      if (cell.leafId.has_value()) {
+        storedCell = {system.selection->clusterId, *cell.leafId};
+        spdlog::info("Stored cell for operation: cluster={}, leafId={}",
+                     system.selection->clusterId, *cell.leafId);
+      }
+    }
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult handleClearStored(StoredCell& storedCell) {
+  storedCell.reset();
+  spdlog::info("Cleared stored cell");
+  return ActionResult::Continue;
+}
+
+ActionResult handleExchange(cells::System& system, StoredCell& storedCell) {
+  if (storedCell.has_value() && system.selection.has_value()) {
+    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    if (pc != nullptr) {
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+      if (cell.leafId.has_value()) {
+        auto result = cells::swapCells(
+            system, system.selection->clusterId, *cell.leafId, storedCell->first,
+            storedCell->second);
+        if (result.success) {
+          storedCell.reset();
+          spdlog::info("Exchanged cells successfully");
+        }
+      }
+    }
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
+  if (storedCell.has_value() && system.selection.has_value()) {
+    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    if (pc != nullptr) {
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
+      if (cell.leafId.has_value()) {
+        auto result = cells::moveCell(system, storedCell->first, storedCell->second,
+                                                 system.selection->clusterId, *cell.leafId);
+        if (result.success) {
+          storedCell.reset();
+          spdlog::info("Moved cell successfully");
+        }
+      }
+    }
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult dispatchHotkeyAction(
+    HotkeyAction action,
+    cells::System& system,
+    StoredCell& storedCell) {
+  // Handle navigation actions
+  if (auto dir = hotkeyActionToDirection(action)) {
+    handleKeyboardNavigation(system, *dir);
+    return ActionResult::Continue;
+  }
+
+  // Handle other actions
+  switch (action) {
+  case HotkeyAction::ToggleSplit:
+    return handleToggleSplit(system);
+  case HotkeyAction::Exit:
+    return handleExit();
+  case HotkeyAction::ToggleGlobal:
+    return handleToggleGlobal(system);
+  case HotkeyAction::StoreCell:
+    return handleStoreCell(system, storedCell);
+  case HotkeyAction::ClearStored:
+    return handleClearStored(storedCell);
+  case HotkeyAction::Exchange:
+    return handleExchange(system, storedCell);
+  case HotkeyAction::Move:
+    return handleMove(system, storedCell);
+  default:
+    return ActionResult::Continue;
+  }
 }
 
 // Helper: Print tile layout from a multi-cluster system
@@ -423,8 +544,8 @@ void runLoopMode(const GlobalOptions& options) {
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
-  // Store cell for swap/move operations (clusterId, leafId)
-  std::optional<std::pair<cells::ClusterId, size_t>> storedCell;
+  // Store cell for swap/move operations
+  StoredCell storedCell;
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -437,75 +558,8 @@ void runLoopMode(const GlobalOptions& options) {
       if (!actionOpt.has_value()) {
         continue;  // Unknown hotkey ID
       }
-      HotkeyAction action = *actionOpt;
-
-      if (auto dir = hotkeyActionToDirection(action)) {
-        handleKeyboardNavigation(system, *dir);
-      } else if (action == HotkeyAction::ToggleSplit) {
-        if (cells::toggleSelectedSplitDir(system)) {
-          spdlog::info("Toggled split direction");
-        }
-      } else if (action == HotkeyAction::Exit) {
-        spdlog::info("Exit hotkey pressed, shutting down...");
+      if (dispatchHotkeyAction(*actionOpt, system, storedCell) == ActionResult::Exit) {
         break;
-      } else if (action == HotkeyAction::ToggleGlobal) {
-        if (cells::toggleClusterGlobalSplitDir(system)) {
-          // Get the current global split direction after toggle
-          if (system.selection.has_value()) {
-            const auto* pc = cells::getCluster(system, system.selection->clusterId);
-            if (pc != nullptr) {
-              const char* dirStr = (pc->cluster.globalSplitDir == cells::SplitDir::Vertical)
-                  ? "vertical" : "horizontal";
-              spdlog::info("Toggled cluster global split direction: {}", dirStr);
-            }
-          }
-        }
-      } else if (action == HotkeyAction::StoreCell) {
-        if (system.selection.has_value()) {
-          const auto* pc = cells::getCluster(system, system.selection->clusterId);
-          if (pc != nullptr) {
-            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-            if (cell.leafId.has_value()) {
-              storedCell = {system.selection->clusterId, *cell.leafId};
-              spdlog::info("Stored cell for operation: cluster={}, leafId={}",
-                           system.selection->clusterId, *cell.leafId);
-            }
-          }
-        }
-      } else if (action == HotkeyAction::ClearStored) {
-        storedCell.reset();
-        spdlog::info("Cleared stored cell");
-      } else if (action == HotkeyAction::Exchange) {
-        if (storedCell.has_value() && system.selection.has_value()) {
-          const auto* pc = cells::getCluster(system, system.selection->clusterId);
-          if (pc != nullptr) {
-            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-            if (cell.leafId.has_value()) {
-              auto result = cells::swapCells(
-                  system, system.selection->clusterId, *cell.leafId, storedCell->first,
-                  storedCell->second);
-              if (result.success) {
-                storedCell.reset();
-                spdlog::info("Exchanged cells successfully");
-              }
-            }
-          }
-        }
-      } else if (action == HotkeyAction::Move) {
-        if (storedCell.has_value() && system.selection.has_value()) {
-          const auto* pc = cells::getCluster(system, system.selection->clusterId);
-          if (pc != nullptr) {
-            const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-            if (cell.leafId.has_value()) {
-              auto result = cells::moveCell(system, storedCell->first, storedCell->second,
-                                                       system.selection->clusterId, *cell.leafId);
-              if (result.success) {
-                storedCell.reset();
-                spdlog::info("Moved cell successfully");
-              }
-            }
-          }
-        }
       }
     }
 
