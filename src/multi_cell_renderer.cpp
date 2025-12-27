@@ -37,16 +37,16 @@ void render(const cells::System& system, const RenderConfig& config,
       // Determine color based on selection/stored state
       overlay::Color color = config.normalColor;
 
-      // Check if this is the selected cell
-      if (system.selection.has_value() && system.selection->clusterId == pc.id &&
-          system.selection->cellIndex == i) {
-        color = config.selectedColor;
-      }
-      // Check if this is the stored cell
-      else if (storedCell.has_value() && storedCell->first == pc.id) {
+      // Check if this is the stored cell (operation) - prioritize over selection
+      if (storedCell.has_value() && storedCell->first == pc.id) {
         if (cell.leafId.has_value() && cell.leafId.value() == storedCell->second) {
           color = config.storedColor;
         }
+      }
+      // Check if this is the selected cell
+      else if (system.selection.has_value() && system.selection->clusterId == pc.id &&
+               system.selection->cellIndex == i) {
+        color = config.selectedColor;
       }
 
       // Add rectangle to overlay
