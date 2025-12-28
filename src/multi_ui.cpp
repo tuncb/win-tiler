@@ -215,6 +215,10 @@ std::optional<HotkeyAction> getKeyAction() {
     return HotkeyAction::Exchange;
   if (IsKeyPressed(KEY_PERIOD))
     return HotkeyAction::Move;
+  if (IsKeyPressed(KEY_PAGE_UP))
+    return HotkeyAction::SplitIncrease;
+  if (IsKeyPressed(KEY_PAGE_DOWN))
+    return HotkeyAction::SplitDecrease;
   return std::nullopt;
 }
 
@@ -363,6 +367,12 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
             }
           }
         }
+        break;
+      case HotkeyAction::SplitIncrease:
+        cells::adjustSelectedSplitRatio(appState.system, 0.05f);
+        break;
+      case HotkeyAction::SplitDecrease:
+        cells::adjustSelectedSplitRatio(appState.system, -0.05f);
         break;
       case HotkeyAction::Exit:
       case HotkeyAction::ToggleGlobal:
