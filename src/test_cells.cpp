@@ -100,12 +100,12 @@ TEST_SUITE("cells - multi-cluster") {
 
     auto system = cells::create_system({info1, info2});
 
-    auto* pc = cells::get_cluster(system, 2);
+    auto* pc = system.get_cluster(2);
     REQUIRE(pc != nullptr);
     CHECK(pc->id == 2);
     CHECK(pc->global_x == 800.0f);
 
-    auto* notFound = cells::get_cluster(system, 999);
+    auto* notFound = system.get_cluster(999);
     CHECK(notFound == nullptr);
   }
 
@@ -113,7 +113,7 @@ TEST_SUITE("cells - multi-cluster") {
     cells::ClusterInitInfo info{1, 100.0f, 50.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     REQUIRE(!pc->cluster.cells.empty());
 
@@ -180,7 +180,7 @@ TEST_SUITE("cells - multi-cluster") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Find positions of both leaves
@@ -300,7 +300,7 @@ TEST_SUITE("cells - navigation") {
     REQUIRE(selected.has_value());
 
     // Move right should go to sibling
-    bool result = cells::move_selection(system, cells::Direction::Right);
+    bool result = system.move_selection(cells::Direction::Right);
     CHECK(result);
 
     auto newSelected = cells::get_selected_cell(system);
@@ -312,7 +312,7 @@ TEST_SUITE("cells - navigation") {
   TEST_CASE("moveSelection returns false when no selection") {
     auto system = cells::create_system({});
 
-    bool result = cells::move_selection(system, cells::Direction::Right);
+    bool result = system.move_selection(cells::Direction::Right);
     CHECK(!result);
   }
 
@@ -321,7 +321,7 @@ TEST_SUITE("cells - navigation") {
     auto system = cells::create_system({info});
 
     // Only one cell, can't move anywhere
-    bool result = cells::move_selection(system, cells::Direction::Left);
+    bool result = system.move_selection(cells::Direction::Left);
     CHECK(!result);
   }
 
@@ -337,12 +337,12 @@ TEST_SUITE("cells - navigation") {
     CHECK(system.selection->cluster_id == 1);
 
     // Move right should go to second cluster
-    bool result = cells::move_selection(system, cells::Direction::Right);
+    bool result = system.move_selection(cells::Direction::Right);
     CHECK(result);
     CHECK(system.selection->cluster_id == 2);
 
     // Move left should go back to first cluster
-    result = cells::move_selection(system, cells::Direction::Left);
+    result = system.move_selection(cells::Direction::Left);
     CHECK(result);
     CHECK(system.selection->cluster_id == 1);
   }
@@ -351,13 +351,13 @@ TEST_SUITE("cells - navigation") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Get initial split dir of parent
     cells::SplitDir initialDir = pc->cluster.cells[0].split_dir;
 
-    bool result = cells::toggle_selected_split_dir(system);
+    bool result = system.toggle_selected_split_dir();
     CHECK(result);
 
     // Check direction changed
@@ -368,20 +368,20 @@ TEST_SUITE("cells - navigation") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Get initial global split dir
     cells::SplitDir initialDir = pc->cluster.global_split_dir;
 
-    bool result = cells::toggle_cluster_global_split_dir(system);
+    bool result = system.toggle_cluster_global_split_dir();
     CHECK(result);
 
     // Check direction changed
     CHECK(pc->cluster.global_split_dir != initialDir);
 
     // Toggle again should return to original
-    result = cells::toggle_cluster_global_split_dir(system);
+    result = system.toggle_cluster_global_split_dir();
     CHECK(result);
     CHECK(pc->cluster.global_split_dir == initialDir);
   }
@@ -389,7 +389,7 @@ TEST_SUITE("cells - navigation") {
   TEST_CASE("toggleClusterGlobalSplitDir returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = cells::toggle_cluster_global_split_dir(system);
+    bool result = system.toggle_cluster_global_split_dir();
     CHECK(!result);
   }
 
@@ -402,8 +402,8 @@ TEST_SUITE("cells - navigation") {
     REQUIRE(system.selection.has_value());
     REQUIRE(system.selection->cluster_id == 1);
 
-    auto* pc1 = cells::get_cluster(system, 1);
-    auto* pc2 = cells::get_cluster(system, 2);
+    auto* pc1 = system.get_cluster(1);
+    auto* pc2 = system.get_cluster(2);
     REQUIRE(pc1 != nullptr);
     REQUIRE(pc2 != nullptr);
 
@@ -411,7 +411,7 @@ TEST_SUITE("cells - navigation") {
     cells::SplitDir initialDir2 = pc2->cluster.global_split_dir;
 
     // Toggle should only affect cluster 1 (selected)
-    bool result = cells::toggle_cluster_global_split_dir(system);
+    bool result = system.toggle_cluster_global_split_dir();
     CHECK(result);
 
     CHECK(pc1->cluster.global_split_dir != initialDir1); // Changed
@@ -428,7 +428,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
@@ -443,7 +443,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     auto result = cells::find_cell_by_leaf_id(pc->cluster, 999);
@@ -458,7 +458,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellIds> updates = {{1, {100, 200}}};
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -476,7 +476,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {10, 20, 30}} // Keep 10, add 20 and 30
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -494,7 +494,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {10}} // Keep only 10, delete 20 and 30
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 2);
@@ -510,7 +510,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {10, 30}} // Keep 10, delete 20, add 30
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
@@ -528,7 +528,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {10, 20}} // No changes, just update selection
     };
 
-    auto result = cells::update_system(system, updates, {{1, 20}});
+    auto result = system.update(updates, {{1, 20}});
 
     CHECK(result.errors.empty());
     CHECK(result.selection_updated);
@@ -536,7 +536,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(system.selection->cluster_id == 1);
 
     // Verify selection points to leaf with ID 20
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     CHECK(cell.leaf_id.has_value());
@@ -551,7 +551,7 @@ TEST_SUITE("cells - updateSystem") {
         {999, {10, 20}} // Cluster 999 doesn't exist
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::ClusterNotFound);
@@ -564,7 +564,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellIds> updates = {{1, {10}}};
 
-    auto result = cells::update_system(system, updates, {{999, 10}});
+    auto result = system.update(updates, {{999, 10}});
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -577,7 +577,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellIds> updates = {{1, {10}}};
 
-    auto result = cells::update_system(system, updates, {{1, 999}});
+    auto result = system.update(updates, {{1, 999}});
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -595,7 +595,7 @@ TEST_SUITE("cells - updateSystem") {
         {2, {20, 21}}  // Add 21 to cluster 2
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -610,18 +610,18 @@ TEST_SUITE("cells - updateSystem") {
     // Only update cluster 2, leave cluster 1 alone
     std::vector<cells::ClusterCellIds> updates = {{2, {20, 21}}};
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
 
     // Cluster 1 should still have its original leaves
-    auto* pc1 = cells::get_cluster(system, 1);
+    auto* pc1 = system.get_cluster(1);
     REQUIRE(pc1 != nullptr);
     auto leafIds1 = cells::get_cluster_leaf_ids(pc1->cluster);
     CHECK(leafIds1.size() == 2);
 
     // Cluster 2 should have the new leaf
-    auto* pc2 = cells::get_cluster(system, 2);
+    auto* pc2 = system.get_cluster(2);
     REQUIRE(pc2 != nullptr);
     auto leafIds2 = cells::get_cluster_leaf_ids(pc2->cluster);
     CHECK(leafIds2.size() == 2);
@@ -635,7 +635,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {}} // Empty - delete all leaves
     };
 
-    auto result = cells::update_system(system, updates, std::nullopt);
+    auto result = system.update(updates, std::nullopt);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
@@ -652,7 +652,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Get initial positions
@@ -665,7 +665,7 @@ TEST_SUITE("cells - swap and move") {
     auto rect20Before = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
 
     // Swap
-    auto result = cells::swap_cells(system, 1, 10, 1, 20);
+    auto result = system.swap_cells(1, 10, 1, 20);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
@@ -692,7 +692,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::swap_cells(system, 1, 10, 1, 10);
+    auto result = system.swap_cells(1, 10, 1, 10);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
@@ -704,13 +704,13 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info2{2, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
     auto system = cells::create_system({info1, info2});
 
-    auto* pc1 = cells::get_cluster(system, 1);
-    auto* pc2 = cells::get_cluster(system, 2);
+    auto* pc1 = system.get_cluster(1);
+    auto* pc2 = system.get_cluster(2);
     REQUIRE(pc1 != nullptr);
     REQUIRE(pc2 != nullptr);
 
     // Swap cross-cluster
-    auto result = cells::swap_cells(system, 1, 10, 2, 20);
+    auto result = system.swap_cells(1, 10, 2, 20);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
@@ -730,7 +730,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::swap_cells(system, 1, 10, 999, 20);
+    auto result = system.swap_cells(1, 10, 999, 20);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -740,7 +740,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::swap_cells(system, 1, 10, 1, 999);
+    auto result = system.swap_cells(1, 10, 1, 999);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -751,14 +751,14 @@ TEST_SUITE("cells - swap and move") {
     auto system = cells::create_system({info});
 
     // Select the cell with leafId 10
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     REQUIRE(idx10.has_value());
     system.selection = cells::Selection{1, *idx10};
 
     // Swap
-    auto result = cells::swap_cells(system, 1, 10, 1, 20);
+    auto result = system.swap_cells(1, 10, 1, 20);
     CHECK(result.success);
 
     // Selection should still point to the cell with leafId 10 (now at different index)
@@ -775,7 +775,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::count_total_leaves(system) == 2);
 
     // Move 10 to 20
-    auto result = cells::move_cell(system, 1, 10, 1, 20);
+    auto result = system.move_cell(1, 10, 1, 20);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
@@ -785,7 +785,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::count_total_leaves(system) == 2);
 
     // Verify both leaves still exist
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     auto idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
@@ -799,7 +799,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 1, 10, 1, 10);
+    auto result = system.move_cell(1, 10, 1, 10);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
@@ -814,21 +814,21 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::count_total_leaves(system) == 3);
 
     // Move 10 from cluster 1 to cluster 2 (split from 20)
-    auto result = cells::move_cell(system, 1, 10, 2, 20);
+    auto result = system.move_cell(1, 10, 2, 20);
 
     CHECK(result.success);
     CHECK(result.error_message.empty());
     CHECK(result.new_cluster_id == 2);
 
     // Cluster 1 should now have 1 leaf (11)
-    auto* pc1 = cells::get_cluster(system, 1);
+    auto* pc1 = system.get_cluster(1);
     REQUIRE(pc1 != nullptr);
     auto leafIds1 = cells::get_cluster_leaf_ids(pc1->cluster);
     CHECK(leafIds1.size() == 1);
     CHECK(leafIds1[0] == 11);
 
     // Cluster 2 should now have 2 leaves (20 and 10)
-    auto* pc2 = cells::get_cluster(system, 2);
+    auto* pc2 = system.get_cluster(2);
     REQUIRE(pc2 != nullptr);
     auto leafIds2 = cells::get_cluster_leaf_ids(pc2->cluster);
     CHECK(leafIds2.size() == 2);
@@ -843,12 +843,12 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 1, 10, 1, 20);
+    auto result = system.move_cell(1, 10, 1, 20);
 
     CHECK(result.success);
 
     // The moved cell should still have leafId 10
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     CHECK(idx10.has_value());
@@ -859,7 +859,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 999, 10, 1, 10);
+    auto result = system.move_cell(999, 10, 1, 10);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -869,7 +869,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 1, 10, 999, 20);
+    auto result = system.move_cell(1, 10, 999, 20);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -879,7 +879,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 1, 999, 1, 10);
+    auto result = system.move_cell(1, 999, 1, 10);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -889,7 +889,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = cells::move_cell(system, 1, 10, 1, 999);
+    auto result = system.move_cell(1, 10, 1, 999);
 
     CHECK(!result.success);
     CHECK(!result.error_message.empty());
@@ -900,14 +900,14 @@ TEST_SUITE("cells - swap and move") {
     auto system = cells::create_system({info});
 
     // Select the cell with leafId 10
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     REQUIRE(idx10.has_value());
     system.selection = cells::Selection{1, *idx10};
 
     // Move 10 to 20
-    auto result = cells::move_cell(system, 1, 10, 1, 20);
+    auto result = system.move_cell(1, 10, 1, 20);
 
     CHECK(result.success);
 
@@ -927,12 +927,12 @@ TEST_SUITE("cells - swap and move") {
     auto system = cells::create_system({info1, info2});
 
     // Move the only cell from cluster 1 to cluster 2
-    auto result = cells::move_cell(system, 1, 10, 2, 20);
+    auto result = system.move_cell(1, 10, 2, 20);
 
     CHECK(result.success);
 
     // Cluster 1 should now be empty
-    auto* pc1 = cells::get_cluster(system, 1);
+    auto* pc1 = system.get_cluster(1);
     REQUIRE(pc1 != nullptr);
     CHECK(pc1->cluster.cells.empty());
 
@@ -955,7 +955,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     REQUIRE(pc->cluster.cells.size() >= 3); // Root (parent) + 2 children
 
@@ -987,11 +987,11 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Toggle split direction to horizontal
-    cells::toggle_selected_split_dir(system);
+    system.toggle_selected_split_dir();
 
     auto& parent = pc->cluster.cells[0];
     CHECK(parent.split_dir == cells::SplitDir::Horizontal);
@@ -1018,7 +1018,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Single leaf cell
@@ -1030,7 +1030,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Negative index
@@ -1046,7 +1046,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     bool result = cells::set_split_ratio(pc->cluster, 0, 0.0f, TEST_GAP_H, TEST_GAP_V);
@@ -1064,7 +1064,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     bool result = cells::set_split_ratio(pc->cluster, 0, 1.0f, TEST_GAP_H, TEST_GAP_V);
@@ -1085,7 +1085,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20, 30}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
     CHECK(cells::count_total_leaves(system) == 3);
 
@@ -1112,11 +1112,11 @@ TEST_SUITE("cells - split ratio") {
     // Selection should be on a leaf
     REQUIRE(system.selection.has_value());
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Set ratio via selected leaf
-    bool result = cells::set_selected_split_ratio(system, 0.3f);
+    bool result = system.set_selected_split_ratio(0.3f);
     CHECK(result);
 
     // Parent's ratio should have changed
@@ -1129,7 +1129,7 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("setSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = cells::set_selected_split_ratio(system, 0.3f);
+    bool result = system.set_selected_split_ratio(0.3f);
     CHECK(!result);
   }
 
@@ -1138,7 +1138,7 @@ TEST_SUITE("cells - split ratio") {
     auto system = cells::create_system({info});
 
     // Single leaf has no parent
-    bool result = cells::set_selected_split_ratio(system, 0.3f);
+    bool result = system.set_selected_split_ratio(0.3f);
     CHECK(!result);
   }
 
@@ -1146,10 +1146,10 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
-    bool result = cells::set_selected_split_ratio(system, 0.25f);
+    bool result = system.set_selected_split_ratio(0.25f);
     CHECK(result);
 
     auto& parent = pc->cluster.cells[0];
@@ -1170,7 +1170,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Initial ratio is 0.5
@@ -1178,7 +1178,7 @@ TEST_SUITE("cells - split ratio") {
     CHECK(parent.split_ratio == doctest::Approx(0.5f));
 
     // Increase by 0.1
-    bool result = cells::adjust_selected_split_ratio(system, 0.1f);
+    bool result = system.adjust_selected_split_ratio(0.1f);
     CHECK(result);
     CHECK(parent.split_ratio == doctest::Approx(0.6f));
 
@@ -1189,13 +1189,13 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     auto& parent = pc->cluster.cells[0];
 
     // Decrease by 0.2
-    bool result = cells::adjust_selected_split_ratio(system, -0.2f);
+    bool result = system.adjust_selected_split_ratio(-0.2f);
     CHECK(result);
     CHECK(parent.split_ratio == doctest::Approx(0.3f));
 
@@ -1205,7 +1205,7 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("adjustSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = cells::adjust_selected_split_ratio(system, 0.1f);
+    bool result = system.adjust_selected_split_ratio(0.1f);
     CHECK(!result);
   }
 
@@ -1213,7 +1213,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    bool result = cells::adjust_selected_split_ratio(system, 0.1f);
+    bool result = system.adjust_selected_split_ratio(0.1f);
     CHECK(!result);
   }
 
@@ -1221,16 +1221,16 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Set to 0.9 first (the maximum)
-    cells::set_selected_split_ratio(system, 0.9f);
+    system.set_selected_split_ratio(0.9f);
 
     auto& parent = pc->cluster.cells[0];
 
     // Increase by 0.2 - should stay clamped at 0.9
-    bool result = cells::adjust_selected_split_ratio(system, 0.2f);
+    bool result = system.adjust_selected_split_ratio(0.2f);
     CHECK(result);
     CHECK(parent.split_ratio == doctest::Approx(0.9f));
   }
@@ -1239,16 +1239,16 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     // Set to 0.1 first (the minimum)
-    cells::set_selected_split_ratio(system, 0.1f);
+    system.set_selected_split_ratio(0.1f);
 
     auto& parent = pc->cluster.cells[0];
 
     // Decrease by 0.2 - should stay clamped at 0.1
-    bool result = cells::adjust_selected_split_ratio(system, -0.2f);
+    bool result = system.adjust_selected_split_ratio(-0.2f);
     CHECK(result);
     CHECK(parent.split_ratio == doctest::Approx(0.1f));
   }
@@ -1257,7 +1257,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto* pc = cells::get_cluster(system, 1);
+    auto* pc = system.get_cluster(1);
     REQUIRE(pc != nullptr);
 
     auto& parent = pc->cluster.cells[0];
@@ -1267,7 +1267,7 @@ TEST_SUITE("cells - split ratio") {
     CHECK(firstChild.rect.width == doctest::Approx(385.0f));
 
     // Adjust by -0.25 (new ratio = 0.25)
-    bool result = cells::adjust_selected_split_ratio(system, -0.25f);
+    bool result = system.adjust_selected_split_ratio(-0.25f);
     CHECK(result);
 
     // New width: 770 * 0.25 = 192.5

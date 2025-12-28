@@ -90,24 +90,8 @@ struct Selection {
 constexpr float kDefaultCellGapHorizontal = 10.0f;
 constexpr float kDefaultCellGapVertical = 10.0f;
 
-struct System {
-  std::vector<PositionedCluster> clusters;
-  std::optional<Selection> selection; // System-wide selection
-  float gap_horizontal = kDefaultCellGapHorizontal;
-  float gap_vertical = kDefaultCellGapVertical;
-};
-
-struct ClusterInitInfo {
-  ClusterId id;
-  float x;
-  float y;
-  float width;
-  float height;
-  std::vector<size_t> initial_cell_ids; // Optional pre-assigned leaf IDs
-};
-
 // ============================================================================
-// Update System Types
+// Forward declarations for System member function return types
 // ============================================================================
 
 struct ClusterCellIds {
@@ -133,10 +117,6 @@ struct UpdateResult {
   bool selection_updated;
 };
 
-// ============================================================================
-// Swap and Move Operation Types
-// ============================================================================
-
 struct SwapResult {
   bool success;
   std::string error_message; // Empty if success
@@ -150,6 +130,43 @@ struct MoveResult {
 };
 
 // ============================================================================
+// System
+// ============================================================================
+
+struct System {
+  std::vector<PositionedCluster> clusters;
+  std::optional<Selection> selection; // System-wide selection
+  float gap_horizontal = kDefaultCellGapHorizontal;
+  float gap_vertical = kDefaultCellGapVertical;
+
+  // Mutating member functions
+  PositionedCluster* get_cluster(ClusterId id);
+  [[nodiscard]] const PositionedCluster* get_cluster(ClusterId id) const;
+  bool move_selection(Direction dir);
+  bool toggle_selected_split_dir();
+  bool toggle_cluster_global_split_dir();
+  bool set_selected_split_ratio(float new_ratio);
+  bool adjust_selected_split_ratio(float delta);
+  SwapResult swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
+                        size_t leaf_id2);
+  MoveResult move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
+                       ClusterId target_cluster_id, size_t target_leaf_id);
+  void update_gaps(float horizontal, float vertical);
+  void recompute_rects();
+  UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
+                      std::optional<std::pair<ClusterId, size_t>> new_selection);
+};
+
+struct ClusterInitInfo {
+  ClusterId id;
+  float x;
+  float y;
+  float width;
+  float height;
+  std::vector<size_t> initial_cell_ids; // Optional pre-assigned leaf IDs
+};
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
@@ -159,23 +176,12 @@ System create_system(const std::vector<ClusterInitInfo>& infos,
                      float gap_horizontal = kDefaultCellGapHorizontal,
                      float gap_vertical = kDefaultCellGapVertical);
 
-// Get a pointer to a cluster by ID. Returns nullptr if not found.
-PositionedCluster* get_cluster(System& system, ClusterId id);
-const PositionedCluster* get_cluster(const System& system, ClusterId id);
-
 // ============================================================================
 // Coordinate Conversion
 // ============================================================================
 
 // Get the global rect of a cell in a positioned cluster.
 Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
-
-// ============================================================================
-// Cross-Cluster Navigation
-// ============================================================================
-
-// Move selection across the multi-cluster system.
-bool move_selection(System& system, Direction dir);
 
 // ============================================================================
 // Operations
@@ -187,52 +193,10 @@ bool move_selection(System& system, Direction dir);
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
 
-// Toggle the split direction of the selected cell's parent.
-bool toggle_selected_split_dir(System& system);
-
-// Toggle the global_split_dir of the cluster containing the selected cell.
-bool toggle_cluster_global_split_dir(System& system);
-
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.
 bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float gap_horizontal,
                      float gap_vertical);
-
-// Set the split ratio of the selected cell's parent.
-// If the selected cell is a leaf, adjusts its parent's ratio.
-// Returns false if no valid parent exists.
-bool set_selected_split_ratio(System& system, float new_ratio);
-
-// Adjust the split ratio of the selected cell's parent by a delta.
-// For example, delta=0.05 increases first child's share by 5%.
-// Returns false if no valid parent exists.
-bool adjust_selected_split_ratio(System& system, float delta);
-
-// Swap two leaf cells' positions (potentially in different clusters).
-// Each cell keeps its identity (leaf_id) but they exchange visual positions.
-// For same-cluster: actual tree position swap.
-// For cross-cluster: leaf_ids are exchanged between the two positions.
-// If both arguments refer to the same cell, this is a no-op and returns success.
-SwapResult swap_cells(System& system, ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
-                      size_t leaf_id2);
-
-// Move source cell to target cell's location.
-// - Deletes source from its current position
-// - Splits target to create a new slot
-// - Source's content (leaf_id) appears in the new split slot
-// If source and target are the same cell, this is a no-op and returns success.
-MoveResult move_cell(System& system, ClusterId source_cluster_id, size_t source_leaf_id,
-                     ClusterId target_cluster_id, size_t target_leaf_id);
-
-// ============================================================================
-// Gap/Rect Recalculation
-// ============================================================================
-
-// Update gap values and recompute all cell rects in the system.
-void update_system_gaps(System& system, float horizontal, float vertical);
-
-// Recompute all cell rects in the system using current gap values.
-void recompute_system_rects(System& system);
 
 // ============================================================================
 // Utilities
@@ -259,22 +223,14 @@ void debug_print_system(const System& system);
 [[nodiscard]] std::optional<std::pair<ClusterId, int>>
 find_cell_at_point(const System& system, float global_x, float global_y);
 
-// ============================================================================
-// System Update
-// ============================================================================
+== == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == ==
+    == == == == ==
 
-// Get all leaf IDs from a cluster.
-[[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster);
+    // Get all leaf IDs from a cluster.
+    [[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster);
 
 // Find cell index by leaf ID. Returns nullopt if not found.
 [[nodiscard]] std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_id);
-
-// Update the system to match the desired state.
-// - Deletes leaves that are not in the desired state
-// - Adds leaves that are in the desired state but not currently present
-// - Updates the selection if provided
-UpdateResult update_system(System& system, const std::vector<ClusterCellIds>& cluster_cell_ids,
-                           std::optional<std::pair<ClusterId, size_t>> new_selection);
 
 } // namespace cells
 } // namespace wintiler

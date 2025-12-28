@@ -161,7 +161,7 @@ void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process
   }
 
   // Update system and select the newly added cell
-  cells::update_system(app_state.system, state, std::make_pair(selected_cluster_id, new_leaf_id));
+  app_state.system.update(state, std::make_pair(selected_cluster_id, new_leaf_id));
 }
 
 void delete_selected_process_multi(MultiClusterAppState& app_state) {
@@ -171,7 +171,7 @@ void delete_selected_process_multi(MultiClusterAppState& app_state) {
   }
 
   auto [cluster_id, cell_index] = *selected;
-  const auto* pc = cells::get_cluster(app_state.system, cluster_id);
+  const auto* pc = app_state.system.get_cluster(cluster_id);
   if (!pc || cell_index < 0 || static_cast<size_t>(cell_index) >= pc->cluster.cells.size()) {
     return;
   }
@@ -194,7 +194,7 @@ void delete_selected_process_multi(MultiClusterAppState& app_state) {
   }
 
   // Update system (selection will auto-update)
-  cells::update_system(app_state.system, state, std::nullopt);
+  app_state.system.update(state, std::nullopt);
 }
 
 Color get_cluster_color(cells::ClusterId id) {
@@ -264,8 +264,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
   while (!WindowShouldClose()) {
     // Check for config changes and hot-reload
     if (options_provider.refresh()) {
-      cells::update_system_gaps(app_state.system, options.gapOptions.horizontal,
-                                options.gapOptions.vertical);
+      app_state.system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
     }
 
     // Mouse hover selection
@@ -309,31 +308,31 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
     if (action.has_value()) {
       switch (*action) {
       case HotkeyAction::NavigateLeft:
-        if (cells::move_selection(app_state.system, cells::Direction::Left)) {
+        if (app_state.system.move_selection(cells::Direction::Left)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateDown:
-        if (cells::move_selection(app_state.system, cells::Direction::Down)) {
+        if (app_state.system.move_selection(cells::Direction::Down)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateUp:
-        if (cells::move_selection(app_state.system, cells::Direction::Up)) {
+        if (app_state.system.move_selection(cells::Direction::Up)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateRight:
-        if (cells::move_selection(app_state.system, cells::Direction::Right)) {
+        if (app_state.system.move_selection(cells::Direction::Right)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::ToggleSplit:
-        cells::toggle_selected_split_dir(app_state.system);
+        app_state.system.toggle_selected_split_dir();
         break;
       case HotkeyAction::StoreCell:
         if (app_state.system.selection.has_value()) {
-          auto* pc = cells::get_cluster(app_state.system, app_state.system.selection->cluster_id);
+          auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
             auto& cell =
                 pc->cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
@@ -348,14 +347,14 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::Exchange:
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
-          auto* pc = cells::get_cluster(app_state.system, app_state.system.selection->cluster_id);
+          auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
             auto& cell =
                 pc->cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
             if (cell.leaf_id.has_value()) {
               auto result =
-                  cells::swap_cells(app_state.system, app_state.system.selection->cluster_id,
-                                    *cell.leaf_id, stored_cell->first, stored_cell->second);
+                  app_state.system.swap_cells(app_state.system.selection->cluster_id, *cell.leaf_id,
+                                              stored_cell->first, stored_cell->second);
               if (result.success) {
                 stored_cell.reset();
               }
@@ -365,14 +364,14 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::Move:
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
-          auto* pc = cells::get_cluster(app_state.system, app_state.system.selection->cluster_id);
+          auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
             auto& cell =
                 pc->cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
             if (cell.leaf_id.has_value()) {
               auto result =
-                  cells::move_cell(app_state.system, stored_cell->first, stored_cell->second,
-                                   app_state.system.selection->cluster_id, *cell.leaf_id);
+                  app_state.system.move_cell(stored_cell->first, stored_cell->second,
+                                             app_state.system.selection->cluster_id, *cell.leaf_id);
               if (result.success) {
                 stored_cell.reset();
               }
@@ -381,12 +380,12 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         break;
       case HotkeyAction::SplitIncrease:
-        if (cells::adjust_selected_split_ratio(app_state.system, 0.05f)) {
+        if (app_state.system.adjust_selected_split_ratio(0.05f)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::SplitDecrease:
-        if (cells::adjust_selected_split_ratio(app_state.system, -0.05f)) {
+        if (app_state.system.adjust_selected_split_ratio(-0.05f)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;

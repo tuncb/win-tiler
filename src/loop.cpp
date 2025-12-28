@@ -139,7 +139,7 @@ void move_cursor_to_selected_cell(const cells::System& system) {
   }
 
   auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = cells::get_cluster(system, cluster_id);
+  const auto* pc = system.get_cluster(cluster_id);
   if (pc == nullptr) {
     return;
   }
@@ -154,7 +154,7 @@ void move_cursor_to_selected_cell(const cells::System& system) {
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   // Try to move selection in the given direction
-  if (!cells::move_selection(system, dir)) {
+  if (!system.move_selection(dir)) {
     spdlog::trace("Cannot move selection in direction");
     return;
   }
@@ -167,7 +167,7 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   }
 
   auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = cells::get_cluster(system, cluster_id);
+  const auto* pc = system.get_cluster(cluster_id);
   if (pc == nullptr) {
     spdlog::error("Failed to get cluster {}", cluster_id);
     return;
@@ -198,7 +198,7 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
 using stored_cell_t = std::optional<std::pair<cells::ClusterId, size_t>>;
 
 ActionResult handle_toggle_split(cells::System& system) {
-  if (cells::toggle_selected_split_dir(system)) {
+  if (system.toggle_selected_split_dir()) {
     spdlog::info("Toggled split direction");
   }
   return ActionResult::Continue;
@@ -210,9 +210,9 @@ ActionResult handle_exit() {
 }
 
 ActionResult handle_toggle_global(cells::System& system, std::string& out_message) {
-  if (cells::toggle_cluster_global_split_dir(system)) {
+  if (system.toggle_cluster_global_split_dir()) {
     if (system.selection.has_value()) {
-      const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
+      const auto* pc = system.get_cluster(system.selection->cluster_id);
       if (pc != nullptr) {
         const char* dir_str =
             (pc->cluster.global_split_dir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
@@ -226,7 +226,7 @@ ActionResult handle_toggle_global(cells::System& system, std::string& out_messag
 
 ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell) {
   if (system.selection.has_value()) {
-    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
+    const auto* pc = system.get_cluster(system.selection->cluster_id);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
       if (cell.leaf_id.has_value()) {
@@ -247,11 +247,11 @@ ActionResult handle_clear_stored(stored_cell_t& stored_cell) {
 
 ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
+    const auto* pc = system.get_cluster(system.selection->cluster_id);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
       if (cell.leaf_id.has_value()) {
-        auto result = cells::swap_cells(system, system.selection->cluster_id, *cell.leaf_id,
+        auto result = system.swap_cells(system.selection->cluster_id, *cell.leaf_id,
                                         stored_cell->first, stored_cell->second);
         if (result.success) {
           stored_cell.reset();
@@ -265,11 +265,11 @@ ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) 
 
 ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
+    const auto* pc = system.get_cluster(system.selection->cluster_id);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
       if (cell.leaf_id.has_value()) {
-        auto result = cells::move_cell(system, stored_cell->first, stored_cell->second,
+        auto result = system.move_cell(stored_cell->first, stored_cell->second,
                                        system.selection->cluster_id, *cell.leaf_id);
         if (result.success) {
           stored_cell.reset();
@@ -282,7 +282,7 @@ ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
 }
 
 ActionResult handle_split_increase(cells::System& system) {
-  if (cells::adjust_selected_split_ratio(system, 0.05f)) {
+  if (system.adjust_selected_split_ratio(0.05f)) {
     spdlog::info("Increased split ratio");
     move_cursor_to_selected_cell(system);
   }
@@ -290,7 +290,7 @@ ActionResult handle_split_increase(cells::System& system) {
 }
 
 ActionResult handle_split_decrease(cells::System& system) {
-  if (cells::adjust_selected_split_ratio(system, -0.05f)) {
+  if (system.adjust_selected_split_ratio(-0.05f)) {
     spdlog::info("Decreased split ratio");
     move_cursor_to_selected_cell(system);
   }
@@ -366,7 +366,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
   system.selection = cells::Selection{cluster_id, cell_index};
 
-  const auto* pc = cells::get_cluster(system, cluster_id);
+  const auto* pc = system.get_cluster(cluster_id);
   if (pc != nullptr) {
     const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
     if (cell.leaf_id.has_value()) {
@@ -525,7 +525,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       register_navigation_hotkeys(options.keyboardOptions);
 
       // Update gap settings and recompute cell rects
-      cells::update_system_gaps(system, options.gapOptions.horizontal, options.gapOptions.vertical);
+      system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
 
       // Update toast duration
       toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
@@ -555,10 +555,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       return gather_current_window_state(options.ignoreOptions);
     });
 
-    // Use update_system to sync
-    auto result = timed("update_system", [&system, &current_state] {
-      return cells::update_system(system, current_state, std::nullopt);
-    });
+    // Use update to sync
+    auto result = timed(
+        "update", [&system, &current_state] { return system.update(current_state, std::nullopt); });
 
     update_foreground_selection_from_mouse_position(system);
 
