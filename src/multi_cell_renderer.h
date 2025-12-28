@@ -16,6 +16,7 @@ struct RenderConfig {
   overlay::Color selectedColor; // Color for the selected cell
   overlay::Color storedColor;   // Color for the stored cell (swap/move target)
   float borderWidth;            // Border width for cell outlines
+  float toastFontSize;          // Font size for toast messages
 };
 
 // Create default render configuration

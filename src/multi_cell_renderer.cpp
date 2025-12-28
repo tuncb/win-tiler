@@ -11,6 +11,7 @@ RenderConfig defaultConfig() {
       .selectedColor = {0, 120, 255, 200}, // Blue
       .storedColor = {255, 180, 0, 200},   // Orange
       .borderWidth = 3.0f,
+      .toastFontSize = 60.0f,
   };
 }
 
@@ -66,9 +67,10 @@ void render(const cells::System& system, const RenderConfig& config,
     for (const auto& monitor : monitors) {
       if (monitor.isPrimary) {
         // Position at bottom-right of work area with padding
-        // Estimate toast width: ~30px per character (60pt font) + 16px padding
-        float estimatedWidth = static_cast<float>(message.length()) * 30.0f + 16.0f;
-        float toastHeight = 90.0f; // Approximate height for 60pt font + padding
+        // Estimate toast width: ~0.5x font size per character + 16px padding
+        float estimatedWidth =
+            static_cast<float>(message.length()) * config.toastFontSize * 0.5f + 16.0f;
+        float toastHeight = config.toastFontSize * 1.5f; // Approximate height + padding
         float padding = 20.0f;
 
         // Position so the RIGHT edge is at workArea.right - padding
@@ -81,7 +83,7 @@ void render(const cells::System& system, const RenderConfig& config,
             textY,
             {40, 40, 40, 220},    // Dark background
             {255, 255, 255, 255}, // White text
-            60.0f,                // Font size
+            config.toastFontSize,
         });
         break;
       }
