@@ -101,4 +101,17 @@ WriteResult write_options_toml(const GlobalOptions& options, const std::filesyst
 // Read GlobalOptions from a TOML file
 ReadResult read_options_toml(const std::filesystem::path& filepath);
 
+// Provides GlobalOptions, optionally monitoring a config file for changes
+class GlobalOptionsProvider {
+public:
+  std::optional<std::filesystem::path> configPath;
+  GlobalOptions options;
+  std::filesystem::file_time_type lastModified;
+
+  explicit GlobalOptionsProvider(std::optional<std::filesystem::path> configPath = std::nullopt);
+
+  // Check for file changes and reload if necessary. Returns true if options changed.
+  bool refresh();
+};
+
 } // namespace wintiler

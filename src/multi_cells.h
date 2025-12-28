@@ -203,6 +203,16 @@ MoveResult moveCell(System& system, ClusterId sourceClusterId, size_t sourceLeaf
                     ClusterId targetClusterId, size_t targetLeafId);
 
 // ============================================================================
+// Gap/Rect Recalculation
+// ============================================================================
+
+// Update gap values and recompute all cell rects in the system.
+void updateSystemGaps(System& system, float horizontal, float vertical);
+
+// Recompute all cell rects in the system using current gap values.
+void recomputeSystemRects(System& system);
+
+// ============================================================================
 // Utilities
 // ============================================================================
 

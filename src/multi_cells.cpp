@@ -993,6 +993,36 @@ MoveResult moveCell(System& system, ClusterId sourceClusterId, size_t sourceLeaf
 }
 
 // ============================================================================
+// Gap/Rect Recalculation
+// ============================================================================
+
+void updateSystemGaps(System& system, float horizontal, float vertical) {
+  system.gapHorizontal = horizontal;
+  system.gapVertical = vertical;
+  recomputeSystemRects(system);
+}
+
+void recomputeSystemRects(System& system) {
+  for (auto& pc : system.clusters) {
+    auto& cluster = pc.cluster;
+    if (cluster.cells.empty()) {
+      continue;
+    }
+
+    // Recompute root rect using cluster dimensions and current gaps
+    float rootW = cluster.windowWidth;
+    float rootH = cluster.windowHeight;
+    float insetW = rootW - 2.0f * system.gapHorizontal;
+    float insetH = rootH - 2.0f * system.gapVertical;
+    cluster.cells[0].rect = Rect{system.gapHorizontal, system.gapVertical,
+                                 insetW > 0.0f ? insetW : 0.0f, insetH > 0.0f ? insetH : 0.0f};
+
+    // Recompute all children rects
+    recomputeSubtreeRects(cluster, 0, system.gapHorizontal, system.gapVertical);
+  }
+}
+
+// ============================================================================
 // Utilities
 // ============================================================================
 

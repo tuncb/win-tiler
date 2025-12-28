@@ -4,6 +4,6 @@
 
 namespace wintiler {
 
-void runLoopMode(const GlobalOptions& options);
+void runLoopMode(GlobalOptionsProvider& provider);
 
 } // namespace wintiler

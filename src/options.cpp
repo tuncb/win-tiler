@@ -336,4 +336,41 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
   }
 }
 
+GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path> path)
+    : configPath(std::move(path)), options(get_default_global_options()), lastModified{} {
+  if (configPath.has_value() && std::filesystem::exists(*configPath)) {
+    auto result = read_options_toml(*configPath);
+    if (result.success) {
+      options = result.options;
+      lastModified = std::filesystem::last_write_time(*configPath);
+    } else {
+      spdlog::error("Failed to load config: {}", result.error);
+    }
+  }
+}
+
+bool GlobalOptionsProvider::refresh() {
+  if (!configPath.has_value()) {
+    return false; // No file to monitor
+  }
+  if (!std::filesystem::exists(*configPath)) {
+    return false; // File doesn't exist (yet)
+  }
+
+  auto currentModified = std::filesystem::last_write_time(*configPath);
+  if (currentModified == lastModified) {
+    return false; // No change
+  }
+
+  auto result = read_options_toml(*configPath);
+  if (result.success) {
+    options = result.options;
+    lastModified = currentModified;
+    spdlog::info("Config reloaded from: {}", configPath->string());
+    return true;
+  }
+  spdlog::error("Failed to reload config: {}", result.error);
+  return false;
+}
+
 } // namespace wintiler

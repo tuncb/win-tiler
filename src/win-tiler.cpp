@@ -294,7 +294,14 @@ int main(int argc, char* argv[]) {
             [](const HelpCommand&) { printUsage(); },
             [&](const ApplyCommand&) { runApplyMode(globalOptions); },
             [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions); },
-            [&](const LoopCommand&) { runLoopMode(globalOptions); },
+            [&](const LoopCommand&) {
+              std::optional<std::filesystem::path> providerPath;
+              if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
+                providerPath = configPath;
+              }
+              GlobalOptionsProvider provider(providerPath);
+              runLoopMode(provider);
+            },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
             [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },

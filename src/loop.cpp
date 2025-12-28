@@ -431,8 +431,8 @@ cells::System createInitialSystem(const GlobalOptions& options) {
 
 } // namespace
 
-void runLoopMode(const GlobalOptions& options) {
-  const auto& keyboardOptions = options.keyboardOptions;
+void runLoopMode(GlobalOptionsProvider& provider) {
+  const auto& options = provider.options;
 
   auto system = timed("createInitialSystem", [&options] { return createInitialSystem(options); });
 
@@ -443,14 +443,14 @@ void runLoopMode(const GlobalOptions& options) {
   timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
 
   // Register keyboard hotkeys
-  registerNavigationHotkeys(keyboardOptions);
+  registerNavigationHotkeys(options.keyboardOptions);
 
   // Initialize overlay for rendering
   overlay::init();
 
   // Print keyboard shortcuts
   spdlog::info("=== Keyboard Shortcuts ===");
-  for (const auto& binding : keyboardOptions.bindings) {
+  for (const auto& binding : options.keyboardOptions.bindings) {
     spdlog::info("  {}: {}", hotkeyActionToString(binding.action), binding.hotkey);
   }
 
@@ -463,13 +463,27 @@ void runLoopMode(const GlobalOptions& options) {
   // Toast message state
   std::string toastMessage;
   auto toastExpiry = std::chrono::steady_clock::now();
-  const auto toastDuration =
-      std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+  auto toastDuration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     auto loopStart = std::chrono::high_resolution_clock::now();
+
+    // Check for config file changes and hot-reload
+    if (provider.refresh()) {
+      // Re-register hotkeys with new bindings (options is ref to provider.options, already updated)
+      unregisterNavigationHotkeys(options.keyboardOptions);
+      registerNavigationHotkeys(options.keyboardOptions);
+
+      // Update gap settings and recompute cell rects
+      cells::updateSystemGaps(system, options.gapOptions.horizontal, options.gapOptions.vertical);
+
+      // Update toast duration
+      toastDuration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+
+      spdlog::info("Config hot-reloaded");
+    }
 
     // Check for keyboard hotkeys
     if (auto hotkeyId = winapi::check_keyboard_action()) {
@@ -555,7 +569,7 @@ void runLoopMode(const GlobalOptions& options) {
   }
 
   // Cleanup hotkeys and overlay before exit
-  unregisterNavigationHotkeys(keyboardOptions);
+  unregisterNavigationHotkeys(options.keyboardOptions);
   overlay::shutdown();
   spdlog::info("Hotkeys unregistered, overlay shutdown, exiting...");
 }
