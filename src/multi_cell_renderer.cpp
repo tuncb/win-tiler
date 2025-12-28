@@ -5,17 +5,7 @@
 namespace wintiler {
 namespace renderer {
 
-RenderConfig defaultConfig() {
-  return RenderConfig{
-      .normalColor = {255, 255, 255, 100}, // Semi-transparent white
-      .selectedColor = {0, 120, 255, 200}, // Blue
-      .storedColor = {255, 180, 0, 200},   // Orange
-      .borderWidth = 3.0f,
-      .toastFontSize = 60.0f,
-  };
-}
-
-void render(const cells::System& system, const RenderConfig& config,
+void render(const cells::System& system, const RenderOptions& config,
             std::optional<std::pair<cells::ClusterId, size_t>> storedCell,
             const std::string& message) {
   // Begin frame

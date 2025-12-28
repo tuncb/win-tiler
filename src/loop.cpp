@@ -540,7 +540,7 @@ void runLoopMode(const GlobalOptions& options) {
 
     // Render cell system overlay
     std::string currentToast = (std::chrono::steady_clock::now() < toastExpiry) ? toastMessage : "";
-    renderer::render(system, renderer::defaultConfig(), storedCell, currentToast);
+    renderer::render(system, options.renderOptions, storedCell, currentToast);
 
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(

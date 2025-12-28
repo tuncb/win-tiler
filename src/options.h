@@ -7,6 +7,8 @@
 #include <variant>
 #include <vector>
 
+#include "overlay.h"
+
 namespace wintiler {
 
 // Window ignore configuration
@@ -57,11 +59,21 @@ struct GapOptions {
   float vertical = kDefaultGapVertical;
 };
 
+// Render configuration for cell visualization
+struct RenderOptions {
+  overlay::Color normalColor{255, 255, 255, 100}; // Semi-transparent white
+  overlay::Color selectedColor{0, 120, 255, 200}; // Blue
+  overlay::Color storedColor{255, 180, 0, 200};   // Orange
+  float borderWidth = 3.0f;
+  float toastFontSize = 60.0f;
+};
+
 // Global options container
 struct GlobalOptions {
   IgnoreOptions ignoreOptions;
   KeyboardOptions keyboardOptions;
   GapOptions gapOptions;
+  RenderOptions renderOptions;
 };
 
 // Get default global options

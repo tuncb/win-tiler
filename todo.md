@@ -26,6 +26,8 @@
 
 - exchange windows with mouse.
 
+- refactor toml writing and create unit tests.
+
 
 # bugs
 

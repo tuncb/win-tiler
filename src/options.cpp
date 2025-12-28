@@ -157,6 +157,23 @@ WriteResult write_options_toml(const GlobalOptions& options,
     gap.insert("vertical", options.gapOptions.vertical);
     root.insert("gap", gap);
 
+    // Build render section
+    toml::table render;
+    auto colorToArray = [](const overlay::Color& c) {
+      toml::array arr;
+      arr.push_back(static_cast<int64_t>(c.r));
+      arr.push_back(static_cast<int64_t>(c.g));
+      arr.push_back(static_cast<int64_t>(c.b));
+      arr.push_back(static_cast<int64_t>(c.a));
+      return arr;
+    };
+    render.insert("normal_color", colorToArray(options.renderOptions.normalColor));
+    render.insert("selected_color", colorToArray(options.renderOptions.selectedColor));
+    render.insert("stored_color", colorToArray(options.renderOptions.storedColor));
+    render.insert("border_width", options.renderOptions.borderWidth);
+    render.insert("toast_font_size", options.renderOptions.toastFontSize);
+    root.insert("render", render);
+
     // Write to file
     std::ofstream file(filepath);
     if (!file) {
@@ -254,6 +271,40 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       spdlog::error("Invalid gap.vertical value ({}): must be non-negative. Using default.",
                     options.gapOptions.vertical);
       options.gapOptions.vertical = kDefaultGapVertical;
+    }
+
+    // Parse render section
+    if (auto render = tbl["render"].as_table()) {
+      auto parseColor = [](const toml::array* arr) -> std::optional<overlay::Color> {
+        if (!arr || arr->size() != 4) {
+          return std::nullopt;
+        }
+        auto r = (*arr)[0].as_integer();
+        auto g = (*arr)[1].as_integer();
+        auto b = (*arr)[2].as_integer();
+        auto a = (*arr)[3].as_integer();
+        if (r && g && b && a) {
+          return overlay::Color{static_cast<uint8_t>(r->get()), static_cast<uint8_t>(g->get()),
+                                static_cast<uint8_t>(b->get()), static_cast<uint8_t>(a->get())};
+        }
+        return std::nullopt;
+      };
+
+      if (auto color = parseColor((*render)["normal_color"].as_array())) {
+        options.renderOptions.normalColor = *color;
+      }
+      if (auto color = parseColor((*render)["selected_color"].as_array())) {
+        options.renderOptions.selectedColor = *color;
+      }
+      if (auto color = parseColor((*render)["stored_color"].as_array())) {
+        options.renderOptions.storedColor = *color;
+      }
+      if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
+        options.renderOptions.borderWidth = static_cast<float>(borderWidth->get());
+      }
+      if (auto toastFontSize = (*render)["toast_font_size"].as_floating_point()) {
+        options.renderOptions.toastFontSize = static_cast<float>(toastFontSize->get());
+      }
     }
 
     return ReadResult{true, "", options};
