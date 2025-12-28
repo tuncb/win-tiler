@@ -1042,7 +1042,7 @@ TEST_SUITE("cells - split ratio") {
     CHECK(!result2);
   }
 
-  TEST_CASE("setSplitRatio handles 0.0 ratio") {
+  TEST_CASE("setSplitRatio clamps 0.0 ratio to minimum") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
 
@@ -1055,11 +1055,12 @@ TEST_SUITE("cells - split ratio") {
     auto& parent = pc->cluster.cells[0];
     auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
 
-    CHECK(parent.splitRatio == doctest::Approx(0.0f));
-    CHECK(firstChild.rect.width == doctest::Approx(0.0f));
+    // Clamped to minimum 0.1
+    CHECK(parent.splitRatio == doctest::Approx(0.1f));
+    CHECK(firstChild.rect.width == doctest::Approx(77.0f)); // 770 * 0.1
   }
 
-  TEST_CASE("setSplitRatio handles 1.0 ratio") {
+  TEST_CASE("setSplitRatio clamps 1.0 ratio to maximum") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
 
@@ -1073,10 +1074,10 @@ TEST_SUITE("cells - split ratio") {
     auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
     auto& secondChild = pc->cluster.cells[static_cast<size_t>(*parent.secondChild)];
 
-    CHECK(parent.splitRatio == doctest::Approx(1.0f));
-    // First child gets all available width (770), second gets 0
-    CHECK(firstChild.rect.width == doctest::Approx(770.0f));
-    CHECK(secondChild.rect.width == doctest::Approx(0.0f));
+    // Clamped to maximum 0.9
+    CHECK(parent.splitRatio == doctest::Approx(0.9f));
+    CHECK(firstChild.rect.width == doctest::Approx(693.0f)); // 770 * 0.9
+    CHECK(secondChild.rect.width == doctest::Approx(77.0f)); // 770 * 0.1
   }
 
   TEST_CASE("setSplitRatio recursively updates nested children") {
@@ -1216,40 +1217,40 @@ TEST_SUITE("cells - split ratio") {
     CHECK(!result);
   }
 
-  TEST_CASE("adjustSelectedSplitRatio allows ratio beyond 1.0") {
+  TEST_CASE("adjustSelectedSplitRatio clamps ratio at maximum") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
 
     auto* pc = cells::getCluster(system, 1);
     REQUIRE(pc != nullptr);
 
-    // Set to 0.9 first
+    // Set to 0.9 first (the maximum)
     cells::setSelectedSplitRatio(system, 0.9f);
 
     auto& parent = pc->cluster.cells[0];
 
-    // Increase by 0.2 - should result in 1.1 (no clamping)
+    // Increase by 0.2 - should stay clamped at 0.9
     bool result = cells::adjustSelectedSplitRatio(system, 0.2f);
     CHECK(result);
-    CHECK(parent.splitRatio == doctest::Approx(1.1f));
+    CHECK(parent.splitRatio == doctest::Approx(0.9f));
   }
 
-  TEST_CASE("adjustSelectedSplitRatio allows ratio below 0.0") {
+  TEST_CASE("adjustSelectedSplitRatio clamps ratio at minimum") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::createSystem({info});
 
     auto* pc = cells::getCluster(system, 1);
     REQUIRE(pc != nullptr);
 
-    // Set to 0.1 first
+    // Set to 0.1 first (the minimum)
     cells::setSelectedSplitRatio(system, 0.1f);
 
     auto& parent = pc->cluster.cells[0];
 
-    // Decrease by 0.2 - should result in -0.1 (no clamping)
+    // Decrease by 0.2 - should stay clamped at 0.1
     bool result = cells::adjustSelectedSplitRatio(system, -0.2f);
     CHECK(result);
-    CHECK(parent.splitRatio == doctest::Approx(-0.1f));
+    CHECK(parent.splitRatio == doctest::Approx(0.1f));
   }
 
   TEST_CASE("adjustSelectedSplitRatio updates rects after adjustment") {

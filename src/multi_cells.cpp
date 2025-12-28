@@ -783,7 +783,12 @@ bool setSplitRatio(CellCluster& state, int cellIndex, float newRatio, float gapH
     return false;
   }
 
-  cell.splitRatio = newRatio;
+  // Clamp ratio to valid range (0.1 to 0.9 to ensure both children have reasonable space)
+  constexpr float kMinSplitRatio = 0.1f;
+  constexpr float kMaxSplitRatio = 0.9f;
+  float clampedRatio = std::max(kMinSplitRatio, std::min(kMaxSplitRatio, newRatio));
+
+  cell.splitRatio = clampedRatio;
   recomputeSubtreeRects(state, cellIndex, gapHorizontal, gapVertical);
   return true;
 }
