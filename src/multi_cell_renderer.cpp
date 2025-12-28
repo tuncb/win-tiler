@@ -17,9 +17,8 @@ RenderConfig defaultConfig() {
 void render(const cells::System& system, const RenderConfig& config,
             std::optional<std::pair<cells::ClusterId, size_t>> storedCell,
             const std::string& message) {
-  // Clear previous frame
-  overlay::clear_rects();
-  overlay::clear_toasts();
+  // Begin frame
+  overlay::begin_frame();
 
   // Draw all leaf cells
   for (const auto& pc : system.clusters) {
@@ -49,8 +48,8 @@ void render(const cells::System& system, const RenderConfig& config,
         color = config.selectedColor;
       }
 
-      // Add rectangle to overlay
-      overlay::add_rect({
+      // Draw rectangle immediately
+      overlay::draw_rect({
           globalRect.x,
           globalRect.y,
           globalRect.width,
@@ -76,21 +75,20 @@ void render(const cells::System& system, const RenderConfig& config,
         float textX = static_cast<float>(monitor.workArea.right) - padding - estimatedWidth;
         float textY = static_cast<float>(monitor.workArea.bottom) - padding - toastHeight;
 
-        overlay::show_toast({
+        overlay::draw_toast({
             message,
             textX,
             textY,
             {40, 40, 40, 220},    // Dark background
             {255, 255, 255, 255}, // White text
-            200.0f,               // Short duration, refreshed each frame
         });
         break;
       }
     }
   }
 
-  // Render the frame
-  overlay::render();
+  // End frame and present
+  overlay::end_frame();
 }
 
 } // namespace renderer

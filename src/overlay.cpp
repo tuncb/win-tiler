@@ -2,9 +2,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <chrono>
-#include <vector>
-
 // Windows headers
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -58,16 +55,6 @@ ID2D1Bitmap1* g_targetBitmap = nullptr;
 // DWrite
 IDWriteFactory* g_dwriteFactory = nullptr;
 IDWriteTextFormat* g_textFormat = nullptr;
-
-// Drawing state
-std::vector<DrawRect> g_rects;
-
-// Toast state with timing
-struct ActiveToast {
-  Toast toast;
-  std::chrono::steady_clock::time_point start_time;
-};
-std::vector<ActiveToast> g_toasts;
 
 bool g_initialized = false;
 bool g_comInitialized = false;
@@ -481,63 +468,6 @@ bool bind_swap_chain_to_window() {
   return true;
 }
 
-void draw_toast_internal(const Toast& toast) {
-  if (!g_d2dContext || !g_dwriteFactory || !g_textFormat) {
-    return;
-  }
-
-  std::wstring wideText = utf8_to_wide(toast.text);
-
-  // Create text layout to measure
-  IDWriteTextLayout* layout = nullptr;
-  HRESULT hr =
-      g_dwriteFactory->CreateTextLayout(wideText.c_str(), static_cast<UINT32>(wideText.length()),
-                                        g_textFormat, 1000.0f, 100.0f, &layout);
-  if (FAILED(hr) || !layout) {
-    return;
-  }
-
-  DWRITE_TEXT_METRICS metrics = {};
-  layout->GetMetrics(&metrics);
-
-  float padding = 8.0f;
-  float bgWidth = metrics.width + padding * 2;
-  float bgHeight = metrics.height + padding * 2;
-
-  // Adjust coordinates relative to virtual screen origin
-  float adjustedX = toast.x - static_cast<float>(g_virtualX);
-  float adjustedY = toast.y - static_cast<float>(g_virtualY);
-
-  D2D1_RECT_F bgRect = {adjustedX, adjustedY, adjustedX + bgWidth, adjustedY + bgHeight};
-
-  // Create background brush
-  ID2D1SolidColorBrush* bgBrush = nullptr;
-  g_d2dContext->CreateSolidColorBrush(
-      D2D1::ColorF(toast.bg_color.r / 255.0f, toast.bg_color.g / 255.0f, toast.bg_color.b / 255.0f,
-                   toast.bg_color.a / 255.0f),
-      &bgBrush);
-
-  if (bgBrush) {
-    g_d2dContext->FillRectangle(bgRect, bgBrush);
-    bgBrush->Release();
-  }
-
-  // Create text brush
-  ID2D1SolidColorBrush* textBrush = nullptr;
-  g_d2dContext->CreateSolidColorBrush(
-      D2D1::ColorF(toast.text_color.r / 255.0f, toast.text_color.g / 255.0f,
-                   toast.text_color.b / 255.0f, toast.text_color.a / 255.0f),
-      &textBrush);
-
-  if (textBrush) {
-    D2D1_POINT_2F textOrigin = {adjustedX + padding, adjustedY + padding};
-    g_d2dContext->DrawTextLayout(textOrigin, layout, textBrush, D2D1_DRAW_TEXT_OPTIONS_NONE);
-    textBrush->Release();
-  }
-
-  layout->Release();
-}
-
 } // namespace
 
 bool init() {
@@ -607,9 +537,6 @@ bool init() {
 void shutdown() {
   g_initialized = false;
 
-  g_rects.clear();
-  g_toasts.clear();
-
   safe_release(g_textFormat);
   safe_release(g_dwriteFactory);
   safe_release(g_targetBitmap);
@@ -638,26 +565,7 @@ void shutdown() {
   spdlog::info("Overlay shutdown complete");
 }
 
-void clear_rects() {
-  g_rects.clear();
-}
-
-void add_rect(const DrawRect& rect) {
-  g_rects.push_back(rect);
-}
-
-void show_toast(const Toast& toast) {
-  ActiveToast active;
-  active.toast = toast;
-  active.start_time = std::chrono::steady_clock::now();
-  g_toasts.push_back(active);
-}
-
-void clear_toasts() {
-  g_toasts.clear();
-}
-
-void render() {
+void begin_frame() {
   if (!g_initialized || !g_d2dContext || !g_swapChain) {
     return;
   }
@@ -672,44 +580,94 @@ void render() {
   // Begin drawing
   g_d2dContext->BeginDraw();
   g_d2dContext->Clear(D2D1::ColorF(0, 0, 0, 0)); // Fully transparent
+}
 
-  // Draw rectangles
-  for (const auto& rect : g_rects) {
-    ID2D1SolidColorBrush* brush = nullptr;
-    g_d2dContext->CreateSolidColorBrush(D2D1::ColorF(rect.color.r / 255.0f, rect.color.g / 255.0f,
-                                                     rect.color.b / 255.0f, rect.color.a / 255.0f),
-                                        &brush);
-
-    if (brush) {
-      // Adjust coordinates relative to virtual screen origin
-      float adjustedX = rect.x - static_cast<float>(g_virtualX);
-      float adjustedY = rect.y - static_cast<float>(g_virtualY);
-
-      D2D1_RECT_F d2dRect = {adjustedX, adjustedY, adjustedX + rect.width, adjustedY + rect.height};
-
-      if (rect.border_width > 0) {
-        g_d2dContext->DrawRectangle(d2dRect, brush, rect.border_width);
-      } else {
-        g_d2dContext->FillRectangle(d2dRect, brush);
-      }
-      brush->Release();
-    }
+void draw_rect(const DrawRect& rect) {
+  if (!g_initialized || !g_d2dContext) {
+    return;
   }
 
-  // Remove expired toasts and draw active ones
-  auto now = std::chrono::steady_clock::now();
-  g_toasts.erase(
-      std::remove_if(
-          g_toasts.begin(), g_toasts.end(),
-          [now](const ActiveToast& t) {
-            auto elapsed =
-                std::chrono::duration_cast<std::chrono::milliseconds>(now - t.start_time).count();
-            return static_cast<float>(elapsed) >= t.toast.duration_ms;
-          }),
-      g_toasts.end());
+  ID2D1SolidColorBrush* brush = nullptr;
+  g_d2dContext->CreateSolidColorBrush(D2D1::ColorF(rect.color.r / 255.0f, rect.color.g / 255.0f,
+                                                   rect.color.b / 255.0f, rect.color.a / 255.0f),
+                                      &brush);
 
-  for (const auto& active : g_toasts) {
-    draw_toast_internal(active.toast);
+  if (brush) {
+    // Adjust coordinates relative to virtual screen origin
+    float adjustedX = rect.x - static_cast<float>(g_virtualX);
+    float adjustedY = rect.y - static_cast<float>(g_virtualY);
+
+    D2D1_RECT_F d2dRect = {adjustedX, adjustedY, adjustedX + rect.width, adjustedY + rect.height};
+
+    if (rect.border_width > 0) {
+      g_d2dContext->DrawRectangle(d2dRect, brush, rect.border_width);
+    } else {
+      g_d2dContext->FillRectangle(d2dRect, brush);
+    }
+    brush->Release();
+  }
+}
+
+void draw_toast(const Toast& toast) {
+  if (!g_d2dContext || !g_dwriteFactory || !g_textFormat) {
+    return;
+  }
+
+  std::wstring wideText = utf8_to_wide(toast.text);
+
+  // Create text layout to measure
+  IDWriteTextLayout* layout = nullptr;
+  HRESULT hr =
+      g_dwriteFactory->CreateTextLayout(wideText.c_str(), static_cast<UINT32>(wideText.length()),
+                                        g_textFormat, 1000.0f, 100.0f, &layout);
+  if (FAILED(hr) || !layout) {
+    return;
+  }
+
+  DWRITE_TEXT_METRICS metrics = {};
+  layout->GetMetrics(&metrics);
+
+  float padding = 8.0f;
+  float bgWidth = metrics.width + padding * 2;
+  float bgHeight = metrics.height + padding * 2;
+
+  // Adjust coordinates relative to virtual screen origin
+  float adjustedX = toast.x - static_cast<float>(g_virtualX);
+  float adjustedY = toast.y - static_cast<float>(g_virtualY);
+
+  D2D1_RECT_F bgRect = {adjustedX, adjustedY, adjustedX + bgWidth, adjustedY + bgHeight};
+
+  // Create background brush
+  ID2D1SolidColorBrush* bgBrush = nullptr;
+  g_d2dContext->CreateSolidColorBrush(
+      D2D1::ColorF(toast.bg_color.r / 255.0f, toast.bg_color.g / 255.0f, toast.bg_color.b / 255.0f,
+                   toast.bg_color.a / 255.0f),
+      &bgBrush);
+
+  if (bgBrush) {
+    g_d2dContext->FillRectangle(bgRect, bgBrush);
+    bgBrush->Release();
+  }
+
+  // Create text brush
+  ID2D1SolidColorBrush* textBrush = nullptr;
+  g_d2dContext->CreateSolidColorBrush(
+      D2D1::ColorF(toast.text_color.r / 255.0f, toast.text_color.g / 255.0f,
+                   toast.text_color.b / 255.0f, toast.text_color.a / 255.0f),
+      &textBrush);
+
+  if (textBrush) {
+    D2D1_POINT_2F textOrigin = {adjustedX + padding, adjustedY + padding};
+    g_d2dContext->DrawTextLayout(textOrigin, layout, textBrush, D2D1_DRAW_TEXT_OPTIONS_NONE);
+    textBrush->Release();
+  }
+
+  layout->Release();
+}
+
+void end_frame() {
+  if (!g_initialized || !g_d2dContext || !g_swapChain) {
+    return;
   }
 
   // End drawing

@@ -21,10 +21,9 @@ struct DrawRect {
 // Toast message (temporary text display)
 struct Toast {
   std::string text;
-  float x, y;        // Position in virtual screen coordinates
-  Color bg_color;    // Background
-  Color text_color;  // Text
-  float duration_ms; // How long to show
+  float x, y;       // Position in virtual screen coordinates
+  Color bg_color;   // Background
+  Color text_color; // Text
 };
 
 // Initialize the overlay system. Returns true on success.
@@ -34,21 +33,18 @@ bool init();
 // Shutdown the overlay system. Releases all resources.
 void shutdown();
 
-// Clear all rectangles
-void clear_rects();
+// Begin a new frame. Call once at start of render cycle.
+// Pumps window messages, begins D2D drawing, clears to transparent.
+void begin_frame();
 
-// Add a rectangle to draw
-void add_rect(const DrawRect& rect);
+// Draw a rectangle immediately
+void draw_rect(const DrawRect& rect);
 
-// Show a toast message (will auto-hide after duration)
-void show_toast(const Toast& toast);
+// Draw a toast message immediately (caller controls visibility/timing)
+void draw_toast(const Toast& toast);
 
-// Clear all active toasts
-void clear_toasts();
-
-// Render one frame. Call this each iteration of the main loop.
-// Handles message pump for overlay window, draws all rects and active toasts.
-void render();
+// End the frame and present. Call once at end of render cycle.
+void end_frame();
 
 // Check if overlay is initialized
 bool is_initialized();
