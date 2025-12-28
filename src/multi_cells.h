@@ -88,7 +88,6 @@ struct Selection {
 struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<Selection> selection; // System-wide selection
-  size_t globalNextLeafId = 1;        // Shared across all clusters
   float gapHorizontal = 10.0f;
   float gapVertical = 10.0f;
 };

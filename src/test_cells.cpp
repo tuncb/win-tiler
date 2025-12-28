@@ -25,7 +25,6 @@ TEST_SUITE("cells - multi-cluster") {
 
     CHECK(system.clusters.empty());
     CHECK(!system.selection.has_value());
-    CHECK(system.globalNextLeafId == 1);
   }
 
   TEST_CASE("createSystem creates system with single cluster") {
