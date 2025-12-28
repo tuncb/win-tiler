@@ -26,6 +26,7 @@ struct Rect {
 
 struct Cell {
   SplitDir splitDir;
+  float splitRatio = 0.5f; // Ratio for first child (0.0-1.0), default 50/50
 
   bool isDead = false;
 
@@ -92,7 +93,6 @@ constexpr float kDefaultCellGapVertical = 10.0f;
 struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<Selection> selection; // System-wide selection
-  size_t globalNextLeafId = 1;        // Shared across all clusters
   float gapHorizontal = kDefaultCellGapHorizontal;
   float gapVertical = kDefaultCellGapVertical;
 };
@@ -192,6 +192,21 @@ bool toggleSelectedSplitDir(System& system);
 
 // Toggle the globalSplitDir of the cluster containing the selected cell.
 bool toggleClusterGlobalSplitDir(System& system);
+
+// Set the split ratio of a parent cell and recompute all descendant rectangles.
+// Returns false if the cell is not a valid non-leaf cell.
+bool setSplitRatio(CellCluster& state, int cellIndex, float newRatio, float gapHorizontal,
+                   float gapVertical);
+
+// Set the split ratio of the selected cell's parent.
+// If the selected cell is a leaf, adjusts its parent's ratio.
+// Returns false if no valid parent exists.
+bool setSelectedSplitRatio(System& system, float newRatio);
+
+// Adjust the split ratio of the selected cell's parent by a delta.
+// For example, delta=0.05 increases first child's share by 5%.
+// Returns false if no valid parent exists.
+bool adjustSelectedSplitRatio(System& system, float delta);
 
 // Swap two leaf cells' positions (potentially in different clusters).
 // Each cell keeps its identity (leafId) but they exchange visual positions.

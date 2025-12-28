@@ -6,7 +6,6 @@
 
 - Repurpose commands: See what is not being used.
 
-- Configuration for visualization settings.
 
 - Auto update on configuration file save.
 
@@ -27,13 +26,15 @@
 - exchange windows with mouse.
 
 - refactor toml writing and create unit tests.
+- exchange siblings size and position shortcut.
 
+- Configuration for visualization settings.
+
+- split percentage idea.
 
 # bugs
 
 - exchange should also work reverse direction, exchange + exchange should undo the first operation.
-- negative gap values can be used in configuration
-
 
 
 # Done
@@ -45,3 +46,5 @@
 - assign gaps to the monitor boundaries as well.
 
 - what to do with maximized windows. maybe do not ignore them.
+
+- negative gap values can be used in configuration

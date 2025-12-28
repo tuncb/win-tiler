@@ -48,7 +48,7 @@ int hotkeyActionToId(HotkeyAction action) {
 // Convert integer ID back to HotkeyAction
 std::optional<HotkeyAction> idToHotkeyAction(int id) {
   int index = id - 1;
-  if (index >= 0 && index <= static_cast<int>(HotkeyAction::Move)) {
+  if (index >= 0 && index <= static_cast<int>(HotkeyAction::SplitDecrease)) {
     return static_cast<HotkeyAction>(index);
   }
   return std::nullopt;
@@ -97,6 +97,10 @@ const char* hotkeyActionToString(HotkeyAction action) {
     return "Exchange";
   case HotkeyAction::Move:
     return "Move";
+  case HotkeyAction::SplitIncrease:
+    return "Split Increase";
+  case HotkeyAction::SplitDecrease:
+    return "Split Decrease";
   default:
     return "Unknown";
   }
@@ -113,6 +117,15 @@ std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
     return cells::Direction::Up;
   case HotkeyAction::NavigateRight:
     return cells::Direction::Right;
+  case HotkeyAction::ToggleSplit:
+  case HotkeyAction::Exit:
+  case HotkeyAction::ToggleGlobal:
+  case HotkeyAction::StoreCell:
+  case HotkeyAction::ClearStored:
+  case HotkeyAction::Exchange:
+  case HotkeyAction::Move:
+  case HotkeyAction::SplitIncrease:
+  case HotkeyAction::SplitDecrease:
   default:
     return std::nullopt;
   }
@@ -255,14 +268,22 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
   return ActionResult::Continue;
 }
 
+ActionResult handleSplitIncrease(cells::System& system) {
+  if (cells::adjustSelectedSplitRatio(system, 0.05f)) {
+    spdlog::info("Increased split ratio");
+  }
+  return ActionResult::Continue;
+}
+
+ActionResult handleSplitDecrease(cells::System& system) {
+  if (cells::adjustSelectedSplitRatio(system, -0.05f)) {
+    spdlog::info("Decreased split ratio");
+  }
+  return ActionResult::Continue;
+}
+
 ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
                                   StoredCell& storedCell, std::string& outMessage) {
-  // Handle navigation actions
-  if (auto dir = hotkeyActionToDirection(action)) {
-    handleKeyboardNavigation(system, *dir);
-    return ActionResult::Continue;
-  }
-
   // Handle other actions
   switch (action) {
   case HotkeyAction::ToggleSplit:
@@ -279,6 +300,18 @@ ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
     return handleExchange(system, storedCell);
   case HotkeyAction::Move:
     return handleMove(system, storedCell);
+  case HotkeyAction::SplitIncrease:
+    return handleSplitIncrease(system);
+  case HotkeyAction::SplitDecrease:
+    return handleSplitDecrease(system);
+  case HotkeyAction::NavigateLeft:
+  case HotkeyAction::NavigateDown:
+  case HotkeyAction::NavigateUp:
+  case HotkeyAction::NavigateRight: {
+    auto dir = hotkeyActionToDirection(action).value();
+    handleKeyboardNavigation(system, dir);
+    return ActionResult::Continue;
+  }
   default:
     return ActionResult::Continue;
   }

@@ -33,6 +33,10 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "Exchange";
   case HotkeyAction::Move:
     return "Move";
+  case HotkeyAction::SplitIncrease:
+    return "SplitIncrease";
+  case HotkeyAction::SplitDecrease:
+    return "SplitDecrease";
   }
   return "Unknown";
 }
@@ -60,6 +64,10 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::Exchange;
   if (str == "Move")
     return HotkeyAction::Move;
+  if (str == "SplitIncrease")
+    return HotkeyAction::SplitIncrease;
+  if (str == "SplitDecrease")
+    return HotkeyAction::SplitDecrease;
   return std::nullopt;
 }
 
@@ -91,12 +99,19 @@ GlobalOptions get_default_global_options() {
   GlobalOptions options;
   options.ignoreOptions = get_default_ignore_options();
   options.keyboardOptions.bindings = {
-      {HotkeyAction::NavigateLeft, "super+shift+h"}, {HotkeyAction::NavigateDown, "super+shift+j"},
-      {HotkeyAction::NavigateUp, "super+shift+k"},   {HotkeyAction::NavigateRight, "super+shift+l"},
-      {HotkeyAction::ToggleSplit, "super+shift+y"},  {HotkeyAction::Exit, "super+shift+escape"},
-      {HotkeyAction::ToggleGlobal, "super+shift+;"}, {HotkeyAction::StoreCell, "super+shift+["},
-      {HotkeyAction::ClearStored, "super+shift+]"},  {HotkeyAction::Exchange, "super+shift+,"},
+      {HotkeyAction::NavigateLeft, "super+shift+h"},
+      {HotkeyAction::NavigateDown, "super+shift+j"},
+      {HotkeyAction::NavigateUp, "super+shift+k"},
+      {HotkeyAction::NavigateRight, "super+shift+l"},
+      {HotkeyAction::ToggleSplit, "super+shift+y"},
+      {HotkeyAction::Exit, "super+shift+escape"},
+      {HotkeyAction::ToggleGlobal, "super+shift+;"},
+      {HotkeyAction::StoreCell, "super+shift+["},
+      {HotkeyAction::ClearStored, "super+shift+]"},
+      {HotkeyAction::Exchange, "super+shift+,"},
       {HotkeyAction::Move, "super+shift+."},
+      {HotkeyAction::SplitIncrease, "super+shift+pageup"},
+      {HotkeyAction::SplitDecrease, "super+shift+pagedown"},
   };
   return options;
 }

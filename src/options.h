@@ -36,7 +36,9 @@ enum class HotkeyAction {
   StoreCell,
   ClearStored,
   Exchange,
-  Move
+  Move,
+  SplitIncrease,
+  SplitDecrease
 };
 
 // Maps a hotkey action to its keyboard shortcut string
