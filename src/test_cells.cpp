@@ -940,3 +940,338 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::countTotalLeaves(system) == 2);
   }
 }
+
+// ============================================================================
+// Split Ratio Tests
+// ============================================================================
+
+TEST_SUITE("cells - split ratio") {
+  // -------------------------------------------------------------------------
+  // setSplitRatio tests
+  // -------------------------------------------------------------------------
+
+  TEST_CASE("setSplitRatio sets ratio on vertical split") {
+    // Create cluster with 2 leaves - initial split is vertical with 50/50
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    REQUIRE(pc->cluster.cells.size() >= 3); // Root (parent) + 2 children
+
+    // Root cell (index 0) is the parent after split
+    auto& parent = pc->cluster.cells[0];
+    CHECK(parent.splitDir == cells::SplitDir::Vertical);
+    CHECK(parent.splitRatio == doctest::Approx(0.5f));
+
+    // Set ratio to 0.25
+    bool result = cells::setSplitRatio(pc->cluster, 0, 0.25f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(0.25f));
+
+    // Verify child widths
+    // Parent rect: x=10, width=780 (800 - 2*10 margins)
+    // Available = 780 - 10 (gap) = 770
+    // First child: 770 * 0.25 = 192.5
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+    auto& secondChild = pc->cluster.cells[static_cast<size_t>(*parent.secondChild)];
+
+    CHECK(firstChild.rect.width == doctest::Approx(192.5f));
+    CHECK(secondChild.rect.width == doctest::Approx(577.5f)); // 770 * 0.75
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  TEST_CASE("setSplitRatio sets ratio on horizontal split") {
+    // Create cluster and toggle to horizontal split
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Toggle split direction to horizontal
+    cells::toggleSelectedSplitDir(system);
+
+    auto& parent = pc->cluster.cells[0];
+    CHECK(parent.splitDir == cells::SplitDir::Horizontal);
+
+    // Set ratio to 0.75
+    bool result = cells::setSplitRatio(pc->cluster, 0, 0.75f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(0.75f));
+
+    // Verify child heights
+    // Parent rect: y=10, height=580 (600 - 2*10 margins)
+    // Available = 580 - 10 (gap) = 570
+    // First child: 570 * 0.75 = 427.5
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+    auto& secondChild = pc->cluster.cells[static_cast<size_t>(*parent.secondChild)];
+
+    CHECK(firstChild.rect.height == doctest::Approx(427.5f));
+    CHECK(secondChild.rect.height == doctest::Approx(142.5f)); // 570 * 0.25
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  TEST_CASE("setSplitRatio returns false for leaf cell") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Single leaf cell
+    bool result = cells::setSplitRatio(pc->cluster, 0, 0.3f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(!result);
+  }
+
+  TEST_CASE("setSplitRatio returns false for invalid index") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Negative index
+    bool result1 = cells::setSplitRatio(pc->cluster, -1, 0.3f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(!result1);
+
+    // Out of bounds
+    bool result2 = cells::setSplitRatio(pc->cluster, 999, 0.3f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(!result2);
+  }
+
+  TEST_CASE("setSplitRatio handles 0.0 ratio") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    bool result = cells::setSplitRatio(pc->cluster, 0, 0.0f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(result);
+
+    auto& parent = pc->cluster.cells[0];
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+
+    CHECK(parent.splitRatio == doctest::Approx(0.0f));
+    CHECK(firstChild.rect.width == doctest::Approx(0.0f));
+  }
+
+  TEST_CASE("setSplitRatio handles 1.0 ratio") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    bool result = cells::setSplitRatio(pc->cluster, 0, 1.0f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(result);
+
+    auto& parent = pc->cluster.cells[0];
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+    auto& secondChild = pc->cluster.cells[static_cast<size_t>(*parent.secondChild)];
+
+    CHECK(parent.splitRatio == doctest::Approx(1.0f));
+    // First child gets all available width (770), second gets 0
+    CHECK(firstChild.rect.width == doctest::Approx(770.0f));
+    CHECK(secondChild.rect.width == doctest::Approx(0.0f));
+  }
+
+  TEST_CASE("setSplitRatio recursively updates nested children") {
+    // Create cluster with 3 leaves (nested splits)
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20, 30}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+    CHECK(cells::countTotalLeaves(system) == 3);
+
+    // Change root ratio - should update all descendants
+    bool result = cells::setSplitRatio(pc->cluster, 0, 0.25f, TEST_GAP_H, TEST_GAP_V);
+    CHECK(result);
+
+    // Find leaf 30 and verify its rect was updated
+    auto idx30 = cells::findCellByLeafId(pc->cluster, 30);
+    REQUIRE(idx30.has_value());
+
+    // The nested structure should have updated rects
+    CHECK(cells::validateSystem(system));
+  }
+
+  // -------------------------------------------------------------------------
+  // setSelectedSplitRatio tests
+  // -------------------------------------------------------------------------
+
+  TEST_CASE("setSelectedSplitRatio works when leaf is selected") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    // Selection should be on a leaf
+    REQUIRE(system.selection.has_value());
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Set ratio via selected leaf
+    bool result = cells::setSelectedSplitRatio(system, 0.3f);
+    CHECK(result);
+
+    // Parent's ratio should have changed
+    auto& parent = pc->cluster.cells[0];
+    CHECK(parent.splitRatio == doctest::Approx(0.3f));
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  TEST_CASE("setSelectedSplitRatio returns false with no selection") {
+    auto system = cells::createSystem({});
+
+    bool result = cells::setSelectedSplitRatio(system, 0.3f);
+    CHECK(!result);
+  }
+
+  TEST_CASE("setSelectedSplitRatio returns false for root leaf") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = cells::createSystem({info});
+
+    // Single leaf has no parent
+    bool result = cells::setSelectedSplitRatio(system, 0.3f);
+    CHECK(!result);
+  }
+
+  TEST_CASE("setSelectedSplitRatio updates rect sizes correctly") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    bool result = cells::setSelectedSplitRatio(system, 0.25f);
+    CHECK(result);
+
+    auto& parent = pc->cluster.cells[0];
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+
+    // Available width = 780 - 10 = 770
+    // First child = 770 * 0.25 = 192.5
+    CHECK(firstChild.rect.width == doctest::Approx(192.5f));
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  // -------------------------------------------------------------------------
+  // adjustSelectedSplitRatio tests
+  // -------------------------------------------------------------------------
+
+  TEST_CASE("adjustSelectedSplitRatio increases ratio") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Initial ratio is 0.5
+    auto& parent = pc->cluster.cells[0];
+    CHECK(parent.splitRatio == doctest::Approx(0.5f));
+
+    // Increase by 0.1
+    bool result = cells::adjustSelectedSplitRatio(system, 0.1f);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(0.6f));
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio decreases ratio") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    auto& parent = pc->cluster.cells[0];
+
+    // Decrease by 0.2
+    bool result = cells::adjustSelectedSplitRatio(system, -0.2f);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(0.3f));
+
+    CHECK(cells::validateSystem(system));
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio returns false with no selection") {
+    auto system = cells::createSystem({});
+
+    bool result = cells::adjustSelectedSplitRatio(system, 0.1f);
+    CHECK(!result);
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio returns false for root leaf") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = cells::createSystem({info});
+
+    bool result = cells::adjustSelectedSplitRatio(system, 0.1f);
+    CHECK(!result);
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio allows ratio beyond 1.0") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Set to 0.9 first
+    cells::setSelectedSplitRatio(system, 0.9f);
+
+    auto& parent = pc->cluster.cells[0];
+
+    // Increase by 0.2 - should result in 1.1 (no clamping)
+    bool result = cells::adjustSelectedSplitRatio(system, 0.2f);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(1.1f));
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio allows ratio below 0.0") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    // Set to 0.1 first
+    cells::setSelectedSplitRatio(system, 0.1f);
+
+    auto& parent = pc->cluster.cells[0];
+
+    // Decrease by 0.2 - should result in -0.1 (no clamping)
+    bool result = cells::adjustSelectedSplitRatio(system, -0.2f);
+    CHECK(result);
+    CHECK(parent.splitRatio == doctest::Approx(-0.1f));
+  }
+
+  TEST_CASE("adjustSelectedSplitRatio updates rects after adjustment") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::createSystem({info});
+
+    auto* pc = cells::getCluster(system, 1);
+    REQUIRE(pc != nullptr);
+
+    auto& parent = pc->cluster.cells[0];
+    auto& firstChild = pc->cluster.cells[static_cast<size_t>(*parent.firstChild)];
+
+    // Initial width at 0.5 ratio: 770 * 0.5 = 385
+    CHECK(firstChild.rect.width == doctest::Approx(385.0f));
+
+    // Adjust by -0.25 (new ratio = 0.25)
+    bool result = cells::adjustSelectedSplitRatio(system, -0.25f);
+    CHECK(result);
+
+    // New width: 770 * 0.25 = 192.5
+    CHECK(firstChild.rect.width == doctest::Approx(192.5f));
+
+    CHECK(cells::validateSystem(system));
+  }
+}

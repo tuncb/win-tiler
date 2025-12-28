@@ -62,18 +62,22 @@ static void recomputeChildrenRects(CellCluster& state, int nodeIndex, float gapH
   Rect first{};
   Rect second{};
 
+  float ratio = node.splitRatio;
+
   if (node.splitDir == SplitDir::Vertical) {
     float availableWidth = parentRect.width - gapHorizontal;
-    float childWidth = availableWidth > 0.0f ? availableWidth * 0.5f : 0.0f;
-    first = Rect{parentRect.x, parentRect.y, childWidth, parentRect.height};
-    second = Rect{parentRect.x + childWidth + gapHorizontal, parentRect.y, childWidth,
+    float firstWidth = availableWidth > 0.0f ? availableWidth * ratio : 0.0f;
+    float secondWidth = availableWidth > 0.0f ? availableWidth * (1.0f - ratio) : 0.0f;
+    first = Rect{parentRect.x, parentRect.y, firstWidth, parentRect.height};
+    second = Rect{parentRect.x + firstWidth + gapHorizontal, parentRect.y, secondWidth,
                   parentRect.height};
   } else {
     float availableHeight = parentRect.height - gapVertical;
-    float childHeight = availableHeight > 0.0f ? availableHeight * 0.5f : 0.0f;
-    first = Rect{parentRect.x, parentRect.y, parentRect.width, childHeight};
-    second =
-        Rect{parentRect.x, parentRect.y + childHeight + gapVertical, parentRect.width, childHeight};
+    float firstHeight = availableHeight > 0.0f ? availableHeight * ratio : 0.0f;
+    float secondHeight = availableHeight > 0.0f ? availableHeight * (1.0f - ratio) : 0.0f;
+    first = Rect{parentRect.x, parentRect.y, parentRect.width, firstHeight};
+    second = Rect{parentRect.x, parentRect.y + firstHeight + gapVertical, parentRect.width,
+                  secondHeight};
   }
 
   Cell& firstChild = state.cells[static_cast<std::size_t>(*node.firstChild)];
@@ -186,7 +190,7 @@ static std::optional<int> deleteLeaf(CellCluster& state, int selectedIndex, floa
 
 static std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedIndex,
                                             float gapHorizontal, float gapVertical,
-                                            size_t newLeafId) {
+                                            size_t newLeafId, float splitRatio = 0.5f) {
   // Special case: if cluster is empty and selectedIndex is -1, create root
   if (state.cells.empty() && selectedIndex == -1) {
     Cell root{};
@@ -226,17 +230,20 @@ static std::optional<SplitResult> splitLeaf(CellCluster& state, int selectedInde
 
   if (state.globalSplitDir == SplitDir::Vertical) {
     float availableWidth = r.width - gapHorizontal;
-    float childWidth = availableWidth > 0.0f ? availableWidth * 0.5f : 0.0f;
-    firstRect = Rect{r.x, r.y, childWidth, r.height};
-    secondRect = Rect{r.x + childWidth + gapHorizontal, r.y, childWidth, r.height};
+    float firstWidth = availableWidth > 0.0f ? availableWidth * splitRatio : 0.0f;
+    float secondWidth = availableWidth > 0.0f ? availableWidth * (1.0f - splitRatio) : 0.0f;
+    firstRect = Rect{r.x, r.y, firstWidth, r.height};
+    secondRect = Rect{r.x + firstWidth + gapHorizontal, r.y, secondWidth, r.height};
   } else {
     float availableHeight = r.height - gapVertical;
-    float childHeight = availableHeight > 0.0f ? availableHeight * 0.5f : 0.0f;
-    firstRect = Rect{r.x, r.y, r.width, childHeight};
-    secondRect = Rect{r.x, r.y + childHeight + gapVertical, r.width, childHeight};
+    float firstHeight = availableHeight > 0.0f ? availableHeight * splitRatio : 0.0f;
+    float secondHeight = availableHeight > 0.0f ? availableHeight * (1.0f - splitRatio) : 0.0f;
+    firstRect = Rect{r.x, r.y, r.width, firstHeight};
+    secondRect = Rect{r.x, r.y + firstHeight + gapVertical, r.width, secondHeight};
   }
 
   leaf.splitDir = state.globalSplitDir;
+  leaf.splitRatio = splitRatio;
   leaf.leafId = std::nullopt;
 
   Cell firstChild{};
@@ -758,6 +765,83 @@ bool toggleClusterGlobalSplitDir(System& system) {
                                    ? SplitDir::Horizontal
                                    : SplitDir::Vertical;
   return true;
+}
+
+bool setSplitRatio(CellCluster& state, int cellIndex, float newRatio, float gapHorizontal,
+                   float gapVertical) {
+  if (cellIndex < 0 || static_cast<size_t>(cellIndex) >= state.cells.size()) {
+    return false;
+  }
+
+  Cell& cell = state.cells[static_cast<size_t>(cellIndex)];
+  if (cell.isDead) {
+    return false;
+  }
+
+  // Can only set ratio on non-leaf cells (cells with children)
+  if (!cell.firstChild.has_value() || !cell.secondChild.has_value()) {
+    return false;
+  }
+
+  cell.splitRatio = newRatio;
+  recomputeSubtreeRects(state, cellIndex, gapHorizontal, gapVertical);
+  return true;
+}
+
+bool setSelectedSplitRatio(System& system, float newRatio) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+
+  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
+  if (!pc) {
+    return false;
+  }
+
+  int selectedIndex = system.selection->cellIndex;
+
+  // If the selected cell is a leaf, get its parent
+  if (isLeaf(pc->cluster, selectedIndex)) {
+    Cell& leaf = pc->cluster.cells[static_cast<size_t>(selectedIndex)];
+    if (!leaf.parent.has_value()) {
+      return false; // Root leaf has no parent to adjust
+    }
+    selectedIndex = *leaf.parent;
+  }
+
+  return setSplitRatio(pc->cluster, selectedIndex, newRatio, system.gapHorizontal,
+                       system.gapVertical);
+}
+
+bool adjustSelectedSplitRatio(System& system, float delta) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+
+  PositionedCluster* pc = getCluster(system, system.selection->clusterId);
+  if (!pc) {
+    return false;
+  }
+
+  int parentIndex = system.selection->cellIndex;
+
+  // If the selected cell is a leaf, get its parent
+  if (isLeaf(pc->cluster, parentIndex)) {
+    Cell& leaf = pc->cluster.cells[static_cast<size_t>(parentIndex)];
+    if (!leaf.parent.has_value()) {
+      return false; // Root leaf has no parent to adjust
+    }
+    parentIndex = *leaf.parent;
+  }
+
+  Cell& parent = pc->cluster.cells[static_cast<size_t>(parentIndex)];
+  if (parent.isDead || !parent.firstChild.has_value() || !parent.secondChild.has_value()) {
+    return false;
+  }
+
+  float newRatio = parent.splitRatio + delta;
+  return setSplitRatio(pc->cluster, parentIndex, newRatio, system.gapHorizontal,
+                       system.gapVertical);
 }
 
 SwapResult swapCells(System& system, ClusterId clusterId1, size_t leafId1, ClusterId clusterId2,
