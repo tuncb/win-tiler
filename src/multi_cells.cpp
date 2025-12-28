@@ -831,7 +831,8 @@ bool adjustSelectedSplitRatio(System& system, float delta) {
     return false;
   }
 
-  int parentIndex = system.selection->cellIndex;
+  int selectedIndex = system.selection->cellIndex;
+  int parentIndex = selectedIndex;
 
   // If the selected cell is a leaf, get its parent
   if (isLeaf(pc->cluster, parentIndex)) {
@@ -847,7 +848,14 @@ bool adjustSelectedSplitRatio(System& system, float delta) {
     return false;
   }
 
-  float newRatio = parent.splitRatio + delta;
+  // Determine if selected cell is the second child - if so, negate delta
+  // so that "increase" always makes the selected cell larger
+  float adjustedDelta = delta;
+  if (parent.secondChild.has_value() && *parent.secondChild == selectedIndex) {
+    adjustedDelta = -delta;
+  }
+
+  float newRatio = parent.splitRatio + adjustedDelta;
   return setSplitRatio(pc->cluster, parentIndex, newRatio, system.gapHorizontal,
                        system.gapVertical);
 }
