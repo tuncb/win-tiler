@@ -131,6 +131,26 @@ std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
   }
 }
 
+// Move mouse cursor to center of currently selected cell
+void moveCursorToSelectedCell(const cells::System& system) {
+  auto selectedCell = cells::getSelectedCell(system);
+  if (!selectedCell.has_value()) {
+    return;
+  }
+
+  auto [clusterId, cellIndex] = *selectedCell;
+  const auto* pc = cells::getCluster(system, clusterId);
+  if (pc == nullptr) {
+    return;
+  }
+
+  cells::Rect globalRect = cells::getCellGlobalRect(*pc, cellIndex);
+  long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
+  long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
+
+  winapi::set_cursor_pos(centerX, centerY);
+}
+
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
   // Try to move selection in the given direction
@@ -168,15 +188,8 @@ void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
     return;
   }
 
-  // Get the cell's global rect and move mouse to center
-  cells::Rect globalRect = cells::getCellGlobalRect(*pc, cellIndex);
-  long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
-  long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
-
-  if (!winapi::set_cursor_pos(centerX, centerY)) {
-    spdlog::error("Failed to set cursor position");
-    return;
-  }
+  // Move mouse to center of selected cell
+  moveCursorToSelectedCell(system);
 
   spdlog::trace("Navigated to cell {} in cluster {}", cellIndex, clusterId);
 }
@@ -271,6 +284,7 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
 ActionResult handleSplitIncrease(cells::System& system) {
   if (cells::adjustSelectedSplitRatio(system, 0.05f)) {
     spdlog::info("Increased split ratio");
+    moveCursorToSelectedCell(system);
   }
   return ActionResult::Continue;
 }
@@ -278,6 +292,7 @@ ActionResult handleSplitIncrease(cells::System& system) {
 ActionResult handleSplitDecrease(cells::System& system) {
   if (cells::adjustSelectedSplitRatio(system, -0.05f)) {
     spdlog::info("Decreased split ratio");
+    moveCursorToSelectedCell(system);
   }
   return ActionResult::Continue;
 }

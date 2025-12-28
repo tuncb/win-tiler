@@ -379,10 +379,14 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
         }
         break;
       case HotkeyAction::SplitIncrease:
-        cells::adjustSelectedSplitRatio(appState.system, 0.05f);
+        if (cells::adjustSelectedSplitRatio(appState.system, 0.05f)) {
+          centerMouseOnSelection(appState, vt);
+        }
         break;
       case HotkeyAction::SplitDecrease:
-        cells::adjustSelectedSplitRatio(appState.system, -0.05f);
+        if (cells::adjustSelectedSplitRatio(appState.system, -0.05f)) {
+          centerMouseOnSelection(appState, vt);
+        }
         break;
       case HotkeyAction::Exit:
       case HotkeyAction::ToggleGlobal:
