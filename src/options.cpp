@@ -283,21 +283,31 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
         auto g = (*arr)[1].as_integer();
         auto b = (*arr)[2].as_integer();
         auto a = (*arr)[3].as_integer();
-        if (r && g && b && a) {
-          return overlay::Color{static_cast<uint8_t>(r->get()), static_cast<uint8_t>(g->get()),
-                                static_cast<uint8_t>(b->get()), static_cast<uint8_t>(a->get())};
+        if (!r || !g || !b || !a) {
+          return std::nullopt;
         }
-        return std::nullopt;
+        auto rv = r->get(), gv = g->get(), bv = b->get(), av = a->get();
+        if (rv < 0 || rv > 255 || gv < 0 || gv > 255 || bv < 0 || bv > 255 || av < 0 || av > 255) {
+          return std::nullopt;
+        }
+        return overlay::Color{static_cast<uint8_t>(rv), static_cast<uint8_t>(gv),
+                              static_cast<uint8_t>(bv), static_cast<uint8_t>(av)};
       };
 
       if (auto color = parseColor((*render)["normal_color"].as_array())) {
         options.renderOptions.normalColor = *color;
+      } else if ((*render)["normal_color"]) {
+        spdlog::error("Invalid normal_color: values must be 0-255. Using default.");
       }
       if (auto color = parseColor((*render)["selected_color"].as_array())) {
         options.renderOptions.selectedColor = *color;
+      } else if ((*render)["selected_color"]) {
+        spdlog::error("Invalid selected_color: values must be 0-255. Using default.");
       }
       if (auto color = parseColor((*render)["stored_color"].as_array())) {
         options.renderOptions.storedColor = *color;
+      } else if ((*render)["stored_color"]) {
+        spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
       }
       if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
         options.renderOptions.borderWidth = static_cast<float>(borderWidth->get());
