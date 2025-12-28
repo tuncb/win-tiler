@@ -518,9 +518,12 @@ static int preCreateLeaves(PositionedCluster& pc, const std::vector<size_t>& cel
 // Initialization
 // ============================================================================
 
-System createSystem(const std::vector<ClusterInitInfo>& infos) {
+System createSystem(const std::vector<ClusterInitInfo>& infos, float gapHorizontal,
+                    float gapVertical) {
   System system;
   system.globalNextLeafId = 1;
+  system.gapHorizontal = gapHorizontal;
+  system.gapVertical = gapVertical;
   system.clusters.reserve(infos.size());
 
   for (const auto& info : infos) {

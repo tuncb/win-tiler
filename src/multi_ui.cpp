@@ -14,6 +14,11 @@ namespace wintiler {
 
 namespace {
 
+// Convert overlay::Color to Raylib Color
+Color toRaylibColor(const overlay::Color& c) {
+  return Color{c.r, c.g, c.b, c.a};
+}
+
 const size_t CELL_ID_START = 10;
 
 // Semi-transparent cluster background colors
@@ -198,13 +203,12 @@ Color getClusterColor(cells::ClusterId id) {
 } // namespace
 
 void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
-                             std::optional<GapOptions> gapOptions) {
+                             GlobalOptionsProvider& optionsProvider) {
+  const auto& options = optionsProvider.options;
+
   MultiClusterAppState appState;
-  appState.system = cells::createSystem(infos);
-  if (gapOptions.has_value()) {
-    appState.system.gapHorizontal = gapOptions->horizontal;
-    appState.system.gapVertical = gapOptions->vertical;
-  }
+  appState.system =
+      cells::createSystem(infos, options.gapOptions.horizontal, options.gapOptions.vertical);
 
   // Set nextProcessId to avoid collisions with any pre-existing leaf IDs
   size_t nextProcessId = CELL_ID_START;
@@ -231,6 +235,12 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
   std::optional<std::pair<cells::ClusterId, size_t>> storedCell;
 
   while (!WindowShouldClose()) {
+    // Check for config changes and hot-reload
+    if (optionsProvider.refresh()) {
+      cells::updateSystemGaps(appState.system, options.gapOptions.horizontal,
+                              options.gapOptions.vertical);
+    }
+
     // Mouse hover selection
     Vector2 mousePos = GetMousePosition();
     float globalX, globalY;
@@ -383,21 +393,22 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
           }
         }
 
-        // Determine border color and width
+        // Determine border color and width from VisualizationOptions
+        const auto& vizOpts = options.visualizationOptions;
         Color borderColor;
         float borderWidth;
         if (isSelected && isStoredCell) {
           borderColor = PURPLE;
-          borderWidth = 4.0f;
+          borderWidth = vizOpts.borderWidth + 1.0f;
         } else if (isStoredCell) {
-          borderColor = BLUE;
-          borderWidth = 3.0f;
+          borderColor = toRaylibColor(vizOpts.storedColor);
+          borderWidth = vizOpts.borderWidth;
         } else if (isSelected) {
-          borderColor = RED;
-          borderWidth = 3.0f;
+          borderColor = toRaylibColor(vizOpts.selectedColor);
+          borderWidth = vizOpts.borderWidth;
         } else {
-          borderColor = BLACK;
-          borderWidth = 1.0f;
+          borderColor = toRaylibColor(vizOpts.normalColor);
+          borderWidth = vizOpts.borderWidth;
         }
 
         DrawRectangleLinesEx(screenRect, borderWidth, borderColor);

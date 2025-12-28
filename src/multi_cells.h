@@ -85,12 +85,16 @@ struct Selection {
   int cellIndex; // always a leaf index
 };
 
+// Default gap values for cell spacing
+constexpr float kDefaultCellGapHorizontal = 10.0f;
+constexpr float kDefaultCellGapVertical = 10.0f;
+
 struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<Selection> selection; // System-wide selection
   size_t globalNextLeafId = 1;        // Shared across all clusters
-  float gapHorizontal = 10.0f;
-  float gapVertical = 10.0f;
+  float gapHorizontal = kDefaultCellGapHorizontal;
+  float gapVertical = kDefaultCellGapVertical;
 };
 
 struct ClusterInitInfo {
@@ -150,7 +154,10 @@ struct MoveResult {
 // ============================================================================
 
 // Create a multi-cluster system from cluster initialization info.
-System createSystem(const std::vector<ClusterInitInfo>& infos);
+// Optional gap values default to kDefaultCellGapHorizontal/kDefaultCellGapVertical.
+System createSystem(const std::vector<ClusterInitInfo>& infos,
+                    float gapHorizontal = kDefaultCellGapHorizontal,
+                    float gapVertical = kDefaultCellGapVertical);
 
 // Get a pointer to a cluster by ID. Returns nullptr if not found.
 PositionedCluster* getCluster(System& system, ClusterId id);

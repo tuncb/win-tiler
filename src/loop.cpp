@@ -423,10 +423,8 @@ cells::System createInitialSystem(const GlobalOptions& options) {
     clusterInfos.push_back({i, x, y, w, h, cellIds});
   }
 
-  auto system = cells::createSystem(clusterInfos);
-  system.gapHorizontal = options.gapOptions.horizontal;
-  system.gapVertical = options.gapOptions.vertical;
-  return system;
+  return cells::createSystem(clusterInfos, options.gapOptions.horizontal,
+                             options.gapOptions.vertical);
 }
 
 } // namespace

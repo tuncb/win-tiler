@@ -85,9 +85,8 @@ std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
   }
 
   // Create multi-cluster system
-  auto system = cells::createSystem(clusterInfos);
-  system.gapHorizontal = globalOptions.gapOptions.horizontal;
-  system.gapVertical = globalOptions.gapOptions.vertical;
+  auto system = cells::createSystem(clusterInfos, globalOptions.gapOptions.horizontal,
+                                    globalOptions.gapOptions.vertical);
 
   // Collect tile results from all clusters
   for (const auto& pc : system.clusters) {
@@ -179,7 +178,8 @@ void applyLogLevel(LogLevel level) {
   }
 }
 
-void runUiTestMonitor(const GlobalOptions& globalOptions) {
+void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
+  const auto& globalOptions = optionsProvider.options;
   auto monitors = winapi::get_monitors();
   std::vector<cells::ClusterInitInfo> infos;
 
@@ -201,7 +201,7 @@ void runUiTestMonitor(const GlobalOptions& globalOptions) {
   }
 
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
-  runRaylibUIMultiCluster(infos, globalOptions.gapOptions);
+  runRaylibUIMultiCluster(infos, optionsProvider);
 }
 
 void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
@@ -220,7 +220,7 @@ void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
   }
 }
 
-void runUiTestMulti(const UiTestMultiCommand& cmd) {
+void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& optionsProvider) {
   std::vector<cells::ClusterInitInfo> infos;
 
   if (cmd.clusters.empty()) {
@@ -234,7 +234,7 @@ void runUiTestMulti(const UiTestMultiCommand& cmd) {
     }
   }
 
-  runRaylibUIMultiCluster(infos);
+  runRaylibUIMultiCluster(infos, optionsProvider);
 }
 
 int main(int argc, char* argv[]) {
@@ -287,6 +287,13 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  // Create GlobalOptionsProvider for commands that support hot-reload
+  std::optional<std::filesystem::path> providerPath;
+  if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
+    providerPath = configPath;
+  }
+  GlobalOptionsProvider optionsProvider(providerPath);
+
   // Dispatch command
   if (result.args.command) {
     std::visit(
@@ -294,16 +301,9 @@ int main(int argc, char* argv[]) {
             [](const HelpCommand&) { printUsage(); },
             [&](const ApplyCommand&) { runApplyMode(globalOptions); },
             [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions); },
-            [&](const LoopCommand&) {
-              std::optional<std::filesystem::path> providerPath;
-              if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
-                providerPath = configPath;
-              }
-              GlobalOptionsProvider provider(providerPath);
-              runLoopMode(provider);
-            },
-            [&](const UiTestMonitorCommand&) { runUiTestMonitor(globalOptions); },
-            [](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd); },
+            [&](const LoopCommand&) { runLoopMode(optionsProvider); },
+            [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
+            [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },
             [](const InitConfigCommand& cmd) {
               auto targetPath =
