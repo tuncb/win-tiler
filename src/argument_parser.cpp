@@ -90,11 +90,7 @@ ParseResult parseArgs(int argc, char* argv[]) {
     std::string cmd = argv[i];
     ++i;
 
-    if (cmd == "apply") {
-      args.command = ApplyCommand{};
-    } else if (cmd == "apply-test") {
-      args.command = ApplyTestCommand{};
-    } else if (cmd == "loop") {
+    if (cmd == "loop") {
       args.command = LoopCommand{};
     } else if (cmd == "ui-test-monitor") {
       args.command = UiTestMonitorCommand{};
@@ -151,8 +147,6 @@ void printUsage() {
             << "  --config <filepath>     Load configuration from a TOML file\n"
             << "\n"
             << "Commands:\n"
-            << "  apply                   Apply tiling to actual windows\n"
-            << "  apply-test              Preview tiling layout in console\n"
             << "  loop                    Run in loop mode (hotkey-driven)\n"
             << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
@@ -163,7 +157,6 @@ void printUsage() {
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
-            << "  win-tiler apply\n"
             << "  win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080\n"
             << "  win-tiler init-config config.toml\n"
             << "  win-tiler --config config.toml loop\n";

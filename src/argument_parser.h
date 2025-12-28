@@ -10,10 +10,6 @@ namespace wintiler {
 // ===== Command Structs =====
 struct HelpCommand {}; // --help or -h
 
-struct ApplyCommand {};
-
-struct ApplyTestCommand {};
-
 struct LoopCommand {};
 
 struct UiTestMonitorCommand {};
@@ -32,9 +28,8 @@ struct InitConfigCommand {
 };
 
 // Variant holding all possible commands
-using Command =
-    std::variant<HelpCommand, ApplyCommand, ApplyTestCommand, LoopCommand, UiTestMonitorCommand,
-                 UiTestMultiCommand, TrackWindowsCommand, InitConfigCommand>;
+using Command = std::variant<HelpCommand, LoopCommand, UiTestMonitorCommand, UiTestMultiCommand,
+                             TrackWindowsCommand, InitConfigCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

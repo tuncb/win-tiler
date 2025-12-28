@@ -44,117 +44,6 @@ using namespace wintiler;
 
 const size_t CELL_ID_START = 10;
 
-struct TileResult {
-  winapi::HWND_T hwnd;
-  winapi::WindowPosition position;
-  std::string windowTitle;
-  size_t monitorIndex;
-};
-
-std::vector<TileResult> computeTileLayout(const GlobalOptions& globalOptions) {
-  const auto& ignoreOptions = globalOptions.ignoreOptions;
-  std::vector<TileResult> results;
-  auto monitors = winapi::get_monitors();
-
-  // Build window title lookup
-  auto windowInfos = winapi::gather_raw_window_data(ignoreOptions);
-  std::unordered_map<size_t, std::string> hwndToTitle;
-  for (const auto& info : windowInfos) {
-    hwndToTitle[reinterpret_cast<size_t>(info.handle)] = info.title;
-  }
-
-  // Build cluster infos for all monitors
-  std::vector<cells::ClusterInitInfo> clusterInfos;
-  for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-    const auto& monitor = monitors[monitorIndex];
-
-    // Get workArea bounds
-    float x = static_cast<float>(monitor.workArea.left);
-    float y = static_cast<float>(monitor.workArea.top);
-    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
-
-    // Get HWNDs for this monitor - these become the leafIds
-    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, ignoreOptions);
-    std::vector<size_t> cellIds;
-    for (auto hwnd : hwnds) {
-      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
-    }
-
-    clusterInfos.push_back({monitorIndex, x, y, w, h, cellIds});
-  }
-
-  // Create multi-cluster system
-  auto system = cells::createSystem(clusterInfos, globalOptions.gapOptions.horizontal,
-                                    globalOptions.gapOptions.vertical);
-
-  // Collect tile results from all clusters
-  for (const auto& pc : system.clusters) {
-    for (const auto& cell : pc.cluster.cells) {
-      if (cell.isDead || !cell.leafId.has_value()) {
-        continue;
-      }
-
-      // leafId is the HWND (passed as initialCellId)
-      size_t hwndValue = *cell.leafId;
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-
-      // Get global rect and convert to window position
-      cells::Rect globalRect =
-          cells::getCellGlobalRect(pc, static_cast<int>(&cell - &pc.cluster.cells[0]));
-
-      winapi::WindowPosition pos;
-      pos.x = static_cast<int>(globalRect.x);
-      pos.y = static_cast<int>(globalRect.y);
-      pos.width = static_cast<int>(globalRect.width);
-      pos.height = static_cast<int>(globalRect.height);
-
-      // Get window title
-      std::string title;
-      auto titleIt = hwndToTitle.find(hwndValue);
-      if (titleIt != hwndToTitle.end()) {
-        title = titleIt->second;
-      }
-
-      results.push_back({hwnd, pos, title, pc.id});
-    }
-  }
-
-  return results;
-}
-
-void runApplyMode(const GlobalOptions& globalOptions) {
-  auto tiles = computeTileLayout(globalOptions);
-  for (const auto& tile : tiles) {
-    winapi::TileInfo tileInfo{tile.hwnd, tile.position};
-    winapi::update_window_position(tileInfo);
-  }
-}
-
-void runApplyTestMode(const GlobalOptions& globalOptions) {
-  auto tiles = computeTileLayout(globalOptions);
-
-  if (tiles.empty()) {
-    spdlog::info("No windows to tile.");
-    return;
-  }
-
-  spdlog::info("=== Tile Layout Preview ===");
-  spdlog::info("Total windows: {}", tiles.size());
-
-  size_t currentMonitor = SIZE_MAX;
-  for (const auto& tile : tiles) {
-    if (tile.monitorIndex != currentMonitor) {
-      currentMonitor = tile.monitorIndex;
-      spdlog::info("--- Monitor {} ---", currentMonitor);
-    }
-
-    spdlog::info("  Window: \"{}\"", tile.windowTitle);
-    spdlog::info("    Position: x={}, y={}", tile.position.x, tile.position.y);
-    spdlog::info("    Size: {}x{}", tile.position.width, tile.position.height);
-  }
-}
-
 void applyLogLevel(LogLevel level) {
   switch (level) {
   case LogLevel::Trace:
@@ -299,8 +188,6 @@ int main(int argc, char* argv[]) {
     std::visit(
         overloaded{
             [](const HelpCommand&) { printUsage(); },
-            [&](const ApplyCommand&) { runApplyMode(globalOptions); },
-            [&](const ApplyTestCommand&) { runApplyTestMode(globalOptions); },
             [&](const LoopCommand&) { runLoopMode(optionsProvider); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
             [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
