@@ -133,18 +133,18 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
 
 // Move mouse cursor to center of currently selected cell
 void move_cursor_to_selected_cell(const cells::System& system) {
-  auto selected_cell = cells::getSelectedCell(system);
+  auto selected_cell = cells::get_selected_cell(system);
   if (!selected_cell.has_value()) {
     return;
   }
 
   auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = cells::getCluster(system, cluster_id);
+  const auto* pc = cells::get_cluster(system, cluster_id);
   if (pc == nullptr) {
     return;
   }
 
-  cells::Rect global_rect = cells::getCellGlobalRect(*pc, cell_index);
+  cells::Rect global_rect = cells::get_cell_global_rect(*pc, cell_index);
   long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
   long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
 
@@ -154,33 +154,33 @@ void move_cursor_to_selected_cell(const cells::System& system) {
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   // Try to move selection in the given direction
-  if (!cells::moveSelection(system, dir)) {
+  if (!cells::move_selection(system, dir)) {
     spdlog::trace("Cannot move selection in direction");
     return;
   }
 
   // Get the newly selected cell
-  auto selected_cell = cells::getSelectedCell(system);
+  auto selected_cell = cells::get_selected_cell(system);
   if (!selected_cell.has_value()) {
-    spdlog::error("No cell selected after moveSelection");
+    spdlog::error("No cell selected after move_selection");
     return;
   }
 
   auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = cells::getCluster(system, cluster_id);
+  const auto* pc = cells::get_cluster(system, cluster_id);
   if (pc == nullptr) {
     spdlog::error("Failed to get cluster {}", cluster_id);
     return;
   }
 
   const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
-  if (!cell.leafId.has_value()) {
-    spdlog::error("Selected cell has no leafId");
+  if (!cell.leaf_id.has_value()) {
+    spdlog::error("Selected cell has no leaf_id");
     return;
   }
 
   // Get the window handle
-  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
 
   // Set it as the foreground window
   if (!winapi::set_foreground_window(hwnd)) {
@@ -198,7 +198,7 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
 using stored_cell_t = std::optional<std::pair<cells::ClusterId, size_t>>;
 
 ActionResult handle_toggle_split(cells::System& system) {
-  if (cells::toggleSelectedSplitDir(system)) {
+  if (cells::toggle_selected_split_dir(system)) {
     spdlog::info("Toggled split direction");
   }
   return ActionResult::Continue;
@@ -210,12 +210,12 @@ ActionResult handle_exit() {
 }
 
 ActionResult handle_toggle_global(cells::System& system, std::string& out_message) {
-  if (cells::toggleClusterGlobalSplitDir(system)) {
+  if (cells::toggle_cluster_global_split_dir(system)) {
     if (system.selection.has_value()) {
-      const auto* pc = cells::getCluster(system, system.selection->clusterId);
+      const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
       if (pc != nullptr) {
         const char* dir_str =
-            (pc->cluster.globalSplitDir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
+            (pc->cluster.global_split_dir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
         spdlog::info("Toggled cluster global split direction: {}", dir_str);
         out_message = std::string("Toggled: ") + dir_str;
       }
@@ -226,13 +226,13 @@ ActionResult handle_toggle_global(cells::System& system, std::string& out_messag
 
 ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell) {
   if (system.selection.has_value()) {
-    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
     if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-      if (cell.leafId.has_value()) {
-        stored_cell = {system.selection->clusterId, *cell.leafId};
-        spdlog::info("Stored cell for operation: cluster={}, leafId={}",
-                     system.selection->clusterId, *cell.leafId);
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+      if (cell.leaf_id.has_value()) {
+        stored_cell = {system.selection->cluster_id, *cell.leaf_id};
+        spdlog::info("Stored cell for operation: cluster={}, leaf_id={}",
+                     system.selection->cluster_id, *cell.leaf_id);
       }
     }
   }
@@ -247,12 +247,12 @@ ActionResult handle_clear_stored(stored_cell_t& stored_cell) {
 
 ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
     if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-      if (cell.leafId.has_value()) {
-        auto result = cells::swapCells(system, system.selection->clusterId, *cell.leafId,
-                                       stored_cell->first, stored_cell->second);
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+      if (cell.leaf_id.has_value()) {
+        auto result = cells::swap_cells(system, system.selection->cluster_id, *cell.leaf_id,
+                                        stored_cell->first, stored_cell->second);
         if (result.success) {
           stored_cell.reset();
           spdlog::info("Exchanged cells successfully");
@@ -265,12 +265,12 @@ ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) 
 
 ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = cells::getCluster(system, system.selection->clusterId);
+    const auto* pc = cells::get_cluster(system, system.selection->cluster_id);
     if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
-      if (cell.leafId.has_value()) {
-        auto result = cells::moveCell(system, stored_cell->first, stored_cell->second,
-                                      system.selection->clusterId, *cell.leafId);
+      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+      if (cell.leaf_id.has_value()) {
+        auto result = cells::move_cell(system, stored_cell->first, stored_cell->second,
+                                       system.selection->cluster_id, *cell.leaf_id);
         if (result.success) {
           stored_cell.reset();
           spdlog::info("Moved cell successfully");
@@ -282,7 +282,7 @@ ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
 }
 
 ActionResult handle_split_increase(cells::System& system) {
-  if (cells::adjustSelectedSplitRatio(system, 0.05f)) {
+  if (cells::adjust_selected_split_ratio(system, 0.05f)) {
     spdlog::info("Increased split ratio");
     move_cursor_to_selected_cell(system);
   }
@@ -290,7 +290,7 @@ ActionResult handle_split_increase(cells::System& system) {
 }
 
 ActionResult handle_split_decrease(cells::System& system) {
-  if (cells::adjustSelectedSplitRatio(system, -0.05f)) {
+  if (cells::adjust_selected_split_ratio(system, -0.05f)) {
     spdlog::info("Decreased split ratio");
     move_cursor_to_selected_cell(system);
   }
@@ -336,7 +336,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
   auto foreground_hwnd = winapi::get_foreground_window();
 
   if (foreground_hwnd == nullptr ||
-      !cells::hasLeafId(system, reinterpret_cast<size_t>(foreground_hwnd))) {
+      !cells::has_leaf_id(system, reinterpret_cast<size_t>(foreground_hwnd))) {
     return;
   }
 
@@ -349,7 +349,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
   float cursor_x = static_cast<float>(cursor_pos_opt->x);
   float cursor_y = static_cast<float>(cursor_pos_opt->y);
 
-  auto cell_at_cursor = cells::findCellAtPoint(system, cursor_x, cursor_y);
+  auto cell_at_cursor = cells::find_cell_at_point(system, cursor_x, cursor_y);
 
   if (!cell_at_cursor.has_value()) {
     return;
@@ -357,8 +357,8 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
   auto [cluster_id, cell_index] = *cell_at_cursor;
 
-  bool needs_update = !system.selection.has_value() || system.selection->clusterId != cluster_id ||
-                      system.selection->cellIndex != cell_index;
+  bool needs_update = !system.selection.has_value() || system.selection->cluster_id != cluster_id ||
+                      system.selection->cell_index != cell_index;
 
   if (!needs_update) {
     return;
@@ -366,11 +366,11 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
   system.selection = cells::Selection{cluster_id, cell_index};
 
-  const auto* pc = cells::getCluster(system, cluster_id);
+  const auto* pc = cells::get_cluster(system, cluster_id);
   if (pc != nullptr) {
     const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
-    if (cell.leafId.has_value()) {
-      winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+    if (cell.leaf_id.has_value()) {
+      winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
       if (!winapi::set_foreground_window(cell_hwnd)) {
         spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
       }
@@ -382,7 +382,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
 // Helper: Print tile layout from a multi-cluster system
 void print_tile_layout(const cells::System& system) {
-  size_t total_windows = cells::countTotalLeaves(system);
+  size_t total_windows = cells::count_total_leaves(system);
   spdlog::debug("Total windows: {}", total_windows);
 
   for (const auto& pc : system.clusters) {
@@ -390,12 +390,12 @@ void print_tile_layout(const cells::System& system) {
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cell.isDead || !cell.leafId.has_value()) {
+      if (cell.is_dead || !cell.leaf_id.has_value()) {
         continue;
       }
 
-      size_t hwnd_value = *cell.leafId;
-      cells::Rect global_rect = cells::getCellGlobalRect(pc, i);
+      size_t hwnd_value = *cell.leaf_id;
+      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
       auto window_info = winapi::get_window_info(hwnd);
@@ -432,13 +432,13 @@ void apply_tile_layout(const cells::System& system) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cell.isDead || !cell.leafId.has_value()) {
+      if (cell.is_dead || !cell.leaf_id.has_value()) {
         continue;
       }
 
-      size_t hwnd_value = *cell.leafId;
+      size_t hwnd_value = *cell.leaf_id;
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
-      cells::Rect global_rect = cells::getCellGlobalRect(pc, i);
+      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(global_rect.x);
@@ -472,8 +472,8 @@ cells::System create_initial_system(const GlobalOptions& options) {
     cluster_infos.push_back({i, x, y, w, h, cell_ids});
   }
 
-  return cells::createSystem(cluster_infos, options.gapOptions.horizontal,
-                             options.gapOptions.vertical);
+  return cells::create_system(cluster_infos, options.gapOptions.horizontal,
+                              options.gapOptions.vertical);
 }
 
 } // namespace
@@ -525,7 +525,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       register_navigation_hotkeys(options.keyboardOptions);
 
       // Update gap settings and recompute cell rects
-      cells::updateSystemGaps(system, options.gapOptions.horizontal, options.gapOptions.vertical);
+      cells::update_system_gaps(system, options.gapOptions.horizontal, options.gapOptions.vertical);
 
       // Update toast duration
       toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
@@ -555,23 +555,23 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       return gather_current_window_state(options.ignoreOptions);
     });
 
-    // Use updateSystem to sync
-    auto result = timed("updateSystem", [&system, &current_state] {
-      return cells::updateSystem(system, current_state, std::nullopt);
+    // Use update_system to sync
+    auto result = timed("update_system", [&system, &current_state] {
+      return cells::update_system(system, current_state, std::nullopt);
     });
 
     update_foreground_selection_from_mouse_position(system);
 
     // If changes detected, log and apply
-    if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
+    if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
       // One-line summary at info level
-      spdlog::info("Window changes: +{} added, -{} removed", result.addedLeafIds.size(),
-                   result.deletedLeafIds.size());
+      spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
+                   result.deleted_leaf_ids.size());
 
       // Detailed logging at debug level for added windows
-      if (!result.addedLeafIds.empty()) {
+      if (!result.added_leaf_ids.empty()) {
         spdlog::debug("Added windows:");
-        for (size_t id : result.addedLeafIds) {
+        for (size_t id : result.added_leaf_ids) {
           winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
           std::string title = winapi::get_window_info(hwnd).title;
           spdlog::debug("  + \"{}\"", title);
@@ -582,13 +582,13 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       print_tile_layout(system);
 
       // Move mouse to center of the last added cell
-      if (!result.addedLeafIds.empty()) {
-        size_t last_added_id = result.addedLeafIds.back();
+      if (!result.added_leaf_ids.empty()) {
+        size_t last_added_id = result.added_leaf_ids.back();
         // Find which cluster contains this leaf
         for (const auto& pc : system.clusters) {
-          auto cell_indexOpt = cells::findCellByLeafId(pc.cluster, last_added_id);
-          if (cell_indexOpt.has_value()) {
-            cells::Rect global_rect = cells::getCellGlobalRect(pc, *cell_indexOpt);
+          auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
+          if (cell_index_opt.has_value()) {
+            cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
             long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
             long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
             winapi::set_cursor_pos(center_x, center_y);

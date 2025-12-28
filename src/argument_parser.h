@@ -35,8 +35,8 @@ using Command = std::variant<HelpCommand, LoopCommand, UiTestMonitorCommand, UiT
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };
 
 struct CliOptions {
-  std::optional<LogLevel> logLevel;      // --logmode <level>
-  std::optional<std::string> configPath; // --config <filepath>
+  std::optional<LogLevel> log_level;      // --logmode <level>
+  std::optional<std::string> config_path; // --config <filepath>
 };
 
 // ===== Parsed Arguments =====
@@ -53,9 +53,9 @@ struct ParseResult {
 };
 
 // Parse command-line arguments
-ParseResult parseArgs(int argc, char* argv[]);
+ParseResult parse_args(int argc, char* argv[]);
 
 // Print usage information to stdout
-void printUsage();
+void print_usage();
 
 } // namespace wintiler

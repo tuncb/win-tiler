@@ -7,7 +7,7 @@
 
 namespace wintiler {
 
-void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
-                             GlobalOptionsProvider& optionsProvider);
+void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& infos,
+                                 GlobalOptionsProvider& options_provider);
 
 } // namespace wintiler

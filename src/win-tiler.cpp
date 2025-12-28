@@ -90,7 +90,7 @@ void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
   }
 
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
-  runRaylibUIMultiCluster(infos, optionsProvider);
+  run_raylib_ui_multi_cluster(infos, optionsProvider);
 }
 
 void runTrackWindowsMode(const IgnoreOptions& ignoreOptions) {
@@ -123,7 +123,7 @@ void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& option
     }
   }
 
-  runRaylibUIMultiCluster(infos, optionsProvider);
+  run_raylib_ui_multi_cluster(infos, optionsProvider);
 }
 
 int main(int argc, char* argv[]) {
@@ -134,15 +134,15 @@ int main(int argc, char* argv[]) {
   spdlog::flush_on(spdlog::level::info);
 
   // Parse command-line arguments
-  auto result = parseArgs(argc, argv);
+  auto result = parse_args(argc, argv);
   if (!result.success) {
     spdlog::error("{}", result.error);
     return 1;
   }
 
   // Apply log level if specified
-  if (result.args.options.logLevel) {
-    applyLogLevel(*result.args.options.logLevel);
+  if (result.args.options.log_level) {
+    applyLogLevel(*result.args.options.log_level);
   }
 
   // Get default global options
@@ -152,8 +152,8 @@ int main(int argc, char* argv[]) {
   std::filesystem::path configPath;
   bool configExplicitlySpecified = false;
 
-  if (result.args.options.configPath) {
-    configPath = *result.args.options.configPath;
+  if (result.args.options.config_path) {
+    configPath = *result.args.options.config_path;
     configExplicitlySpecified = true;
   } else {
     configPath = getDefaultConfigPath();
@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) {
   if (result.args.command) {
     std::visit(
         overloaded{
-            [](const HelpCommand&) { printUsage(); },
+            [](const HelpCommand&) { print_usage(); },
             [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
             [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },

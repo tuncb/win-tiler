@@ -12,20 +12,20 @@ namespace renderer {
 
 // Render-specific options (subset of VisualizationOptions without timing)
 struct RenderOptions {
-  overlay::Color normalColor{255, 255, 255, 100};
-  overlay::Color selectedColor{0, 120, 255, 200};
-  overlay::Color storedColor{255, 180, 0, 200};
-  float borderWidth = 3.0f;
-  float toastFontSize = 60.0f;
+  overlay::Color normal_color{255, 255, 255, 100};
+  overlay::Color selected_color{0, 120, 255, 200};
+  overlay::Color stored_color{255, 180, 0, 200};
+  float border_width = 3.0f;
+  float toast_font_size = 60.0f;
 };
 
 // Render the cell system
 // - system: The multi-cluster system to render
 // - config: Colors and styling
-// - storedCell: Optional stored cell (ClusterId, leafId) to highlight
+// - stored_cell: Optional stored cell (ClusterId, leafId) to highlight
 // - message: Optional text to show at bottom-right of primary monitor
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<std::pair<cells::ClusterId, size_t>> storedCell,
+            std::optional<std::pair<cells::ClusterId, size_t>> stored_cell,
             const std::string& message);
 
 } // namespace renderer

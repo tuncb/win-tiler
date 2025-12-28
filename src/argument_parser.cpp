@@ -6,7 +6,7 @@ namespace wintiler {
 
 namespace {
 
-std::optional<LogLevel> parseLogLevel(const std::string& level) {
+std::optional<LogLevel> parse_log_level(const std::string& level) {
   if (level == "trace")
     return LogLevel::Trace;
   if (level == "debug")
@@ -22,14 +22,14 @@ std::optional<LogLevel> parseLogLevel(const std::string& level) {
   return std::nullopt;
 }
 
-ParseResult makeError(const std::string& error) {
+ParseResult make_error(const std::string& error) {
   ParseResult result;
   result.success = false;
   result.error = error;
   return result;
 }
 
-ParseResult makeSuccess(ParsedArgs args) {
+ParseResult make_success(ParsedArgs args) {
   ParseResult result;
   result.success = true;
   result.args = std::move(args);
@@ -38,7 +38,7 @@ ParseResult makeSuccess(ParsedArgs args) {
 
 } // namespace
 
-ParseResult parseArgs(int argc, char* argv[]) {
+ParseResult parse_args(int argc, char* argv[]) {
   ParsedArgs args;
   int i = 1;
 
@@ -49,33 +49,33 @@ ParseResult parseArgs(int argc, char* argv[]) {
     // Check for help flags
     if (arg == "--help" || arg == "-h") {
       args.command = HelpCommand{};
-      return makeSuccess(args);
+      return make_success(args);
     }
 
     // Check if it's an option (starts with --)
     if (arg.rfind("--", 0) == 0) {
-      std::string optionName = arg.substr(2);
+      std::string option_name = arg.substr(2);
 
-      if (optionName == "logmode") {
+      if (option_name == "logmode") {
         if (i + 1 >= argc) {
-          return makeError("--logmode requires a value");
+          return make_error("--logmode requires a value");
         }
         ++i;
         std::string value = argv[i];
-        auto level = parseLogLevel(value);
+        auto level = parse_log_level(value);
         if (!level) {
-          return makeError("Invalid log level: " + value +
-                           ". Valid values: trace, debug, info, warn, err, off");
+          return make_error("Invalid log level: " + value +
+                            ". Valid values: trace, debug, info, warn, err, off");
         }
-        args.options.logLevel = level;
-      } else if (optionName == "config") {
+        args.options.log_level = level;
+      } else if (option_name == "config") {
         if (i + 1 >= argc) {
-          return makeError("--config requires a filepath");
+          return make_error("--config requires a filepath");
         }
         ++i;
-        args.options.configPath = argv[i];
+        args.options.config_path = argv[i];
       } else {
-        return makeError("Unknown option: --" + optionName);
+        return make_error("Unknown option: --" + option_name);
       }
       ++i;
       continue;
@@ -95,14 +95,14 @@ ParseResult parseArgs(int argc, char* argv[]) {
     } else if (cmd == "ui-test-monitor") {
       args.command = UiTestMonitorCommand{};
     } else if (cmd == "ui-test-multi") {
-      UiTestMultiCommand multiCmd;
+      UiTestMultiCommand multi_cmd;
 
       // Parse optional cluster definitions (groups of 4: x y w h)
       int remaining = argc - i;
       if (remaining > 0 && remaining % 4 != 0) {
-        return makeError("ui-test-multi requires 4 numbers per cluster (x y width height). "
-                         "Got " +
-                         std::to_string(remaining) + " arguments.");
+        return make_error("ui-test-multi requires 4 numbers per cluster (x y width height). "
+                          "Got " +
+                          std::to_string(remaining) + " arguments.");
       }
 
       while (i + 3 < argc) {
@@ -112,33 +112,33 @@ ParseResult parseArgs(int argc, char* argv[]) {
           cluster.y = std::stof(argv[i + 1]);
           cluster.width = std::stof(argv[i + 2]);
           cluster.height = std::stof(argv[i + 3]);
-          multiCmd.clusters.push_back(cluster);
+          multi_cmd.clusters.push_back(cluster);
           i += 4;
         } catch (const std::exception&) {
-          return makeError("Invalid number in ui-test-multi arguments");
+          return make_error("Invalid number in ui-test-multi arguments");
         }
       }
 
-      args.command = multiCmd;
+      args.command = multi_cmd;
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
     } else if (cmd == "init-config") {
-      InitConfigCommand initCmd;
+      InitConfigCommand init_cmd;
       if (i < argc && argv[i][0] != '-') {
         // Optional filepath argument provided
-        initCmd.filepath = argv[i];
+        init_cmd.filepath = argv[i];
         ++i;
       }
-      args.command = initCmd;
+      args.command = init_cmd;
     } else {
-      return makeError("Unknown command: " + cmd);
+      return make_error("Unknown command: " + cmd);
     }
   }
 
-  return makeSuccess(args);
+  return make_success(args);
 }
 
-void printUsage() {
+void print_usage() {
   std::cout << "Usage: win-tiler [options] [command] [command-args]\n"
             << "\n"
             << "Options:\n"
