@@ -113,6 +113,13 @@ std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
     return cells::Direction::Up;
   case HotkeyAction::NavigateRight:
     return cells::Direction::Right;
+  case HotkeyAction::ToggleSplit:
+  case HotkeyAction::Exit:
+  case HotkeyAction::ToggleGlobal:
+  case HotkeyAction::StoreCell:
+  case HotkeyAction::ClearStored:
+  case HotkeyAction::Exchange:
+  case HotkeyAction::Move:
   default:
     return std::nullopt;
   }
@@ -257,12 +264,6 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
 
 ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
                                   StoredCell& storedCell, std::string& outMessage) {
-  // Handle navigation actions
-  if (auto dir = hotkeyActionToDirection(action)) {
-    handleKeyboardNavigation(system, *dir);
-    return ActionResult::Continue;
-  }
-
   // Handle other actions
   switch (action) {
   case HotkeyAction::ToggleSplit:
@@ -279,6 +280,14 @@ ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
     return handleExchange(system, storedCell);
   case HotkeyAction::Move:
     return handleMove(system, storedCell);
+  case HotkeyAction::NavigateLeft:
+  case HotkeyAction::NavigateDown:
+  case HotkeyAction::NavigateUp:
+  case HotkeyAction::NavigateRight: {
+    auto dir = hotkeyActionToDirection(action).value();
+    handleKeyboardNavigation(system, dir);
+    return ActionResult::Continue;
+  }
   default:
     return ActionResult::Continue;
   }
