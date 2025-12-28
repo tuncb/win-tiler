@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 
+#include "options.h"
 #include "raylib.h"
 
 namespace wintiler {
@@ -195,6 +196,28 @@ Color getClusterColor(cells::ClusterId id) {
   return CLUSTER_COLORS[id % NUM_CLUSTER_COLORS];
 }
 
+std::optional<HotkeyAction> getKeyAction() {
+  if (IsKeyPressed(KEY_H))
+    return HotkeyAction::NavigateLeft;
+  if (IsKeyPressed(KEY_J))
+    return HotkeyAction::NavigateDown;
+  if (IsKeyPressed(KEY_K))
+    return HotkeyAction::NavigateUp;
+  if (IsKeyPressed(KEY_L))
+    return HotkeyAction::NavigateRight;
+  if (IsKeyPressed(KEY_Y))
+    return HotkeyAction::ToggleSplit;
+  if (IsKeyPressed(KEY_LEFT_BRACKET))
+    return HotkeyAction::StoreCell;
+  if (IsKeyPressed(KEY_RIGHT_BRACKET))
+    return HotkeyAction::ClearStored;
+  if (IsKeyPressed(KEY_COMMA))
+    return HotkeyAction::Exchange;
+  if (IsKeyPressed(KEY_PERIOD))
+    return HotkeyAction::Move;
+  return std::nullopt;
+}
+
 } // namespace
 
 void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
@@ -250,11 +273,7 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
     }
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
 
-    // Keyboard input
-    if (IsKeyPressed(KEY_Y)) {
-      cells::toggleSelectedSplitDir(appState.system);
-    }
-
+    // Keyboard input (actions not in HotkeyAction enum)
     if (IsKeyPressed(KEY_SPACE)) {
       addNewProcessMulti(appState, nextProcessId);
     }
@@ -271,77 +290,84 @@ void runRaylibUIMultiCluster(const std::vector<cells::ClusterInitInfo>& infos,
       cells::validateSystem(appState.system);
     }
 
-    // Vim-style navigation: h=left, j=down, k=up, l=right
-    if (IsKeyPressed(KEY_H)) {
-      if (cells::moveSelection(appState.system, cells::Direction::Left)) {
-        centerMouseOnSelection(appState, vt);
-      }
-    }
-    if (IsKeyPressed(KEY_L)) {
-      if (cells::moveSelection(appState.system, cells::Direction::Right)) {
-        centerMouseOnSelection(appState, vt);
-      }
-    }
-    if (IsKeyPressed(KEY_K)) {
-      if (cells::moveSelection(appState.system, cells::Direction::Up)) {
-        centerMouseOnSelection(appState, vt);
-      }
-    }
-    if (IsKeyPressed(KEY_J)) {
-      if (cells::moveSelection(appState.system, cells::Direction::Down)) {
-        centerMouseOnSelection(appState, vt);
-      }
-    }
-
-    // [ - Store currently selected cell for operation
-    if (IsKeyPressed(KEY_LEFT_BRACKET)) {
-      if (appState.system.selection.has_value()) {
-        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
-        if (pc) {
-          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
-          if (cell.leafId.has_value()) {
-            storedCell = {appState.system.selection->clusterId, *cell.leafId};
-          }
+    // Keyboard input (HotkeyAction enum actions)
+    auto action = getKeyAction();
+    if (action.has_value()) {
+      switch (*action) {
+      case HotkeyAction::NavigateLeft:
+        if (cells::moveSelection(appState.system, cells::Direction::Left)) {
+          centerMouseOnSelection(appState, vt);
         }
-      }
-    }
-
-    // ] - Clear stored cell
-    if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-      storedCell.reset();
-    }
-
-    // . - Move selected cell to stored cell
-    if (IsKeyPressed(KEY_PERIOD)) {
-      if (storedCell.has_value() && appState.system.selection.has_value()) {
-        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
-        if (pc) {
-          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
-          if (cell.leafId.has_value()) {
-            auto result = cells::moveCell(appState.system, storedCell->first, storedCell->second,
-                                          appState.system.selection->clusterId, *cell.leafId);
-            if (result.success) {
-              storedCell.reset();
+        break;
+      case HotkeyAction::NavigateDown:
+        if (cells::moveSelection(appState.system, cells::Direction::Down)) {
+          centerMouseOnSelection(appState, vt);
+        }
+        break;
+      case HotkeyAction::NavigateUp:
+        if (cells::moveSelection(appState.system, cells::Direction::Up)) {
+          centerMouseOnSelection(appState, vt);
+        }
+        break;
+      case HotkeyAction::NavigateRight:
+        if (cells::moveSelection(appState.system, cells::Direction::Right)) {
+          centerMouseOnSelection(appState, vt);
+        }
+        break;
+      case HotkeyAction::ToggleSplit:
+        cells::toggleSelectedSplitDir(appState.system);
+        break;
+      case HotkeyAction::StoreCell:
+        if (appState.system.selection.has_value()) {
+          auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
+          if (pc) {
+            auto& cell =
+                pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              storedCell = {appState.system.selection->clusterId, *cell.leafId};
             }
           }
         }
-      }
-    }
-
-    // , - Exchange/swap selected cell with stored cell
-    if (IsKeyPressed(KEY_COMMA)) {
-      if (storedCell.has_value() && appState.system.selection.has_value()) {
-        auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
-        if (pc) {
-          auto& cell = pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
-          if (cell.leafId.has_value()) {
-            auto result = cells::swapCells(appState.system, appState.system.selection->clusterId,
-                                           *cell.leafId, storedCell->first, storedCell->second);
-            if (result.success) {
-              storedCell.reset();
+        break;
+      case HotkeyAction::ClearStored:
+        storedCell.reset();
+        break;
+      case HotkeyAction::Exchange:
+        if (storedCell.has_value() && appState.system.selection.has_value()) {
+          auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
+          if (pc) {
+            auto& cell =
+                pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              auto result = cells::swapCells(appState.system, appState.system.selection->clusterId,
+                                             *cell.leafId, storedCell->first, storedCell->second);
+              if (result.success) {
+                storedCell.reset();
+              }
             }
           }
         }
+        break;
+      case HotkeyAction::Move:
+        if (storedCell.has_value() && appState.system.selection.has_value()) {
+          auto* pc = cells::getCluster(appState.system, appState.system.selection->clusterId);
+          if (pc) {
+            auto& cell =
+                pc->cluster.cells[static_cast<size_t>(appState.system.selection->cellIndex)];
+            if (cell.leafId.has_value()) {
+              auto result = cells::moveCell(appState.system, storedCell->first, storedCell->second,
+                                            appState.system.selection->clusterId, *cell.leafId);
+              if (result.success) {
+                storedCell.reset();
+              }
+            }
+          }
+        }
+        break;
+      case HotkeyAction::Exit:
+      case HotkeyAction::ToggleGlobal:
+        // Not implemented in multi_ui
+        break;
       }
     }
 
