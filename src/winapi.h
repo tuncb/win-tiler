@@ -91,4 +91,9 @@ bool unregister_hotkey(int id);
 // Check for pending hotkey messages, returns the hotkey id if triggered
 std::optional<int> check_keyboard_action();
 
+// Window move/resize detection (for pausing tiling during user drag operations)
+void register_move_size_hook();
+void unregister_move_size_hook();
+bool is_any_window_being_moved();
+
 } // namespace winapi

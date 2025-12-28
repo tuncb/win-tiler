@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 
 // Link with Psapi.lib
@@ -503,6 +504,54 @@ std::optional<int> check_keyboard_action() {
     DispatchMessageW(&msg);
   }
   return std::nullopt;
+}
+
+// Window move/resize detection using SetWinEventHook
+namespace {
+std::atomic<bool> g_is_moving{false};
+HWINEVENTHOOK g_move_start_hook = nullptr;
+HWINEVENTHOOK g_move_end_hook = nullptr;
+
+void CALLBACK move_size_hook_proc(HWINEVENTHOOK /*hWinEventHook*/, DWORD event, HWND /*hwnd*/,
+                                  LONG /*idObject*/, LONG /*idChild*/, DWORD /*idEventThread*/,
+                                  DWORD /*dwmsEventTime*/) {
+  if (event == EVENT_SYSTEM_MOVESIZESTART) {
+    g_is_moving = true;
+    spdlog::trace("Window move/resize started");
+  } else if (event == EVENT_SYSTEM_MOVESIZEEND) {
+    g_is_moving = false;
+    spdlog::trace("Window move/resize ended");
+  }
+}
+} // namespace
+
+void register_move_size_hook() {
+  g_move_start_hook = SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZESTART,
+                                      nullptr, move_size_hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+  g_move_end_hook = SetWinEventHook(EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND, nullptr,
+                                    move_size_hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+  if (g_move_start_hook == nullptr || g_move_end_hook == nullptr) {
+    spdlog::error("Failed to register move/size hooks");
+  } else {
+    spdlog::info("Registered window move/size hooks");
+  }
+}
+
+void unregister_move_size_hook() {
+  if (g_move_start_hook != nullptr) {
+    UnhookWinEvent(g_move_start_hook);
+    g_move_start_hook = nullptr;
+  }
+  if (g_move_end_hook != nullptr) {
+    UnhookWinEvent(g_move_end_hook);
+    g_move_end_hook = nullptr;
+  }
+  spdlog::info("Unregistered window move/size hooks");
+}
+
+bool is_any_window_being_moved() {
+  return g_is_moving.load();
 }
 
 } // namespace winapi

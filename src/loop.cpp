@@ -493,6 +493,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
 
+  // Register window move/resize detection hooks
+  winapi::register_move_size_hook();
+
   // Initialize overlay for rendering
   overlay::init();
 
@@ -518,87 +521,92 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     auto loop_start = std::chrono::high_resolution_clock::now();
 
-    // Check for config file changes and hot-reload
-    if (provider.refresh()) {
-      // Re-register hotkeys with new bindings (options is ref to provider.options, already updated)
-      unregister_navigation_hotkeys(options.keyboardOptions);
-      register_navigation_hotkeys(options.keyboardOptions);
+    // Skip all processing while user is dragging a window - only render
+    if (!winapi::is_any_window_being_moved()) {
+      // Check for config file changes and hot-reload
+      if (provider.refresh()) {
+        // Re-register hotkeys with new bindings (options is ref to provider.options, already
+        // updated)
+        unregister_navigation_hotkeys(options.keyboardOptions);
+        register_navigation_hotkeys(options.keyboardOptions);
 
-      // Update gap settings and recompute cell rects
-      system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
+        // Update gap settings and recompute cell rects
+        system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
 
-      // Update toast duration
-      toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+        // Update toast duration
+        toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
-      spdlog::info("Config hot-reloaded");
-    }
-
-    // Check for keyboard hotkeys
-    if (auto hotkey_id = winapi::check_keyboard_action()) {
-      auto action_opt = id_to_hotkey_action(*hotkey_id);
-      if (!action_opt.has_value()) {
-        continue; // Unknown hotkey ID
+        spdlog::info("Config hot-reloaded");
       }
-      std::string action_message;
-      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
-          ActionResult::Exit) {
-        break;
-      }
-      if (!action_message.empty()) {
-        toast_message = action_message;
-        toast_expiry = std::chrono::steady_clock::now() + toast_duration;
-      }
-    }
 
-    // Re-gather window state
-    auto current_state = timed("gather_current_window_state", [&options] {
-      return gather_current_window_state(options.ignoreOptions);
-    });
-
-    // Use update to sync
-    auto result = timed(
-        "update", [&system, &current_state] { return system.update(current_state, std::nullopt); });
-
-    update_foreground_selection_from_mouse_position(system);
-
-    // If changes detected, log and apply
-    if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
-      // One-line summary at info level
-      spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
-                   result.deleted_leaf_ids.size());
-
-      // Detailed logging at debug level for added windows
-      if (!result.added_leaf_ids.empty()) {
-        spdlog::debug("Added windows:");
-        for (size_t id : result.added_leaf_ids) {
-          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-          std::string title = winapi::get_window_info(hwnd).title;
-          spdlog::debug("  + \"{}\"", title);
+      // Check for keyboard hotkeys
+      if (auto hotkey_id = winapi::check_keyboard_action()) {
+        auto action_opt = id_to_hotkey_action(*hotkey_id);
+        if (!action_opt.has_value()) {
+          continue; // Unknown hotkey ID
+        }
+        std::string action_message;
+        if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
+            ActionResult::Exit) {
+          break;
+        }
+        if (!action_message.empty()) {
+          toast_message = action_message;
+          toast_expiry = std::chrono::steady_clock::now() + toast_duration;
         }
       }
 
-      spdlog::debug("=== Updated Tile Layout ===");
-      print_tile_layout(system);
+      // Re-gather window state
+      auto current_state = timed("gather_current_window_state", [&options] {
+        return gather_current_window_state(options.ignoreOptions);
+      });
 
-      // Move mouse to center of the last added cell
-      if (!result.added_leaf_ids.empty()) {
-        size_t last_added_id = result.added_leaf_ids.back();
-        // Find which cluster contains this leaf
-        for (const auto& pc : system.clusters) {
-          auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
-          if (cell_index_opt.has_value()) {
-            cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
-            long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
-            long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
-            winapi::set_cursor_pos(center_x, center_y);
-            spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
-            break;
+      // Use update to sync
+      auto result = timed("update", [&system, &current_state] {
+        return system.update(current_state, std::nullopt);
+      });
+
+      update_foreground_selection_from_mouse_position(system);
+
+      // If changes detected, log and apply
+      if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
+        // One-line summary at info level
+        spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
+                     result.deleted_leaf_ids.size());
+
+        // Detailed logging at debug level for added windows
+        if (!result.added_leaf_ids.empty()) {
+          spdlog::debug("Added windows:");
+          for (size_t id : result.added_leaf_ids) {
+            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+            std::string title = winapi::get_window_info(hwnd).title;
+            spdlog::debug("  + \"{}\"", title);
+          }
+        }
+
+        spdlog::debug("=== Updated Tile Layout ===");
+        print_tile_layout(system);
+
+        // Move mouse to center of the last added cell
+        if (!result.added_leaf_ids.empty()) {
+          size_t last_added_id = result.added_leaf_ids.back();
+          // Find which cluster contains this leaf
+          for (const auto& pc : system.clusters) {
+            auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
+            if (cell_index_opt.has_value()) {
+              cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
+              long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
+              long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
+              winapi::set_cursor_pos(center_x, center_y);
+              spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
+              break;
+            }
           }
         }
       }
-    }
 
-    timed_void("apply_tile_layout", [&system] { apply_tile_layout(system); });
+      timed_void("apply_tile_layout", [&system] { apply_tile_layout(system); });
+    }
 
     // Render cell system overlay
     std::string current_toast =
@@ -616,10 +624,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
   }
 
-  // Cleanup hotkeys and overlay before exit
+  // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(options.keyboardOptions);
+  winapi::unregister_move_size_hook();
   overlay::shutdown();
-  spdlog::info("Hotkeys unregistered, overlay shutdown, exiting...");
+  spdlog::info("Hotkeys unregistered, hooks unregistered, overlay shutdown, exiting...");
 }
 
 } // namespace wintiler
