@@ -463,7 +463,8 @@ void runLoopMode(const GlobalOptions& options) {
   // Toast message state
   std::string toastMessage;
   auto toastExpiry = std::chrono::steady_clock::now();
-  const auto toastDuration = std::chrono::milliseconds(2000);
+  const auto toastDuration =
+      std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -540,7 +541,12 @@ void runLoopMode(const GlobalOptions& options) {
 
     // Render cell system overlay
     std::string currentToast = (std::chrono::steady_clock::now() < toastExpiry) ? toastMessage : "";
-    renderer::render(system, options.renderOptions, storedCell, currentToast);
+    renderer::RenderOptions renderOpts{
+        options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
+        options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
+        options.visualizationOptions.toastFontSize,
+    };
+    renderer::render(system, renderOpts, storedCell, currentToast);
 
     auto loopEnd = std::chrono::high_resolution_clock::now();
     spdlog::trace(

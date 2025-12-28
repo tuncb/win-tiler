@@ -5,10 +5,19 @@
 #include <utility>
 
 #include "multi_cells.h"
-#include "options.h"
+#include "overlay.h"
 
 namespace wintiler {
 namespace renderer {
+
+// Render-specific options (subset of VisualizationOptions without timing)
+struct RenderOptions {
+  overlay::Color normalColor{255, 255, 255, 100};
+  overlay::Color selectedColor{0, 120, 255, 200};
+  overlay::Color storedColor{255, 180, 0, 200};
+  float borderWidth = 3.0f;
+  float toastFontSize = 60.0f;
+};
 
 // Render the cell system
 // - system: The multi-cluster system to render

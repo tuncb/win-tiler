@@ -167,11 +167,12 @@ WriteResult write_options_toml(const GlobalOptions& options,
       arr.push_back(static_cast<int64_t>(c.a));
       return arr;
     };
-    render.insert("normal_color", colorToArray(options.renderOptions.normalColor));
-    render.insert("selected_color", colorToArray(options.renderOptions.selectedColor));
-    render.insert("stored_color", colorToArray(options.renderOptions.storedColor));
-    render.insert("border_width", options.renderOptions.borderWidth);
-    render.insert("toast_font_size", options.renderOptions.toastFontSize);
+    render.insert("normal_color", colorToArray(options.visualizationOptions.normalColor));
+    render.insert("selected_color", colorToArray(options.visualizationOptions.selectedColor));
+    render.insert("stored_color", colorToArray(options.visualizationOptions.storedColor));
+    render.insert("border_width", options.visualizationOptions.borderWidth);
+    render.insert("toast_font_size", options.visualizationOptions.toastFontSize);
+    render.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
     root.insert("render", render);
 
     // Write to file
@@ -295,26 +296,36 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       };
 
       if (auto color = parseColor((*render)["normal_color"].as_array())) {
-        options.renderOptions.normalColor = *color;
+        options.visualizationOptions.normalColor = *color;
       } else if ((*render)["normal_color"]) {
         spdlog::error("Invalid normal_color: values must be 0-255. Using default.");
       }
       if (auto color = parseColor((*render)["selected_color"].as_array())) {
-        options.renderOptions.selectedColor = *color;
+        options.visualizationOptions.selectedColor = *color;
       } else if ((*render)["selected_color"]) {
         spdlog::error("Invalid selected_color: values must be 0-255. Using default.");
       }
       if (auto color = parseColor((*render)["stored_color"].as_array())) {
-        options.renderOptions.storedColor = *color;
+        options.visualizationOptions.storedColor = *color;
       } else if ((*render)["stored_color"]) {
         spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
       }
       if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
-        options.renderOptions.borderWidth = static_cast<float>(borderWidth->get());
+        options.visualizationOptions.borderWidth = static_cast<float>(borderWidth->get());
       }
       if (auto toastFontSize = (*render)["toast_font_size"].as_floating_point()) {
-        options.renderOptions.toastFontSize = static_cast<float>(toastFontSize->get());
+        options.visualizationOptions.toastFontSize = static_cast<float>(toastFontSize->get());
       }
+      if (auto toastDurationMs = (*render)["toast_duration_ms"].as_integer()) {
+        options.visualizationOptions.toastDurationMs = static_cast<int>(toastDurationMs->get());
+      }
+    }
+
+    // Validate toast duration - negative values not allowed
+    if (options.visualizationOptions.toastDurationMs < 0) {
+      spdlog::error("Invalid toast_duration_ms value ({}): must be non-negative. Using default.",
+                    options.visualizationOptions.toastDurationMs);
+      options.visualizationOptions.toastDurationMs = 2000;
     }
 
     return ReadResult{true, "", options};
