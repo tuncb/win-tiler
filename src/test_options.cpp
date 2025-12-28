@@ -183,6 +183,75 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(provider.options.gapOptions.horizontal == 50.0f);
     CHECK(provider.options.gapOptions.vertical == 55.0f);
   }
+
+  TEST_CASE("partial keyboard config falls back to defaults for missing bindings") {
+    auto tempPath = createTempFilePath();
+    TempFileGuard guard(tempPath);
+
+    // Write a config with only one keyboard binding
+    {
+      std::ofstream file(tempPath);
+      file << "[keyboard]\n";
+      file << "bindings = [\n";
+      file << "  { action = \"NavigateLeft\", hotkey = \"alt+h\" }\n";
+      file << "]\n";
+    }
+
+    GlobalOptionsProvider provider(tempPath);
+    auto& bindings = provider.options.keyboardOptions.bindings;
+
+    // Should have all default bindings (13 total)
+    auto defaultOptions = get_default_global_options();
+    CHECK(bindings.size() == defaultOptions.keyboardOptions.bindings.size());
+
+    // The overridden binding should use the custom hotkey
+    auto findBinding = [&](HotkeyAction action) -> std::string {
+      for (const auto& b : bindings) {
+        if (b.action == action)
+          return b.hotkey;
+      }
+      return "";
+    };
+
+    CHECK(findBinding(HotkeyAction::NavigateLeft) == "alt+h");
+
+    // Other bindings should use defaults
+    CHECK(findBinding(HotkeyAction::NavigateRight) == "super+shift+l");
+    CHECK(findBinding(HotkeyAction::Exit) == "super+shift+escape");
+    CHECK(findBinding(HotkeyAction::ToggleSplit) == "super+shift+y");
+  }
+
+  TEST_CASE("empty keyboard section uses all default bindings") {
+    auto tempPath = createTempFilePath();
+    TempFileGuard guard(tempPath);
+
+    // Write a config with no keyboard section
+    {
+      std::ofstream file(tempPath);
+      file << "[gap]\n";
+      file << "horizontal = 15.0\n";
+    }
+
+    GlobalOptionsProvider provider(tempPath);
+    auto& bindings = provider.options.keyboardOptions.bindings;
+
+    // Should have all default bindings
+    auto defaultOptions = get_default_global_options();
+    CHECK(bindings.size() == defaultOptions.keyboardOptions.bindings.size());
+
+    // Verify a few default bindings are present
+    auto findBinding = [&](HotkeyAction action) -> std::string {
+      for (const auto& b : bindings) {
+        if (b.action == action)
+          return b.hotkey;
+      }
+      return "";
+    };
+
+    CHECK(findBinding(HotkeyAction::NavigateLeft) == "super+shift+h");
+    CHECK(findBinding(HotkeyAction::NavigateDown) == "super+shift+j");
+    CHECK(findBinding(HotkeyAction::Exit) == "super+shift+escape");
+  }
 }
 
 #endif // !DOCTEST_CONFIG_DISABLE

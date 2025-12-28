@@ -266,6 +266,21 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       }
     }
 
+    // Merge with default bindings - add defaults for any missing actions
+    auto defaultOptions = get_default_global_options();
+    for (const auto& defaultBinding : defaultOptions.keyboardOptions.bindings) {
+      bool found = false;
+      for (const auto& binding : options.keyboardOptions.bindings) {
+        if (binding.action == defaultBinding.action) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        options.keyboardOptions.bindings.push_back(defaultBinding);
+      }
+    }
+
     // Parse gap section
     if (auto gap = tbl["gap"].as_table()) {
       if (auto horizontal = (*gap)["horizontal"].as_floating_point()) {
