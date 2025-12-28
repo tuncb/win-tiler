@@ -44,7 +44,7 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 3. **Application Layer**
    - `src/multi_ui.h/cpp` - Raylib-based interactive visualization
    - `src/winapi.h/cpp` - Windows API wrapper for monitor/window enumeration
-   - `src/win-tiler.cpp` - Main entry point with command dispatch
+   - `src/main.cpp` - Main entry point with command dispatch
 
 ### Key Concepts
 
