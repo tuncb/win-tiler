@@ -81,6 +81,7 @@ void render(const cells::System& system, const RenderConfig& config,
             textY,
             {40, 40, 40, 220},    // Dark background
             {255, 255, 255, 255}, // White text
+            60.0f,                // Font size
         });
         break;
       }

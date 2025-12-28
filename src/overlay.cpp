@@ -54,7 +54,6 @@ ID2D1Bitmap1* g_targetBitmap = nullptr;
 
 // DWrite
 IDWriteFactory* g_dwriteFactory = nullptr;
-IDWriteTextFormat* g_textFormat = nullptr;
 
 bool g_initialized = false;
 bool g_comInitialized = false;
@@ -295,16 +294,6 @@ bool create_dwrite_resources() {
     return false;
   }
 
-  // Create default text format
-  hr = g_dwriteFactory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                                         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                         60.0f, L"en-us", &g_textFormat);
-
-  if (FAILED(hr)) {
-    spdlog::error("Failed to create text format: 0x{:08X}", static_cast<unsigned int>(hr));
-    return false;
-  }
-
   return true;
 }
 
@@ -537,7 +526,6 @@ bool init() {
 void shutdown() {
   g_initialized = false;
 
-  safe_release(g_textFormat);
   safe_release(g_dwriteFactory);
   safe_release(g_targetBitmap);
   safe_release(g_d2dContext);
@@ -609,7 +597,16 @@ void draw_rect(const DrawRect& rect) {
 }
 
 void draw_toast(const Toast& toast) {
-  if (!g_d2dContext || !g_dwriteFactory || !g_textFormat) {
+  if (!g_d2dContext || !g_dwriteFactory) {
+    return;
+  }
+
+  // Create text format with specified font size
+  IDWriteTextFormat* textFormat = nullptr;
+  HRESULT hr = g_dwriteFactory->CreateTextFormat(
+      L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL,
+      DWRITE_FONT_STRETCH_NORMAL, toast.font_size, L"en-us", &textFormat);
+  if (FAILED(hr) || !textFormat) {
     return;
   }
 
@@ -617,10 +614,10 @@ void draw_toast(const Toast& toast) {
 
   // Create text layout to measure
   IDWriteTextLayout* layout = nullptr;
-  HRESULT hr =
-      g_dwriteFactory->CreateTextLayout(wideText.c_str(), static_cast<UINT32>(wideText.length()),
-                                        g_textFormat, 1000.0f, 100.0f, &layout);
+  hr = g_dwriteFactory->CreateTextLayout(wideText.c_str(), static_cast<UINT32>(wideText.length()),
+                                         textFormat, 1000.0f, 100.0f, &layout);
   if (FAILED(hr) || !layout) {
+    textFormat->Release();
     return;
   }
 
@@ -663,6 +660,7 @@ void draw_toast(const Toast& toast) {
   }
 
   layout->Release();
+  textFormat->Release();
 }
 
 void end_frame() {

@@ -24,6 +24,7 @@ struct Toast {
   float x, y;       // Position in virtual screen coordinates
   Color bg_color;   // Background
   Color text_color; // Text
+  float font_size;  // Font size in points
 };
 
 // Initialize the overlay system. Returns true on success.
