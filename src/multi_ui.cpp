@@ -1,5 +1,11 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
+// Prevent Windows headers from defining functions that conflict with raylib
+#if defined(_WIN32)
+#define NOGDI  // Excludes GDI functions (Rectangle, etc.)
+#define NOUSER // Excludes USER functions (CloseWindow, ShowCursor, etc.)
+#endif
+
 #include "multi_ui.h"
 
 #include <algorithm>
