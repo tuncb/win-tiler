@@ -188,7 +188,7 @@ int main(int argc, char* argv[]) {
     std::visit(
         overloaded{
             [](const HelpCommand&) { printUsage(); },
-            [&](const LoopCommand&) { runLoopMode(optionsProvider); },
+            [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
             [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
             [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
             [&](const TrackWindowsCommand&) { runTrackWindowsMode(globalOptions.ignoreOptions); },

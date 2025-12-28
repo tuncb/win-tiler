@@ -32,7 +32,7 @@ auto timed(const char* name, F&& func) {
 
 // Helper for void functions
 template <typename F>
-void timedVoid(const char* name, F&& func) {
+void timed_void(const char* name, F&& func) {
   auto start = std::chrono::high_resolution_clock::now();
   func();
   auto end = std::chrono::high_resolution_clock::now();
@@ -41,12 +41,12 @@ void timedVoid(const char* name, F&& func) {
 }
 
 // Convert HotkeyAction to integer ID for Windows hotkey registration
-int hotkeyActionToId(HotkeyAction action) {
+int hotkey_action_to_id(HotkeyAction action) {
   return static_cast<int>(action) + 1; // Start from 1 to avoid 0
 }
 
 // Convert integer ID back to HotkeyAction
-std::optional<HotkeyAction> idToHotkeyAction(int id) {
+std::optional<HotkeyAction> id_to_hotkey_action(int id) {
   int index = id - 1;
   if (index >= 0 && index <= static_cast<int>(HotkeyAction::SplitDecrease)) {
     return static_cast<HotkeyAction>(index);
@@ -54,26 +54,26 @@ std::optional<HotkeyAction> idToHotkeyAction(int id) {
   return std::nullopt;
 }
 
-void registerNavigationHotkeys(const KeyboardOptions& keyboardOptions) {
-  for (const auto& binding : keyboardOptions.bindings) {
-    int id = hotkeyActionToId(binding.action);
+void register_navigation_hotkeys(const KeyboardOptions& keyboard_options) {
+  for (const auto& binding : keyboard_options.bindings) {
+    int id = hotkey_action_to_id(binding.action);
     auto hotkey = winapi::create_hotkey(binding.hotkey, id);
     if (hotkey) {
       winapi::register_hotkey(*hotkey);
     }
   }
-  spdlog::info("Registered {} hotkeys", keyboardOptions.bindings.size());
+  spdlog::info("Registered {} hotkeys", keyboard_options.bindings.size());
 }
 
-void unregisterNavigationHotkeys(const KeyboardOptions& keyboardOptions) {
-  for (const auto& binding : keyboardOptions.bindings) {
-    int id = hotkeyActionToId(binding.action);
+void unregister_navigation_hotkeys(const KeyboardOptions& keyboard_options) {
+  for (const auto& binding : keyboard_options.bindings) {
+    int id = hotkey_action_to_id(binding.action);
     winapi::unregister_hotkey(id);
   }
 }
 
 // Convert HotkeyAction to human-readable string
-const char* hotkeyActionToString(HotkeyAction action) {
+const char* hotkey_action_to_string(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
     return "Navigate Left";
@@ -107,7 +107,7 @@ const char* hotkeyActionToString(HotkeyAction action) {
 }
 
 // Convert HotkeyAction to direction (for navigation actions)
-std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
+std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
     return cells::Direction::Left;
@@ -132,27 +132,27 @@ std::optional<cells::Direction> hotkeyActionToDirection(HotkeyAction action) {
 }
 
 // Move mouse cursor to center of currently selected cell
-void moveCursorToSelectedCell(const cells::System& system) {
-  auto selectedCell = cells::getSelectedCell(system);
-  if (!selectedCell.has_value()) {
+void move_cursor_to_selected_cell(const cells::System& system) {
+  auto selected_cell = cells::getSelectedCell(system);
+  if (!selected_cell.has_value()) {
     return;
   }
 
-  auto [clusterId, cellIndex] = *selectedCell;
-  const auto* pc = cells::getCluster(system, clusterId);
+  auto [cluster_id, cell_index] = *selected_cell;
+  const auto* pc = cells::getCluster(system, cluster_id);
   if (pc == nullptr) {
     return;
   }
 
-  cells::Rect globalRect = cells::getCellGlobalRect(*pc, cellIndex);
-  long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
-  long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
+  cells::Rect global_rect = cells::getCellGlobalRect(*pc, cell_index);
+  long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
+  long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
 
-  winapi::set_cursor_pos(centerX, centerY);
+  winapi::set_cursor_pos(center_x, center_y);
 }
 
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
-void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
+void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   // Try to move selection in the given direction
   if (!cells::moveSelection(system, dir)) {
     spdlog::trace("Cannot move selection in direction");
@@ -160,20 +160,20 @@ void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
   }
 
   // Get the newly selected cell
-  auto selectedCell = cells::getSelectedCell(system);
-  if (!selectedCell.has_value()) {
+  auto selected_cell = cells::getSelectedCell(system);
+  if (!selected_cell.has_value()) {
     spdlog::error("No cell selected after moveSelection");
     return;
   }
 
-  auto [clusterId, cellIndex] = *selectedCell;
-  const auto* pc = cells::getCluster(system, clusterId);
+  auto [cluster_id, cell_index] = *selected_cell;
+  const auto* pc = cells::getCluster(system, cluster_id);
   if (pc == nullptr) {
-    spdlog::error("Failed to get cluster {}", clusterId);
+    spdlog::error("Failed to get cluster {}", cluster_id);
     return;
   }
 
-  const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
+  const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
   if (!cell.leafId.has_value()) {
     spdlog::error("Selected cell has no leafId");
     return;
@@ -189,48 +189,48 @@ void handleKeyboardNavigation(cells::System& system, cells::Direction dir) {
   }
 
   // Move mouse to center of selected cell
-  moveCursorToSelectedCell(system);
+  move_cursor_to_selected_cell(system);
 
-  spdlog::trace("Navigated to cell {} in cluster {}", cellIndex, clusterId);
+  spdlog::trace("Navigated to cell {} in cluster {}", cell_index, cluster_id);
 }
 
 // Type alias for stored cell used in swap/move operations
-using StoredCell = std::optional<std::pair<cells::ClusterId, size_t>>;
+using stored_cell_t = std::optional<std::pair<cells::ClusterId, size_t>>;
 
-ActionResult handleToggleSplit(cells::System& system) {
+ActionResult handle_toggle_split(cells::System& system) {
   if (cells::toggleSelectedSplitDir(system)) {
     spdlog::info("Toggled split direction");
   }
   return ActionResult::Continue;
 }
 
-ActionResult handleExit() {
+ActionResult handle_exit() {
   spdlog::info("Exit hotkey pressed, shutting down...");
   return ActionResult::Exit;
 }
 
-ActionResult handleToggleGlobal(cells::System& system, std::string& outMessage) {
+ActionResult handle_toggle_global(cells::System& system, std::string& out_message) {
   if (cells::toggleClusterGlobalSplitDir(system)) {
     if (system.selection.has_value()) {
       const auto* pc = cells::getCluster(system, system.selection->clusterId);
       if (pc != nullptr) {
-        const char* dirStr =
+        const char* dir_str =
             (pc->cluster.globalSplitDir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
-        spdlog::info("Toggled cluster global split direction: {}", dirStr);
-        outMessage = std::string("Toggled: ") + dirStr;
+        spdlog::info("Toggled cluster global split direction: {}", dir_str);
+        out_message = std::string("Toggled: ") + dir_str;
       }
     }
   }
   return ActionResult::Continue;
 }
 
-ActionResult handleStoreCell(cells::System& system, StoredCell& storedCell) {
+ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell) {
   if (system.selection.has_value()) {
     const auto* pc = cells::getCluster(system, system.selection->clusterId);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
       if (cell.leafId.has_value()) {
-        storedCell = {system.selection->clusterId, *cell.leafId};
+        stored_cell = {system.selection->clusterId, *cell.leafId};
         spdlog::info("Stored cell for operation: cluster={}, leafId={}",
                      system.selection->clusterId, *cell.leafId);
       }
@@ -239,22 +239,22 @@ ActionResult handleStoreCell(cells::System& system, StoredCell& storedCell) {
   return ActionResult::Continue;
 }
 
-ActionResult handleClearStored(StoredCell& storedCell) {
-  storedCell.reset();
+ActionResult handle_clear_stored(stored_cell_t& stored_cell) {
+  stored_cell.reset();
   spdlog::info("Cleared stored cell");
   return ActionResult::Continue;
 }
 
-ActionResult handleExchange(cells::System& system, StoredCell& storedCell) {
-  if (storedCell.has_value() && system.selection.has_value()) {
+ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) {
+  if (stored_cell.has_value() && system.selection.has_value()) {
     const auto* pc = cells::getCluster(system, system.selection->clusterId);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
       if (cell.leafId.has_value()) {
         auto result = cells::swapCells(system, system.selection->clusterId, *cell.leafId,
-                                       storedCell->first, storedCell->second);
+                                       stored_cell->first, stored_cell->second);
         if (result.success) {
-          storedCell.reset();
+          stored_cell.reset();
           spdlog::info("Exchanged cells successfully");
         }
       }
@@ -263,16 +263,16 @@ ActionResult handleExchange(cells::System& system, StoredCell& storedCell) {
   return ActionResult::Continue;
 }
 
-ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
-  if (storedCell.has_value() && system.selection.has_value()) {
+ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
+  if (stored_cell.has_value() && system.selection.has_value()) {
     const auto* pc = cells::getCluster(system, system.selection->clusterId);
     if (pc != nullptr) {
       const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cellIndex)];
       if (cell.leafId.has_value()) {
-        auto result = cells::moveCell(system, storedCell->first, storedCell->second,
+        auto result = cells::moveCell(system, stored_cell->first, stored_cell->second,
                                       system.selection->clusterId, *cell.leafId);
         if (result.success) {
-          storedCell.reset();
+          stored_cell.reset();
           spdlog::info("Moved cell successfully");
         }
       }
@@ -281,50 +281,50 @@ ActionResult handleMove(cells::System& system, StoredCell& storedCell) {
   return ActionResult::Continue;
 }
 
-ActionResult handleSplitIncrease(cells::System& system) {
+ActionResult handle_split_increase(cells::System& system) {
   if (cells::adjustSelectedSplitRatio(system, 0.05f)) {
     spdlog::info("Increased split ratio");
-    moveCursorToSelectedCell(system);
+    move_cursor_to_selected_cell(system);
   }
   return ActionResult::Continue;
 }
 
-ActionResult handleSplitDecrease(cells::System& system) {
+ActionResult handle_split_decrease(cells::System& system) {
   if (cells::adjustSelectedSplitRatio(system, -0.05f)) {
     spdlog::info("Decreased split ratio");
-    moveCursorToSelectedCell(system);
+    move_cursor_to_selected_cell(system);
   }
   return ActionResult::Continue;
 }
 
-ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
-                                  StoredCell& storedCell, std::string& outMessage) {
+ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
+                                    stored_cell_t& stored_cell, std::string& out_message) {
   // Handle other actions
   switch (action) {
   case HotkeyAction::ToggleSplit:
-    return handleToggleSplit(system);
+    return handle_toggle_split(system);
   case HotkeyAction::Exit:
-    return handleExit();
+    return handle_exit();
   case HotkeyAction::ToggleGlobal:
-    return handleToggleGlobal(system, outMessage);
+    return handle_toggle_global(system, out_message);
   case HotkeyAction::StoreCell:
-    return handleStoreCell(system, storedCell);
+    return handle_store_cell(system, stored_cell);
   case HotkeyAction::ClearStored:
-    return handleClearStored(storedCell);
+    return handle_clear_stored(stored_cell);
   case HotkeyAction::Exchange:
-    return handleExchange(system, storedCell);
+    return handle_exchange(system, stored_cell);
   case HotkeyAction::Move:
-    return handleMove(system, storedCell);
+    return handle_move(system, stored_cell);
   case HotkeyAction::SplitIncrease:
-    return handleSplitIncrease(system);
+    return handle_split_increase(system);
   case HotkeyAction::SplitDecrease:
-    return handleSplitDecrease(system);
+    return handle_split_decrease(system);
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:
   case HotkeyAction::NavigateRight: {
-    auto dir = hotkeyActionToDirection(action).value();
-    handleKeyboardNavigation(system, dir);
+    auto dir = hotkey_action_to_direction(action).value();
+    handle_keyboard_navigation(system, dir);
     return ActionResult::Continue;
   }
   default:
@@ -332,58 +332,58 @@ ActionResult dispatchHotkeyAction(HotkeyAction action, cells::System& system,
   }
 }
 
-void updateForegroundSelectionFromMousePosition(cells::System& system) {
-  auto foregroundHwnd = winapi::get_foreground_window();
+void update_foreground_selection_from_mouse_position(cells::System& system) {
+  auto foreground_hwnd = winapi::get_foreground_window();
 
-  if (foregroundHwnd == nullptr ||
-      !cells::hasLeafId(system, reinterpret_cast<size_t>(foregroundHwnd))) {
+  if (foreground_hwnd == nullptr ||
+      !cells::hasLeafId(system, reinterpret_cast<size_t>(foreground_hwnd))) {
     return;
   }
 
-  auto cursorPosOpt = winapi::get_cursor_pos();
-  if (!cursorPosOpt.has_value()) {
+  auto cursor_pos_opt = winapi::get_cursor_pos();
+  if (!cursor_pos_opt.has_value()) {
     spdlog::error("Failed to get cursor position");
     return;
   }
 
-  float cursorX = static_cast<float>(cursorPosOpt->x);
-  float cursorY = static_cast<float>(cursorPosOpt->y);
+  float cursor_x = static_cast<float>(cursor_pos_opt->x);
+  float cursor_y = static_cast<float>(cursor_pos_opt->y);
 
-  auto cellAtCursor = cells::findCellAtPoint(system, cursorX, cursorY);
+  auto cell_at_cursor = cells::findCellAtPoint(system, cursor_x, cursor_y);
 
-  if (!cellAtCursor.has_value()) {
+  if (!cell_at_cursor.has_value()) {
     return;
   }
 
-  auto [clusterId, cellIndex] = *cellAtCursor;
+  auto [cluster_id, cell_index] = *cell_at_cursor;
 
-  bool needsUpdate = !system.selection.has_value() || system.selection->clusterId != clusterId ||
-                     system.selection->cellIndex != cellIndex;
+  bool needs_update = !system.selection.has_value() || system.selection->clusterId != cluster_id ||
+                      system.selection->cellIndex != cell_index;
 
-  if (!needsUpdate) {
+  if (!needs_update) {
     return;
   }
 
-  system.selection = cells::Selection{clusterId, cellIndex};
+  system.selection = cells::Selection{cluster_id, cell_index};
 
-  const auto* pc = cells::getCluster(system, clusterId);
+  const auto* pc = cells::getCluster(system, cluster_id);
   if (pc != nullptr) {
-    const auto& cell = pc->cluster.cells[static_cast<size_t>(cellIndex)];
+    const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
     if (cell.leafId.has_value()) {
-      winapi::HWND_T cellHwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
-      if (!winapi::set_foreground_window(cellHwnd)) {
-        spdlog::error("Failed to set foreground window for HWND {}", cellHwnd);
+      winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leafId);
+      if (!winapi::set_foreground_window(cell_hwnd)) {
+        spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
       }
-      spdlog::trace("======================Selection updated: cluster={}, cell={}", clusterId,
-                    cellIndex);
+      spdlog::trace("======================Selection updated: cluster={}, cell={}", cluster_id,
+                    cell_index);
     }
   }
 }
 
 // Helper: Print tile layout from a multi-cluster system
-void printTileLayout(const cells::System& system) {
-  size_t totalWindows = cells::countTotalLeaves(system);
-  spdlog::debug("Total windows: {}", totalWindows);
+void print_tile_layout(const cells::System& system) {
+  size_t total_windows = cells::countTotalLeaves(system);
+  spdlog::debug("Total windows: {}", total_windows);
 
   for (const auto& pc : system.clusters) {
     spdlog::debug("--- Monitor {} ---", pc.id);
@@ -394,40 +394,41 @@ void printTileLayout(const cells::System& system) {
         continue;
       }
 
-      size_t hwndValue = *cell.leafId;
-      cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
+      size_t hwnd_value = *cell.leafId;
+      cells::Rect global_rect = cells::getCellGlobalRect(pc, i);
 
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-      auto windowInfo = winapi::get_window_info(hwnd);
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
+      auto window_info = winapi::get_window_info(hwnd);
 
-      spdlog::debug("  Window: \"{}\" ({})", windowInfo.title, windowInfo.processName);
-      spdlog::debug("    Position: x={}, y={}", static_cast<int>(globalRect.x),
-                    static_cast<int>(globalRect.y));
-      spdlog::debug("    Size: {}x{}", static_cast<int>(globalRect.width),
-                    static_cast<int>(globalRect.height));
+      spdlog::debug("  Window: \"{}\" ({})", window_info.title, window_info.processName);
+      spdlog::debug("    Position: x={}, y={}", static_cast<int>(global_rect.x),
+                    static_cast<int>(global_rect.y));
+      spdlog::debug("    Size: {}x{}", static_cast<int>(global_rect.width),
+                    static_cast<int>(global_rect.height));
     }
   }
 }
 
 // Helper: Gather current window state for all monitors
-std::vector<cells::ClusterCellIds> gatherCurrentWindowState(const IgnoreOptions& ignoreOptions) {
+std::vector<cells::ClusterCellIds>
+gather_current_window_state(const IgnoreOptions& ignore_options) {
   std::vector<cells::ClusterCellIds> result;
   auto monitors = winapi::get_monitors();
 
-  for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, ignoreOptions);
-    std::vector<size_t> cellIds;
+  for (size_t monitor_index = 0; monitor_index < monitors.size(); ++monitor_index) {
+    auto hwnds = winapi::get_hwnds_for_monitor(monitor_index, ignore_options);
+    std::vector<size_t> cell_ids;
     for (auto hwnd : hwnds) {
-      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+      cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
     }
-    result.push_back({monitorIndex, cellIds});
+    result.push_back({monitor_index, cell_ids});
   }
 
   return result;
 }
 
 // Helper: Apply tile layout by updating window positions
-void applyTileLayout(const cells::System& system) {
+void apply_tile_layout(const cells::System& system) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -435,27 +436,27 @@ void applyTileLayout(const cells::System& system) {
         continue;
       }
 
-      size_t hwndValue = *cell.leafId;
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwndValue);
-      cells::Rect globalRect = cells::getCellGlobalRect(pc, i);
+      size_t hwnd_value = *cell.leafId;
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
+      cells::Rect global_rect = cells::getCellGlobalRect(pc, i);
 
       winapi::WindowPosition pos;
-      pos.x = static_cast<int>(globalRect.x);
-      pos.y = static_cast<int>(globalRect.y);
-      pos.width = static_cast<int>(globalRect.width);
-      pos.height = static_cast<int>(globalRect.height);
+      pos.x = static_cast<int>(global_rect.x);
+      pos.y = static_cast<int>(global_rect.y);
+      pos.width = static_cast<int>(global_rect.width);
+      pos.height = static_cast<int>(global_rect.height);
 
-      winapi::TileInfo tileInfo{hwnd, pos};
-      winapi::update_window_position(tileInfo);
+      winapi::TileInfo tile_info{hwnd, pos};
+      winapi::update_window_position(tile_info);
     }
   }
 }
 
-cells::System createInitialSystem(const GlobalOptions& options) {
+cells::System create_initial_system(const GlobalOptions& options) {
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
 
-  std::vector<cells::ClusterInitInfo> clusterInfos;
+  std::vector<cells::ClusterInitInfo> cluster_infos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
     float x = static_cast<float>(monitor.workArea.left);
@@ -464,32 +465,33 @@ cells::System createInitialSystem(const GlobalOptions& options) {
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
 
     auto hwnds = winapi::get_hwnds_for_monitor(i, options.ignoreOptions);
-    std::vector<size_t> cellIds;
+    std::vector<size_t> cell_ids;
     for (auto hwnd : hwnds) {
-      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
+      cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
     }
-    clusterInfos.push_back({i, x, y, w, h, cellIds});
+    cluster_infos.push_back({i, x, y, w, h, cell_ids});
   }
 
-  return cells::createSystem(clusterInfos, options.gapOptions.horizontal,
+  return cells::createSystem(cluster_infos, options.gapOptions.horizontal,
                              options.gapOptions.vertical);
 }
 
 } // namespace
 
-void runLoopMode(GlobalOptionsProvider& provider) {
+void run_loop_mode(GlobalOptionsProvider& provider) {
   const auto& options = provider.options;
 
-  auto system = timed("createInitialSystem", [&options] { return createInitialSystem(options); });
+  auto system =
+      timed("create_initial_system", [&options] { return create_initial_system(options); });
 
   // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
-  printTileLayout(system);
+  print_tile_layout(system);
 
-  timedVoid("initial applyTileLayout", [&system] { applyTileLayout(system); });
+  timed_void("initial apply_tile_layout", [&system] { apply_tile_layout(system); });
 
   // Register keyboard hotkeys
-  registerNavigationHotkeys(options.keyboardOptions);
+  register_navigation_hotkeys(options.keyboardOptions);
 
   // Initialize overlay for rendering
   overlay::init();
@@ -497,68 +499,68 @@ void runLoopMode(GlobalOptionsProvider& provider) {
   // Print keyboard shortcuts
   spdlog::info("=== Keyboard Shortcuts ===");
   for (const auto& binding : options.keyboardOptions.bindings) {
-    spdlog::info("  {}: {}", hotkeyActionToString(binding.action), binding.hotkey);
+    spdlog::info("  {}: {}", hotkey_action_to_string(binding.action), binding.hotkey);
   }
 
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
   // Store cell for swap/move operations
-  StoredCell storedCell;
+  stored_cell_t stored_cell;
 
   // Toast message state
-  std::string toastMessage;
-  auto toastExpiry = std::chrono::steady_clock::now();
-  auto toastDuration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+  std::string toast_message;
+  auto toast_expiry = std::chrono::steady_clock::now();
+  auto toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    auto loopStart = std::chrono::high_resolution_clock::now();
+    auto loop_start = std::chrono::high_resolution_clock::now();
 
     // Check for config file changes and hot-reload
     if (provider.refresh()) {
       // Re-register hotkeys with new bindings (options is ref to provider.options, already updated)
-      unregisterNavigationHotkeys(options.keyboardOptions);
-      registerNavigationHotkeys(options.keyboardOptions);
+      unregister_navigation_hotkeys(options.keyboardOptions);
+      register_navigation_hotkeys(options.keyboardOptions);
 
       // Update gap settings and recompute cell rects
       cells::updateSystemGaps(system, options.gapOptions.horizontal, options.gapOptions.vertical);
 
       // Update toast duration
-      toastDuration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+      toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
       spdlog::info("Config hot-reloaded");
     }
 
     // Check for keyboard hotkeys
-    if (auto hotkeyId = winapi::check_keyboard_action()) {
-      auto actionOpt = idToHotkeyAction(*hotkeyId);
-      if (!actionOpt.has_value()) {
+    if (auto hotkey_id = winapi::check_keyboard_action()) {
+      auto action_opt = id_to_hotkey_action(*hotkey_id);
+      if (!action_opt.has_value()) {
         continue; // Unknown hotkey ID
       }
-      std::string actionMessage;
-      if (dispatchHotkeyAction(*actionOpt, system, storedCell, actionMessage) ==
+      std::string action_message;
+      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
           ActionResult::Exit) {
         break;
       }
-      if (!actionMessage.empty()) {
-        toastMessage = actionMessage;
-        toastExpiry = std::chrono::steady_clock::now() + toastDuration;
+      if (!action_message.empty()) {
+        toast_message = action_message;
+        toast_expiry = std::chrono::steady_clock::now() + toast_duration;
       }
     }
 
     // Re-gather window state
-    auto currentState = timed("gatherCurrentWindowState", [&options] {
-      return gatherCurrentWindowState(options.ignoreOptions);
+    auto current_state = timed("gather_current_window_state", [&options] {
+      return gather_current_window_state(options.ignoreOptions);
     });
 
     // Use updateSystem to sync
-    auto result = timed("updateSystem", [&system, &currentState] {
-      return cells::updateSystem(system, currentState, std::nullopt);
+    auto result = timed("updateSystem", [&system, &current_state] {
+      return cells::updateSystem(system, current_state, std::nullopt);
     });
 
-    updateForegroundSelectionFromMousePosition(system);
+    update_foreground_selection_from_mouse_position(system);
 
     // If changes detected, log and apply
     if (!result.deletedLeafIds.empty() || !result.addedLeafIds.empty()) {
@@ -577,45 +579,46 @@ void runLoopMode(GlobalOptionsProvider& provider) {
       }
 
       spdlog::debug("=== Updated Tile Layout ===");
-      printTileLayout(system);
+      print_tile_layout(system);
 
       // Move mouse to center of the last added cell
       if (!result.addedLeafIds.empty()) {
-        size_t lastAddedId = result.addedLeafIds.back();
+        size_t last_added_id = result.addedLeafIds.back();
         // Find which cluster contains this leaf
         for (const auto& pc : system.clusters) {
-          auto cellIndexOpt = cells::findCellByLeafId(pc.cluster, lastAddedId);
-          if (cellIndexOpt.has_value()) {
-            cells::Rect globalRect = cells::getCellGlobalRect(pc, *cellIndexOpt);
-            long centerX = static_cast<long>(globalRect.x + globalRect.width / 2.0f);
-            long centerY = static_cast<long>(globalRect.y + globalRect.height / 2.0f);
-            winapi::set_cursor_pos(centerX, centerY);
-            spdlog::debug("Moved cursor to center of new cell at ({}, {})", centerX, centerY);
+          auto cell_indexOpt = cells::findCellByLeafId(pc.cluster, last_added_id);
+          if (cell_indexOpt.has_value()) {
+            cells::Rect global_rect = cells::getCellGlobalRect(pc, *cell_indexOpt);
+            long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
+            long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
+            winapi::set_cursor_pos(center_x, center_y);
+            spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
             break;
           }
         }
       }
     }
 
-    timedVoid("applyTileLayout", [&system] { applyTileLayout(system); });
+    timed_void("apply_tile_layout", [&system] { apply_tile_layout(system); });
 
     // Render cell system overlay
-    std::string currentToast = (std::chrono::steady_clock::now() < toastExpiry) ? toastMessage : "";
-    renderer::RenderOptions renderOpts{
+    std::string current_toast =
+        (std::chrono::steady_clock::now() < toast_expiry) ? toast_message : "";
+    renderer::RenderOptions render_opts{
         options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
         options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
         options.visualizationOptions.toastFontSize,
     };
-    renderer::render(system, renderOpts, storedCell, currentToast);
+    renderer::render(system, render_opts, stored_cell, current_toast);
 
-    auto loopEnd = std::chrono::high_resolution_clock::now();
+    auto loop_end = std::chrono::high_resolution_clock::now();
     spdlog::trace(
         "loop iteration total: {}us",
-        std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count());
+        std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
   }
 
   // Cleanup hotkeys and overlay before exit
-  unregisterNavigationHotkeys(options.keyboardOptions);
+  unregister_navigation_hotkeys(options.keyboardOptions);
   overlay::shutdown();
   spdlog::info("Hotkeys unregistered, overlay shutdown, exiting...");
 }
