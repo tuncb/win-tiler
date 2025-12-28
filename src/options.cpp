@@ -37,6 +37,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "SplitIncrease";
   case HotkeyAction::SplitDecrease:
     return "SplitDecrease";
+  case HotkeyAction::ExchangeSiblings:
+    return "ExchangeSiblings";
   }
   return "Unknown";
 }
@@ -68,6 +70,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::SplitIncrease;
   if (str == "SplitDecrease")
     return HotkeyAction::SplitDecrease;
+  if (str == "ExchangeSiblings")
+    return HotkeyAction::ExchangeSiblings;
   return std::nullopt;
 }
 
@@ -112,6 +116,7 @@ GlobalOptions get_default_global_options() {
       {HotkeyAction::Move, "super+shift+."},
       {HotkeyAction::SplitIncrease, "super+shift+pageup"},
       {HotkeyAction::SplitDecrease, "super+shift+pagedown"},
+      {HotkeyAction::ExchangeSiblings, "super+shift+e"},
   };
   return options;
 }

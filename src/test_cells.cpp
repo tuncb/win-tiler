@@ -1276,3 +1276,158 @@ TEST_SUITE("cells - split ratio") {
     CHECK(cells::validate_system(system));
   }
 }
+
+// ============================================================================
+// Exchange Selected With Sibling Tests
+// ============================================================================
+
+TEST_SUITE("cells - exchange selected with sibling") {
+  TEST_CASE("exchange_selected_with_sibling swaps two leaf siblings") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::create_system({info});
+
+    auto* pc = system.get_cluster(1);
+    REQUIRE(pc != nullptr);
+
+    // Get initial positions of leaves
+    auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    auto idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    auto rect10Before = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20Before = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    // Exchange siblings
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(result);
+
+    // Re-find cells
+    idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    // Check positions were swapped
+    auto rect10After = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20After = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    CHECK(rect10After.x == doctest::Approx(rect20Before.x));
+    CHECK(rect10After.width == doctest::Approx(rect20Before.width));
+    CHECK(rect20After.x == doctest::Approx(rect10Before.x));
+    CHECK(rect20After.width == doctest::Approx(rect10Before.width));
+
+    CHECK(cells::validate_system(system));
+  }
+
+  TEST_CASE("exchange_selected_with_sibling returns false with no selection") {
+    auto system = cells::create_system({});
+
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(!result);
+  }
+
+  TEST_CASE("exchange_selected_with_sibling returns false for root leaf") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
+    auto system = cells::create_system({info});
+
+    // Single leaf has no sibling
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(!result);
+  }
+
+  TEST_CASE("exchange_selected_with_sibling updates cell positions correctly") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::create_system({info});
+
+    auto* pc = system.get_cluster(1);
+    REQUIRE(pc != nullptr);
+
+    // Initial: vertical split, leaf 10 on left, leaf 20 on right
+    auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    auto idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    auto rect10Before = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20Before = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    // Leaf 10 should be on the left (smaller x)
+    CHECK(rect10Before.x < rect20Before.x);
+
+    // Exchange
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(result);
+
+    // After exchange: leaf 10 should now be on the right
+    idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+
+    auto rect10After = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20After = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    CHECK(rect10After.x > rect20After.x);
+
+    CHECK(cells::validate_system(system));
+  }
+
+  TEST_CASE("exchange_selected_with_sibling works with horizontal split") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::create_system({info});
+
+    // Toggle to horizontal split first
+    REQUIRE(system.toggle_selected_split_dir());
+
+    auto* pc = system.get_cluster(1);
+    REQUIRE(pc != nullptr);
+
+    auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    auto idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    auto rect10Before = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20Before = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    // After horizontal split toggle, leaf 10 should be on top (smaller y)
+    CHECK(rect10Before.y < rect20Before.y);
+
+    // Exchange
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(result);
+
+    // After exchange: leaf 10 should now be on the bottom
+    idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    idx20 = cells::find_cell_by_leaf_id(pc->cluster, 20);
+
+    auto rect10After = pc->cluster.cells[static_cast<size_t>(*idx10)].rect;
+    auto rect20After = pc->cluster.cells[static_cast<size_t>(*idx20)].rect;
+
+    CHECK(rect10After.y > rect20After.y);
+
+    CHECK(cells::validate_system(system));
+  }
+
+  TEST_CASE("exchange_selected_with_sibling preserves selection") {
+    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::create_system({info});
+
+    auto* pc = system.get_cluster(1);
+    REQUIRE(pc != nullptr);
+
+    // Get initial selection
+    auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
+    REQUIRE(idx10.has_value());
+
+    // Set selection to leaf 10
+    system.selection = cells::Selection{1, *idx10};
+
+    // Exchange
+    bool result = system.exchange_selected_with_sibling();
+    CHECK(result);
+
+    // Selection should still point to same cell index (which now has different position)
+    REQUIRE(system.selection.has_value());
+    CHECK(system.selection->cell_index == *idx10);
+  }
+}

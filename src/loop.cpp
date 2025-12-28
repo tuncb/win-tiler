@@ -48,7 +48,7 @@ int hotkey_action_to_id(HotkeyAction action) {
 // Convert integer ID back to HotkeyAction
 std::optional<HotkeyAction> id_to_hotkey_action(int id) {
   int index = id - 1;
-  if (index >= 0 && index <= static_cast<int>(HotkeyAction::SplitDecrease)) {
+  if (index >= 0 && index <= static_cast<int>(HotkeyAction::ExchangeSiblings)) {
     return static_cast<HotkeyAction>(index);
   }
   return std::nullopt;
@@ -101,6 +101,8 @@ const char* hotkey_action_to_string(HotkeyAction action) {
     return "Split Increase";
   case HotkeyAction::SplitDecrease:
     return "Split Decrease";
+  case HotkeyAction::ExchangeSiblings:
+    return "Exchange Siblings";
   default:
     return "Unknown";
   }
@@ -126,6 +128,7 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
   case HotkeyAction::Move:
   case HotkeyAction::SplitIncrease:
   case HotkeyAction::SplitDecrease:
+  case HotkeyAction::ExchangeSiblings:
   default:
     return std::nullopt;
   }
@@ -297,6 +300,14 @@ ActionResult handle_split_decrease(cells::System& system) {
   return ActionResult::Continue;
 }
 
+ActionResult handle_exchange_siblings(cells::System& system) {
+  if (system.exchange_selected_with_sibling()) {
+    spdlog::info("Exchanged selected cell with sibling");
+    move_cursor_to_selected_cell(system);
+  }
+  return ActionResult::Continue;
+}
+
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
                                     stored_cell_t& stored_cell, std::string& out_message) {
   // Handle other actions
@@ -319,6 +330,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
     return handle_split_increase(system);
   case HotkeyAction::SplitDecrease:
     return handle_split_decrease(system);
+  case HotkeyAction::ExchangeSiblings:
+    return handle_exchange_siblings(system);
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:

@@ -231,6 +231,8 @@ std::optional<HotkeyAction> get_key_action() {
     return HotkeyAction::SplitIncrease;
   if (IsKeyPressed(KEY_PAGE_DOWN))
     return HotkeyAction::SplitDecrease;
+  if (IsKeyPressed(KEY_E))
+    return HotkeyAction::ExchangeSiblings;
   return std::nullopt;
 }
 
@@ -395,6 +397,11 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::SplitDecrease:
         if (app_state.system.adjust_selected_split_ratio(-0.05f)) {
+          center_mouse_on_selection(app_state, vt);
+        }
+        break;
+      case HotkeyAction::ExchangeSiblings:
+        if (app_state.system.exchange_selected_with_sibling()) {
           center_mouse_on_selection(app_state, vt);
         }
         break;

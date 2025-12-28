@@ -147,6 +147,7 @@ struct System {
   [[nodiscard]] bool toggle_cluster_global_split_dir();
   [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
   [[nodiscard]] bool adjust_selected_split_ratio(float delta);
+  [[nodiscard]] bool exchange_selected_with_sibling();
   SwapResult swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
                         size_t leaf_id2);
   MoveResult move_cell(ClusterId source_cluster_id, size_t source_leaf_id,

@@ -858,6 +858,42 @@ bool System::adjust_selected_split_ratio(float delta) {
   return set_split_ratio(pc->cluster, parent_index, new_ratio, gap_horizontal, gap_vertical);
 }
 
+bool System::exchange_selected_with_sibling() {
+  if (!selection.has_value()) {
+    return false;
+  }
+
+  PositionedCluster* pc = get_cluster(selection->cluster_id);
+  if (!pc) {
+    return false;
+  }
+
+  int selected_index = selection->cell_index;
+  if (!is_leaf(pc->cluster, selected_index)) {
+    return false;
+  }
+
+  Cell& leaf = pc->cluster.cells[static_cast<size_t>(selected_index)];
+  if (!leaf.parent.has_value()) {
+    return false; // Root has no sibling
+  }
+
+  int parent_index = *leaf.parent;
+  Cell& parent = pc->cluster.cells[static_cast<size_t>(parent_index)];
+
+  if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+    return false;
+  }
+
+  // Swap first_child and second_child
+  std::swap(parent.first_child, parent.second_child);
+
+  // Recompute rects
+  recompute_subtree_rects(pc->cluster, parent_index, gap_horizontal, gap_vertical);
+
+  return true;
+}
+
 SwapResult System::swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
                               size_t leaf_id2) {
   // Get clusters
