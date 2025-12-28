@@ -10,6 +10,7 @@
 
 #include "options.h"
 #include "raylib.h"
+#include "spdlog/spdlog.h"
 
 namespace wintiler {
 
@@ -328,7 +329,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         break;
       case HotkeyAction::ToggleSplit:
-        app_state.system.toggle_selected_split_dir();
+        if (!app_state.system.toggle_selected_split_dir()) {
+          spdlog::trace("Failed to toggle split direction");
+        }
         break;
       case HotkeyAction::StoreCell:
         if (app_state.system.selection.has_value()) {

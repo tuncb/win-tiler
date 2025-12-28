@@ -142,11 +142,11 @@ struct System {
   // Mutating member functions
   PositionedCluster* get_cluster(ClusterId id);
   [[nodiscard]] const PositionedCluster* get_cluster(ClusterId id) const;
-  bool move_selection(Direction dir);
-  bool toggle_selected_split_dir();
-  bool toggle_cluster_global_split_dir();
-  bool set_selected_split_ratio(float new_ratio);
-  bool adjust_selected_split_ratio(float delta);
+  [[nodiscard]] bool move_selection(Direction dir);
+  [[nodiscard]] bool toggle_selected_split_dir();
+  [[nodiscard]] bool toggle_cluster_global_split_dir();
+  [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
+  [[nodiscard]] bool adjust_selected_split_ratio(float delta);
   SwapResult swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
                         size_t leaf_id2);
   MoveResult move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
@@ -223,11 +223,12 @@ void debug_print_system(const System& system);
 [[nodiscard]] std::optional<std::pair<ClusterId, int>>
 find_cell_at_point(const System& system, float global_x, float global_y);
 
-== == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == ==
-    == == == == ==
+// ============================================================================
+// Leaf Utilities
+// ============================================================================
 
-    // Get all leaf IDs from a cluster.
-    [[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster);
+// Get all leaf IDs from a cluster.
+[[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster);
 
 // Find cell index by leaf ID. Returns nullopt if not found.
 [[nodiscard]] std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_id);

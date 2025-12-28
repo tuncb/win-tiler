@@ -991,7 +991,7 @@ TEST_SUITE("cells - split ratio") {
     REQUIRE(pc != nullptr);
 
     // Toggle split direction to horizontal
-    system.toggle_selected_split_dir();
+    CHECK(system.toggle_selected_split_dir());
 
     auto& parent = pc->cluster.cells[0];
     CHECK(parent.split_dir == cells::SplitDir::Horizontal);
@@ -1225,7 +1225,7 @@ TEST_SUITE("cells - split ratio") {
     REQUIRE(pc != nullptr);
 
     // Set to 0.9 first (the maximum)
-    system.set_selected_split_ratio(0.9f);
+    REQUIRE(system.set_selected_split_ratio(0.9f));
 
     auto& parent = pc->cluster.cells[0];
 
@@ -1243,7 +1243,7 @@ TEST_SUITE("cells - split ratio") {
     REQUIRE(pc != nullptr);
 
     // Set to 0.1 first (the minimum)
-    system.set_selected_split_ratio(0.1f);
+    REQUIRE(system.set_selected_split_ratio(0.1f));
 
     auto& parent = pc->cluster.cells[0];
 
