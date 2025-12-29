@@ -61,10 +61,18 @@ struct KeyboardOptions {
 constexpr float kDefaultGapHorizontal = 10.0f;
 constexpr float kDefaultGapVertical = 10.0f;
 
+// Default loop interval
+constexpr int kDefaultLoopIntervalMs = 100;
+
 // Gap configuration for window spacing
 struct GapOptions {
   float horizontal = kDefaultGapHorizontal;
   float vertical = kDefaultGapVertical;
+};
+
+// Loop configuration
+struct LoopOptions {
+  int intervalMs = kDefaultLoopIntervalMs;
 };
 
 // Visualization configuration for cell rendering
@@ -82,6 +90,7 @@ struct GlobalOptions {
   IgnoreOptions ignoreOptions;
   KeyboardOptions keyboardOptions;
   GapOptions gapOptions;
+  LoopOptions loopOptions;
   VisualizationOptions visualizationOptions;
 };
 

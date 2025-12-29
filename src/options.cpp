@@ -206,6 +206,11 @@ WriteResult write_options_toml(const GlobalOptions& options,
     gap.insert("vertical", options.gapOptions.vertical);
     root.insert("gap", gap);
 
+    // Build loop section
+    toml::table loop;
+    loop.insert("interval_ms", options.loopOptions.intervalMs);
+    root.insert("loop", loop);
+
     // Build render section
     toml::table render;
     auto colorToArray = [](const overlay::Color& c) {
@@ -405,6 +410,20 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       spdlog::error("Invalid gap.vertical value ({}): must be non-negative. Using default.",
                     options.gapOptions.vertical);
       options.gapOptions.vertical = kDefaultGapVertical;
+    }
+
+    // Parse loop section
+    if (auto loop = tbl["loop"].as_table()) {
+      if (auto intervalMs = (*loop)["interval_ms"].as_integer()) {
+        options.loopOptions.intervalMs = static_cast<int>(intervalMs->get());
+      }
+    }
+
+    // Validate loop interval - negative values not allowed
+    if (options.loopOptions.intervalMs < 0) {
+      spdlog::error("Invalid loop.interval_ms value ({}): must be non-negative. Using default.",
+                    options.loopOptions.intervalMs);
+      options.loopOptions.intervalMs = kDefaultLoopIntervalMs;
     }
 
     // Parse render section

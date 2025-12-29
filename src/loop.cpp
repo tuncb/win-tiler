@@ -530,7 +530,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   auto toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
   while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(options.loopOptions.intervalMs));
 
     auto loop_start = std::chrono::high_resolution_clock::now();
 
