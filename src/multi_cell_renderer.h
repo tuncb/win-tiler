@@ -15,6 +15,7 @@ struct RenderOptions {
   overlay::Color normal_color{255, 255, 255, 100};
   overlay::Color selected_color{0, 120, 255, 200};
   overlay::Color stored_color{255, 180, 0, 200};
+  overlay::Color zen_color{255, 215, 0, 200}; // Gold color for zen cells
   float border_width = 3.0f;
   float toast_font_size = 60.0f;
 };
