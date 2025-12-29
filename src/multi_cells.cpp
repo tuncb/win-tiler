@@ -670,9 +670,31 @@ find_next_leaf_in_direction(const System& system, ClusterId current_cluster_id,
       continue;
     }
 
-    // Search all leaves in this cluster
+    // If this cluster has a zen cell, only consider the zen cell
+    if (pc.cluster.zen_cell_index.has_value()) {
+      int zen_idx = *pc.cluster.zen_cell_index;
+
+      // Skip if this is the current cell
+      if (pc.id == current_cluster_id && zen_idx == current_cell_index) {
+        continue;
+      }
+
+      Rect candidate_global_rect = get_cell_global_rect(pc, zen_idx);
+
+      if (!is_in_direction_global(current_global_rect, candidate_global_rect, dir)) {
+        continue;
+      }
+
+      float score = directional_distance_global(current_global_rect, candidate_global_rect, dir);
+      if (score < best_score) {
+        best_score = score;
+        best_candidate = std::make_pair(pc.id, zen_idx);
+      }
+      continue; // Skip normal leaf iteration for this cluster
+    }
+
+    // No zen cell: search all leaves in this cluster
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      // Skip non-leaves and dead cells
       if (!is_leaf(pc.cluster, i)) {
         continue;
       }
