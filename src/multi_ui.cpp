@@ -233,6 +233,8 @@ std::optional<HotkeyAction> get_key_action() {
     return HotkeyAction::SplitDecrease;
   if (IsKeyPressed(KEY_E))
     return HotkeyAction::ExchangeSiblings;
+  if (IsKeyPressed(KEY_APOSTROPHE))
+    return HotkeyAction::ToggleZen;
   return std::nullopt;
 }
 
@@ -290,7 +292,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       if (!current_sel.has_value() || current_sel->first != cluster_id ||
           current_sel->second != cell_index) {
         // Set new selection
-        app_state.system.selection = cells::Selection{cluster_id, cell_index};
+        app_state.system.selection = cells::CellIndicatorByIndex{cluster_id, cell_index};
       }
     }
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
@@ -405,6 +407,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
           center_mouse_on_selection(app_state, vt);
         }
         break;
+      case HotkeyAction::ToggleZen:
+        (void)app_state.system.toggle_selected_zen();
+        break;
       case HotkeyAction::Exit:
       case HotkeyAction::ToggleGlobal:
         // Not implemented in multi_ui
@@ -483,6 +488,46 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
           DrawText(label_text.c_str(), text_x, text_y, (int)font_size, DARKGRAY);
         }
+      }
+    }
+
+    // Draw zen cell overlays for each cluster
+    for (const auto& pc : app_state.system.clusters) {
+      if (!pc.cluster.zen_cell_index.has_value()) {
+        continue;
+      }
+
+      int zen_cell_index = *pc.cluster.zen_cell_index;
+
+      // Get zen display rect (centered at percentage of cluster)
+      cells::Rect zen_display_rect =
+          cells::get_cell_display_rect(pc, zen_cell_index, true, options.zenOptions.percentage);
+      Rectangle zen_screen_rect = to_screen_rect(vt, zen_display_rect);
+
+      // Draw semi-transparent fill
+      Color zen_fill = {100, 149, 237, 80}; // Cornflower blue, semi-transparent
+      DrawRectangleRec(zen_screen_rect, zen_fill);
+
+      // Determine border color based on selection state (same as normal cells)
+      bool is_zen_selected = selected_cell.has_value() && selected_cell->first == pc.id &&
+                             selected_cell->second == zen_cell_index;
+      const auto& viz_opts = options.visualizationOptions;
+      Color border_color = is_zen_selected ? to_raylib_color(viz_opts.selectedColor)
+                                           : to_raylib_color(viz_opts.normalColor);
+
+      DrawRectangleLinesEx(zen_screen_rect, viz_opts.borderWidth, border_color);
+
+      // Draw label "Z:<id>"
+      const auto& zen_cell_data = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
+      if (zen_cell_data.leaf_id.has_value()) {
+        std::string label = "Z:" + std::to_string(*zen_cell_data.leaf_id);
+        float font_size = std::min(zen_screen_rect.width, zen_screen_rect.height) * 0.2f;
+        if (font_size < 10.0f)
+          font_size = 10.0f;
+        int text_width = MeasureText(label.c_str(), (int)font_size);
+        int text_x = (int)(zen_screen_rect.x + (zen_screen_rect.width - text_width) / 2);
+        int text_y = (int)(zen_screen_rect.y + (zen_screen_rect.height - font_size) / 2);
+        DrawText(label.c_str(), text_x, text_y, (int)font_size, DARKGRAY);
       }
     }
 

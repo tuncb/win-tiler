@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <magic_enum/magic_enum.hpp>
 #include <thread>
 #include <vector>
 
@@ -48,7 +49,7 @@ int hotkey_action_to_id(HotkeyAction action) {
 // Convert integer ID back to HotkeyAction
 std::optional<HotkeyAction> id_to_hotkey_action(int id) {
   int index = id - 1;
-  if (index >= 0 && index <= static_cast<int>(HotkeyAction::ExchangeSiblings)) {
+  if (index >= 0 && index < static_cast<int>(magic_enum::enum_count<HotkeyAction>())) {
     return static_cast<HotkeyAction>(index);
   }
   return std::nullopt;
@@ -103,6 +104,8 @@ const char* hotkey_action_to_string(HotkeyAction action) {
     return "Split Decrease";
   case HotkeyAction::ExchangeSiblings:
     return "Exchange Siblings";
+  case HotkeyAction::ToggleZen:
+    return "Toggle Zen";
   default:
     return "Unknown";
   }
@@ -129,6 +132,7 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
   case HotkeyAction::SplitIncrease:
   case HotkeyAction::SplitDecrease:
   case HotkeyAction::ExchangeSiblings:
+  case HotkeyAction::ToggleZen:
   default:
     return std::nullopt;
   }
@@ -308,6 +312,13 @@ ActionResult handle_exchange_siblings(cells::System& system) {
   return ActionResult::Continue;
 }
 
+ActionResult handle_toggle_zen(cells::System& system) {
+  if (system.toggle_selected_zen()) {
+    spdlog::info("Toggled zen mode");
+  }
+  return ActionResult::Continue;
+}
+
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
                                     stored_cell_t& stored_cell, std::string& out_message) {
   // Handle other actions
@@ -332,6 +343,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
     return handle_split_decrease(system);
   case HotkeyAction::ExchangeSiblings:
     return handle_exchange_siblings(system);
+  case HotkeyAction::ToggleZen:
+    return handle_toggle_zen(system);
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:
@@ -370,6 +383,12 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
   auto [cluster_id, cell_index] = *cell_at_cursor;
 
+  // Skip selection update if this cluster has an active zen cell
+  const auto* zen_check_pc = system.get_cluster(cluster_id);
+  if (zen_check_pc != nullptr && zen_check_pc->cluster.zen_cell_index.has_value()) {
+    return;
+  }
+
   bool needs_update = !system.selection.has_value() || system.selection->cluster_id != cluster_id ||
                       system.selection->cell_index != cell_index;
 
@@ -377,7 +396,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
     return;
   }
 
-  system.selection = cells::Selection{cluster_id, cell_index};
+  system.selection = cells::CellIndicatorByIndex{cluster_id, cell_index};
 
   const auto* pc = system.get_cluster(cluster_id);
   if (pc != nullptr) {
@@ -441,7 +460,7 @@ gather_current_window_state(const IgnoreOptions& ignore_options) {
 }
 
 // Helper: Apply tile layout by updating window positions
-void apply_tile_layout(const cells::System& system) {
+void apply_tile_layout(const cells::System& system, float zen_percentage) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -451,7 +470,12 @@ void apply_tile_layout(const cells::System& system) {
 
       size_t hwnd_value = *cell.leaf_id;
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
-      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
+
+      // Check if this cell is the zen cell for its cluster
+      bool is_zen = pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index == i;
+
+      // Use zen display rect (centered at percentage) or normal rect
+      cells::Rect global_rect = cells::get_cell_display_rect(pc, i, is_zen, zen_percentage);
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(global_rect.x);
@@ -501,7 +525,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   spdlog::info("=== Initial Tile Layout ===");
   print_tile_layout(system);
 
-  timed_void("initial apply_tile_layout", [&system] { apply_tile_layout(system); });
+  timed_void("initial apply_tile_layout",
+             [&system, &options] { apply_tile_layout(system, options.zenOptions.percentage); });
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -618,16 +643,21 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         }
       }
 
-      timed_void("apply_tile_layout", [&system] { apply_tile_layout(system); });
+      timed_void("apply_tile_layout",
+                 [&system, &options] { apply_tile_layout(system, options.zenOptions.percentage); });
     }
 
     // Render cell system overlay
     std::string current_toast =
         (std::chrono::steady_clock::now() < toast_expiry) ? toast_message : "";
     renderer::RenderOptions render_opts{
-        options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
-        options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
+        options.visualizationOptions.normalColor,
+        options.visualizationOptions.selectedColor,
+        options.visualizationOptions.storedColor,
+        options.visualizationOptions.zenColor,
+        options.visualizationOptions.borderWidth,
         options.visualizationOptions.toastFontSize,
+        options.zenOptions.percentage,
     };
     renderer::render(system, render_opts, stored_cell, current_toast);
 

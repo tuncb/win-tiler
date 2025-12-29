@@ -11,8 +11,13 @@ void render(const cells::System& system, const RenderOptions& config,
   // Begin frame
   overlay::begin_frame();
 
-  // Draw all leaf cells
+  // Draw all leaf cells (skip clusters with zen cells - they're handled below)
   for (const auto& pc : system.clusters) {
+    // Skip this cluster if it has a zen cell (will be rendered in zen loop)
+    if (pc.cluster.zen_cell_index.has_value()) {
+      continue;
+    }
+
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[i];
 
@@ -49,6 +54,44 @@ void render(const cells::System& system, const RenderOptions& config,
           config.border_width,
       });
     }
+  }
+
+  // Draw zen cell overlays for each cluster
+  for (const auto& pc : system.clusters) {
+    if (!pc.cluster.zen_cell_index.has_value()) {
+      continue;
+    }
+
+    int zen_cell_index = *pc.cluster.zen_cell_index;
+
+    // Get zen display rect (centered at percentage of cluster)
+    cells::Rect zen_display_rect =
+        cells::get_cell_display_rect(pc, zen_cell_index, true, config.zen_percentage);
+
+    // Determine color based on selection state (zen cells use gold base color)
+    overlay::Color color = config.zen_color;
+    if (system.selection.has_value() && system.selection->cluster_id == pc.id &&
+        system.selection->cell_index == zen_cell_index) {
+      color = config.selected_color;
+    }
+
+    // Check if zen cell is also the stored cell
+    if (stored_cell.has_value() && stored_cell->first == pc.id) {
+      const auto& cell = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
+      if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->second) {
+        color = config.stored_color;
+      }
+    }
+
+    // Draw zen rectangle
+    overlay::draw_rect({
+        zen_display_rect.x,
+        zen_display_rect.y,
+        zen_display_rect.width,
+        zen_display_rect.height,
+        color,
+        config.border_width,
+    });
   }
 
   // Draw message if provided

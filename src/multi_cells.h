@@ -49,6 +49,9 @@ struct CellCluster {
   // when the first cell is created lazily on a split.
   float window_width = 0.0f;
   float window_height = 0.0f;
+
+  // Zen cell index for this cluster (full-cluster display mode)
+  std::optional<int> zen_cell_index;
 };
 
 enum class Direction {
@@ -80,8 +83,8 @@ struct PositionedCluster {
   float global_y;
 };
 
-// System-wide selection tracking.
-struct Selection {
+// Points to a specific cell by cluster ID and cell index.
+struct CellIndicatorByIndex {
   ClusterId cluster_id;
   int cell_index; // always a leaf index
 };
@@ -135,7 +138,7 @@ struct MoveResult {
 
 struct System {
   std::vector<PositionedCluster> clusters;
-  std::optional<Selection> selection; // System-wide selection
+  std::optional<CellIndicatorByIndex> selection; // System-wide selection
   float gap_horizontal = kDefaultCellGapHorizontal;
   float gap_vertical = kDefaultCellGapVertical;
 
@@ -156,6 +159,12 @@ struct System {
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
                       std::optional<std::pair<ClusterId, size_t>> new_selection);
+
+  // Zen cell operations (per-cluster)
+  [[nodiscard]] bool set_zen(ClusterId cluster_id, size_t leaf_id);
+  void clear_zen(ClusterId cluster_id);
+  [[nodiscard]] bool is_cell_zen(ClusterId cluster_id, int cell_index) const;
+  [[nodiscard]] bool toggle_selected_zen();
 };
 
 struct ClusterInitInfo {
@@ -193,6 +202,19 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
+
+// Get the zen cell for a specific cluster (returns cell index).
+[[nodiscard]] std::optional<int> get_cluster_zen_cell(const CellCluster& cluster);
+
+// Get the global rect of a cell, considering zen state.
+// If is_zen is true, returns centered rect at zen_percentage of cluster size.
+// Otherwise returns the cell's normal tree position.
+[[nodiscard]] Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
+                                         float zen_percentage);
+
+// Get display rect for zen cell of a specific cluster (centered at zen_percentage).
+[[nodiscard]] std::optional<Rect>
+get_cluster_zen_display_rect(const System& system, ClusterId cluster_id, float zen_percentage);
 
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.

@@ -41,6 +41,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "SplitDecrease";
   case HotkeyAction::ExchangeSiblings:
     return "ExchangeSiblings";
+  case HotkeyAction::ToggleZen:
+    return "ToggleZen";
   }
   return "Unknown";
 }
@@ -74,6 +76,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::SplitDecrease;
   if (str == "ExchangeSiblings")
     return HotkeyAction::ExchangeSiblings;
+  if (str == "ToggleZen")
+    return HotkeyAction::ToggleZen;
   return std::nullopt;
 }
 
@@ -107,6 +111,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+pagedown";
   case HotkeyAction::ExchangeSiblings:
     return "super+shift+e";
+  case HotkeyAction::ToggleZen:
+    return "super+shift+'";
   }
   return "";
 }
@@ -224,10 +230,16 @@ WriteResult write_options_toml(const GlobalOptions& options,
     render.insert("normal_color", colorToArray(options.visualizationOptions.normalColor));
     render.insert("selected_color", colorToArray(options.visualizationOptions.selectedColor));
     render.insert("stored_color", colorToArray(options.visualizationOptions.storedColor));
+    render.insert("zen_color", colorToArray(options.visualizationOptions.zenColor));
     render.insert("border_width", options.visualizationOptions.borderWidth);
     render.insert("toast_font_size", options.visualizationOptions.toastFontSize);
     render.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
     root.insert("render", render);
+
+    // Build zen section
+    toml::table zen;
+    zen.insert("percentage", options.zenOptions.percentage);
+    root.insert("zen", zen);
 
     // Write to file
     std::ofstream file(filepath);
@@ -462,6 +474,11 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       } else if ((*render)["stored_color"]) {
         spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
       }
+      if (auto color = parseColor((*render)["zen_color"].as_array())) {
+        options.visualizationOptions.zenColor = *color;
+      } else if ((*render)["zen_color"]) {
+        spdlog::error("Invalid zen_color: values must be 0-255. Using default.");
+      }
       if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
         options.visualizationOptions.borderWidth = static_cast<float>(borderWidth->get());
       }
@@ -478,6 +495,24 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       spdlog::error("Invalid toast_duration_ms value ({}): must be non-negative. Using default.",
                     options.visualizationOptions.toastDurationMs);
       options.visualizationOptions.toastDurationMs = 2000;
+    }
+
+    // Parse zen section
+    if (auto zen = tbl["zen"].as_table()) {
+      if (auto percentage = (*zen)["percentage"].as_floating_point()) {
+        options.zenOptions.percentage = static_cast<float>(percentage->get());
+      }
+    }
+
+    // Validate zen percentage - clamp to 0.1-1.0 range
+    if (options.zenOptions.percentage < 0.1f) {
+      spdlog::error("Invalid zen.percentage value ({}): must be >= 0.1. Using 0.1.",
+                    options.zenOptions.percentage);
+      options.zenOptions.percentage = 0.1f;
+    } else if (options.zenOptions.percentage > 1.0f) {
+      spdlog::error("Invalid zen.percentage value ({}): must be <= 1.0. Using 1.0.",
+                    options.zenOptions.percentage);
+      options.zenOptions.percentage = 1.0f;
     }
 
     return ReadResult{true, "", options};

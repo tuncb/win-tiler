@@ -535,7 +535,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
 
     // If this is the first cluster with cells, make it the selected cluster
     if (!system.selection.has_value() && selection_index >= 0) {
-      system.selection = Selection{pc.id, selection_index};
+      system.selection = CellIndicatorByIndex{pc.id, selection_index};
     }
 
     system.clusters.push_back(std::move(pc));
@@ -670,9 +670,31 @@ find_next_leaf_in_direction(const System& system, ClusterId current_cluster_id,
       continue;
     }
 
-    // Search all leaves in this cluster
+    // If this cluster has a zen cell, only consider the zen cell
+    if (pc.cluster.zen_cell_index.has_value()) {
+      int zen_idx = *pc.cluster.zen_cell_index;
+
+      // Skip if this is the current cell
+      if (pc.id == current_cluster_id && zen_idx == current_cell_index) {
+        continue;
+      }
+
+      Rect candidate_global_rect = get_cell_global_rect(pc, zen_idx);
+
+      if (!is_in_direction_global(current_global_rect, candidate_global_rect, dir)) {
+        continue;
+      }
+
+      float score = directional_distance_global(current_global_rect, candidate_global_rect, dir);
+      if (score < best_score) {
+        best_score = score;
+        best_candidate = std::make_pair(pc.id, zen_idx);
+      }
+      continue; // Skip normal leaf iteration for this cluster
+    }
+
+    // No zen cell: search all leaves in this cluster
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      // Skip non-leaves and dead cells
       if (!is_leaf(pc.cluster, i)) {
         continue;
       }
@@ -711,7 +733,14 @@ bool System::move_selection(Direction dir) {
   }
 
   auto [next_cluster_id, next_cell_index] = *next_opt;
-  selection = Selection{next_cluster_id, next_cell_index};
+  selection = CellIndicatorByIndex{next_cluster_id, next_cell_index};
+
+  // Clear zen if moving to non-zen cell in a cluster that has zen
+  PositionedCluster* pc = get_cluster(next_cluster_id);
+  if (pc && pc->cluster.zen_cell_index.has_value() &&
+      *pc->cluster.zen_cell_index != next_cell_index) {
+    pc->cluster.zen_cell_index.reset();
+  }
 
   return true;
 }
@@ -741,6 +770,33 @@ std::optional<Rect> get_selected_cell_global_rect(const System& system) {
   }
 
   return get_cell_global_rect(*pc, cell_index);
+}
+
+std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
+  return cluster.zen_cell_index;
+}
+
+Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
+                           float zen_percentage) {
+  if (is_zen) {
+    // Return centered rect at zen_percentage of cluster size
+    float zen_w = pc.cluster.window_width * zen_percentage;
+    float zen_h = pc.cluster.window_height * zen_percentage;
+    float offset_x = (pc.cluster.window_width - zen_w) / 2.0f;
+    float offset_y = (pc.cluster.window_height - zen_h) / 2.0f;
+    return Rect{pc.global_x + offset_x, pc.global_y + offset_y, zen_w, zen_h};
+  }
+  // Normal: return cell's tree position
+  return get_cell_global_rect(pc, cell_index);
+}
+
+std::optional<Rect> get_cluster_zen_display_rect(const System& system, ClusterId cluster_id,
+                                                 float zen_percentage) {
+  const PositionedCluster* pc = system.get_cluster(cluster_id);
+  if (!pc || !pc->cluster.zen_cell_index.has_value()) {
+    return std::nullopt;
+  }
+  return get_cell_display_rect(*pc, *pc->cluster.zen_cell_index, true, zen_percentage);
 }
 
 bool System::toggle_selected_split_dir() {
@@ -890,6 +946,62 @@ bool System::exchange_selected_with_sibling() {
 
   // Recompute rects
   recompute_subtree_rects(pc->cluster, parent_index, gap_horizontal, gap_vertical);
+
+  return true;
+}
+
+bool System::set_zen(ClusterId cluster_id, size_t leaf_id) {
+  PositionedCluster* pc = get_cluster(cluster_id);
+  if (!pc) {
+    return false;
+  }
+  auto cell_index_opt = find_cell_by_leaf_id(pc->cluster, leaf_id);
+  if (!cell_index_opt.has_value()) {
+    return false;
+  }
+  if (!is_leaf(pc->cluster, *cell_index_opt)) {
+    return false;
+  }
+  pc->cluster.zen_cell_index = *cell_index_opt;
+  return true;
+}
+
+void System::clear_zen(ClusterId cluster_id) {
+  PositionedCluster* pc = get_cluster(cluster_id);
+  if (pc) {
+    pc->cluster.zen_cell_index.reset();
+  }
+}
+
+bool System::is_cell_zen(ClusterId cluster_id, int cell_index) const {
+  const PositionedCluster* pc = get_cluster(cluster_id);
+  if (!pc) {
+    return false;
+  }
+  return pc->cluster.zen_cell_index.has_value() && *pc->cluster.zen_cell_index == cell_index;
+}
+
+bool System::toggle_selected_zen() {
+  if (!selection.has_value()) {
+    return false;
+  }
+
+  PositionedCluster* pc = get_cluster(selection->cluster_id);
+  if (!pc) {
+    return false;
+  }
+
+  if (!is_leaf(pc->cluster, selection->cell_index)) {
+    return false;
+  }
+
+  // Toggle: if already zen, clear; otherwise set
+  if (pc->cluster.zen_cell_index.has_value() &&
+      *pc->cluster.zen_cell_index == selection->cell_index) {
+    pc->cluster.zen_cell_index.reset();
+  } else {
+    pc->cluster.zen_cell_index = selection->cell_index;
+  }
 
   return true;
 }
@@ -1074,11 +1186,23 @@ MoveResult System::move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
   // Update selection if source or target was selected
   if (source_was_selected) {
     // Source was selected - follow it to its new position
-    selection = Selection{target_cluster_id, new_cell_idx};
+    selection = CellIndicatorByIndex{target_cluster_id, new_cell_idx};
+
+    // Clear zen if selecting non-zen cell in a cluster with zen
+    if (tgt_pc->cluster.zen_cell_index.has_value() &&
+        *tgt_pc->cluster.zen_cell_index != new_cell_idx) {
+      tgt_pc->cluster.zen_cell_index.reset();
+    }
   } else if (target_was_selected) {
     // Target was selected - it's now a parent, so select its first child
     // (which keeps the target's original leaf_id)
-    selection = Selection{target_cluster_id, first_child_idx};
+    selection = CellIndicatorByIndex{target_cluster_id, first_child_idx};
+
+    // Clear zen if selecting non-zen cell in a cluster with zen
+    if (tgt_pc->cluster.zen_cell_index.has_value() &&
+        *tgt_pc->cluster.zen_cell_index != first_child_idx) {
+      tgt_pc->cluster.zen_cell_index.reset();
+    }
   }
 
   return {true, new_cell_idx, target_cluster_id, ""};
@@ -1436,6 +1560,11 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
         result.added_leaf_ids.push_back(leaf_id);
       }
     }
+
+    // Reset zen if cells were added or removed from this cluster
+    if (!to_delete.empty() || !to_add.empty()) {
+      pc->cluster.zen_cell_index.reset();
+    }
   }
 
   // Update selection
@@ -1450,8 +1579,14 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
       if (!cell_index_opt.has_value()) {
         result.errors.push_back({UpdateError::Type::SelectionInvalid, cluster_id, leaf_id});
       } else {
-        selection = Selection{cluster_id, *cell_index_opt};
+        selection = CellIndicatorByIndex{cluster_id, *cell_index_opt};
         result.selection_updated = true;
+
+        // Clear zen if selecting non-zen cell in a cluster with zen
+        if (pc->cluster.zen_cell_index.has_value() &&
+            *pc->cluster.zen_cell_index != *cell_index_opt) {
+          pc->cluster.zen_cell_index.reset();
+        }
       }
     }
   }

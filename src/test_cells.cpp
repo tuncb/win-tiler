@@ -755,7 +755,7 @@ TEST_SUITE("cells - swap and move") {
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     REQUIRE(idx10.has_value());
-    system.selection = cells::Selection{1, *idx10};
+    system.selection = cells::CellIndicatorByIndex{1, *idx10};
 
     // Swap
     auto result = system.swap_cells(1, 10, 1, 20);
@@ -904,7 +904,7 @@ TEST_SUITE("cells - swap and move") {
     REQUIRE(pc != nullptr);
     auto idx10 = cells::find_cell_by_leaf_id(pc->cluster, 10);
     REQUIRE(idx10.has_value());
-    system.selection = cells::Selection{1, *idx10};
+    system.selection = cells::CellIndicatorByIndex{1, *idx10};
 
     // Move 10 to 20
     auto result = system.move_cell(1, 10, 1, 20);
@@ -1420,7 +1420,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     REQUIRE(idx10.has_value());
 
     // Set selection to leaf 10
-    system.selection = cells::Selection{1, *idx10};
+    system.selection = cells::CellIndicatorByIndex{1, *idx10};
 
     // Exchange
     bool result = system.exchange_selected_with_sibling();
