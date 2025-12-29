@@ -383,6 +383,12 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
 
   auto [cluster_id, cell_index] = *cell_at_cursor;
 
+  // Skip selection update if this cluster has an active zen cell
+  const auto* zen_check_pc = system.get_cluster(cluster_id);
+  if (zen_check_pc != nullptr && zen_check_pc->cluster.zen_cell_index.has_value()) {
+    return;
+  }
+
   bool needs_update = !system.selection.has_value() || system.selection->cluster_id != cluster_id ||
                       system.selection->cell_index != cell_index;
 
