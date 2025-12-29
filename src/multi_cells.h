@@ -80,8 +80,8 @@ struct PositionedCluster {
   float global_y;
 };
 
-// System-wide selection tracking.
-struct Selection {
+// Points to a specific cell by cluster ID and cell index.
+struct CellIndicatorByIndex {
   ClusterId cluster_id;
   int cell_index; // always a leaf index
 };
@@ -135,7 +135,9 @@ struct MoveResult {
 
 struct System {
   std::vector<PositionedCluster> clusters;
-  std::optional<Selection> selection; // System-wide selection
+  std::optional<CellIndicatorByIndex> selection; // System-wide selection
+  std::optional<CellIndicatorByIndex>
+      signified; // System-wide signified cell (for full-cluster display)
   float gap_horizontal = kDefaultCellGapHorizontal;
   float gap_vertical = kDefaultCellGapVertical;
 
@@ -156,6 +158,11 @@ struct System {
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
                       std::optional<std::pair<ClusterId, size_t>> new_selection);
+
+  // Signified cell operations
+  [[nodiscard]] bool set_signified(ClusterId cluster_id, size_t leaf_id);
+  void clear_signified();
+  [[nodiscard]] bool is_cell_signified(ClusterId cluster_id, int cell_index) const;
 };
 
 struct ClusterInitInfo {
@@ -193,6 +200,19 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
+
+// Get the currently signified cell across the entire system.
+[[nodiscard]] std::optional<std::pair<ClusterId, int>> get_signified_cell(const System& system);
+
+// Get the global rect of a cell, considering signified state.
+// If is_signified is true, returns cluster bounds (with gaps from edges).
+// Otherwise returns the cell's normal tree position.
+[[nodiscard]] Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index,
+                                         bool is_signified, float gap_horizontal,
+                                         float gap_vertical);
+
+// Convenience: Get display rect for signified cell (full cluster bounds with gaps).
+[[nodiscard]] std::optional<Rect> get_signified_cell_display_rect(const System& system);
 
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.

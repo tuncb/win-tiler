@@ -377,7 +377,7 @@ void update_foreground_selection_from_mouse_position(cells::System& system) {
     return;
   }
 
-  system.selection = cells::Selection{cluster_id, cell_index};
+  system.selection = cells::CellIndicatorByIndex{cluster_id, cell_index};
 
   const auto* pc = system.get_cluster(cluster_id);
   if (pc != nullptr) {

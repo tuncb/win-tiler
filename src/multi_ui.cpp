@@ -290,7 +290,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       if (!current_sel.has_value() || current_sel->first != cluster_id ||
           current_sel->second != cell_index) {
         // Set new selection
-        app_state.system.selection = cells::Selection{cluster_id, cell_index};
+        app_state.system.selection = cells::CellIndicatorByIndex{cluster_id, cell_index};
       }
     }
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell

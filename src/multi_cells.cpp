@@ -535,7 +535,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
 
     // If this is the first cluster with cells, make it the selected cluster
     if (!system.selection.has_value() && selection_index >= 0) {
-      system.selection = Selection{pc.id, selection_index};
+      system.selection = CellIndicatorByIndex{pc.id, selection_index};
     }
 
     system.clusters.push_back(std::move(pc));
@@ -711,7 +711,7 @@ bool System::move_selection(Direction dir) {
   }
 
   auto [next_cluster_id, next_cell_index] = *next_opt;
-  selection = Selection{next_cluster_id, next_cell_index};
+  selection = CellIndicatorByIndex{next_cluster_id, next_cell_index};
 
   return true;
 }
@@ -741,6 +741,39 @@ std::optional<Rect> get_selected_cell_global_rect(const System& system) {
   }
 
   return get_cell_global_rect(*pc, cell_index);
+}
+
+std::optional<std::pair<ClusterId, int>> get_signified_cell(const System& system) {
+  if (!system.signified.has_value()) {
+    return std::nullopt;
+  }
+  return std::make_pair(system.signified->cluster_id, system.signified->cell_index);
+}
+
+Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_signified,
+                           float gap_horizontal, float gap_vertical) {
+  if (is_signified) {
+    // Return cluster bounds with gaps from edges
+    float x = pc.global_x + gap_horizontal;
+    float y = pc.global_y + gap_vertical;
+    float w = pc.cluster.window_width - 2.0f * gap_horizontal;
+    float h = pc.cluster.window_height - 2.0f * gap_vertical;
+    return Rect{x, y, w > 0.0f ? w : 0.0f, h > 0.0f ? h : 0.0f};
+  }
+  // Normal: return cell's tree position
+  return get_cell_global_rect(pc, cell_index);
+}
+
+std::optional<Rect> get_signified_cell_display_rect(const System& system) {
+  if (!system.signified.has_value()) {
+    return std::nullopt;
+  }
+  const PositionedCluster* pc = system.get_cluster(system.signified->cluster_id);
+  if (!pc) {
+    return std::nullopt;
+  }
+  return get_cell_display_rect(*pc, system.signified->cell_index, true, system.gap_horizontal,
+                               system.gap_vertical);
 }
 
 bool System::toggle_selected_split_dir() {
@@ -892,6 +925,31 @@ bool System::exchange_selected_with_sibling() {
   recompute_subtree_rects(pc->cluster, parent_index, gap_horizontal, gap_vertical);
 
   return true;
+}
+
+bool System::set_signified(ClusterId cluster_id, size_t leaf_id) {
+  PositionedCluster* pc = get_cluster(cluster_id);
+  if (!pc) {
+    return false;
+  }
+  auto cell_index_opt = find_cell_by_leaf_id(pc->cluster, leaf_id);
+  if (!cell_index_opt.has_value()) {
+    return false;
+  }
+  if (!is_leaf(pc->cluster, *cell_index_opt)) {
+    return false;
+  }
+  signified = CellIndicatorByIndex{cluster_id, *cell_index_opt};
+  return true;
+}
+
+void System::clear_signified() {
+  signified.reset();
+}
+
+bool System::is_cell_signified(ClusterId cluster_id, int cell_index) const {
+  return signified.has_value() && signified->cluster_id == cluster_id &&
+         signified->cell_index == cell_index;
 }
 
 SwapResult System::swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
@@ -1074,11 +1132,11 @@ MoveResult System::move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
   // Update selection if source or target was selected
   if (source_was_selected) {
     // Source was selected - follow it to its new position
-    selection = Selection{target_cluster_id, new_cell_idx};
+    selection = CellIndicatorByIndex{target_cluster_id, new_cell_idx};
   } else if (target_was_selected) {
     // Target was selected - it's now a parent, so select its first child
     // (which keeps the target's original leaf_id)
-    selection = Selection{target_cluster_id, first_child_idx};
+    selection = CellIndicatorByIndex{target_cluster_id, first_child_idx};
   }
 
   return {true, new_cell_idx, target_cluster_id, ""};
@@ -1450,7 +1508,7 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
       if (!cell_index_opt.has_value()) {
         result.errors.push_back({UpdateError::Type::SelectionInvalid, cluster_id, leaf_id});
       } else {
-        selection = Selection{cluster_id, *cell_index_opt};
+        selection = CellIndicatorByIndex{cluster_id, *cell_index_opt};
         result.selection_updated = true;
       }
     }

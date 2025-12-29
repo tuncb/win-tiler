@@ -8,8 +8,6 @@
 
 - extra ignores option for config, ignores on top of the default ones.
 
-- what happens when a window spawns on multiple monitors.
-
 - exchange windows with mouse.
 
 - refactor toml writing and create unit tests.
