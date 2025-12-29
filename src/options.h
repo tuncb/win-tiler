@@ -22,6 +22,11 @@ struct IgnoreOptions {
   std::vector<std::string> ignored_window_titles;
   std::vector<std::pair<std::string, std::string>> ignored_process_title_pairs;
   std::optional<SmallWindowBarrier> small_window_barrier;
+
+  // When true, user-provided values are merged with defaults; when false, only user values are used
+  bool merge_processes = true;
+  bool merge_window_titles = true;
+  bool merge_process_title_pairs = true;
 };
 
 // Keyboard hotkey actions

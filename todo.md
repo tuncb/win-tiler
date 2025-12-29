@@ -4,8 +4,6 @@
 
 - code reviews for each system
 
-- move selected for operation cell to the system.
-
 - exchange windows with mouse.
 
 - extra ignores option for config, ignores on top of the default ones.

@@ -255,4 +255,255 @@ TEST_SUITE("GlobalOptionsProvider") {
   }
 }
 
+// ============================================================================
+// IgnoreOptions Merge Tests
+// ============================================================================
+
+TEST_SUITE("IgnoreOptions Merge") {
+  TEST_CASE("merge flags default to true when not specified in config") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "processes = [\"CustomApp.exe\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+    CHECK(result.options.ignoreOptions.merge_processes == true);
+    CHECK(result.options.ignoreOptions.merge_window_titles == true);
+    CHECK(result.options.ignoreOptions.merge_process_title_pairs == true);
+  }
+
+  TEST_CASE("merge_processes = true merges user values with defaults") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_processes_with_defaults = true\n";
+      file << "processes = [\"CustomApp.exe\", \"AnotherApp.exe\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& processes = result.options.ignoreOptions.ignored_processes;
+    auto defaults = get_default_ignore_options();
+
+    // Should contain all defaults plus user additions
+    CHECK(processes.size() == defaults.ignored_processes.size() + 2);
+
+    // Check defaults are present
+    for (const auto& def : defaults.ignored_processes) {
+      CHECK(std::find(processes.begin(), processes.end(), def) != processes.end());
+    }
+
+    // Check user additions are present
+    CHECK(std::find(processes.begin(), processes.end(), "CustomApp.exe") != processes.end());
+    CHECK(std::find(processes.begin(), processes.end(), "AnotherApp.exe") != processes.end());
+  }
+
+  TEST_CASE("merge_processes = false uses only user values") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_processes_with_defaults = false\n";
+      file << "processes = [\"OnlyThis.exe\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& processes = result.options.ignoreOptions.ignored_processes;
+
+    // Should only contain user value
+    CHECK(processes.size() == 1);
+    CHECK(processes[0] == "OnlyThis.exe");
+  }
+
+  TEST_CASE("merge_window_titles = true merges user values with defaults") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_window_titles_with_defaults = true\n";
+      file << "window_titles = [\"My Popup\", \"Another Window\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& titles = result.options.ignoreOptions.ignored_window_titles;
+    auto defaults = get_default_ignore_options();
+
+    // Default window_titles is empty, so should just have user values
+    CHECK(titles.size() == defaults.ignored_window_titles.size() + 2);
+    CHECK(std::find(titles.begin(), titles.end(), "My Popup") != titles.end());
+    CHECK(std::find(titles.begin(), titles.end(), "Another Window") != titles.end());
+  }
+
+  TEST_CASE("merge_window_titles = false uses only user values") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_window_titles_with_defaults = false\n";
+      file << "window_titles = [\"Only This Title\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& titles = result.options.ignoreOptions.ignored_window_titles;
+    CHECK(titles.size() == 1);
+    CHECK(titles[0] == "Only This Title");
+  }
+
+  TEST_CASE("merge_process_title_pairs = true merges user values with defaults") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_process_title_pairs_with_defaults = true\n";
+      file << "process_title_pairs = [\n";
+      file << "  { process = \"myapp.exe\", title = \"My Window\" }\n";
+      file << "]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& pairs = result.options.ignoreOptions.ignored_process_title_pairs;
+    auto defaults = get_default_ignore_options();
+
+    // Should contain all defaults plus user addition
+    CHECK(pairs.size() == defaults.ignored_process_title_pairs.size() + 1);
+
+    // Check user addition is present
+    auto userPair = std::make_pair(std::string("myapp.exe"), std::string("My Window"));
+    CHECK(std::find(pairs.begin(), pairs.end(), userPair) != pairs.end());
+  }
+
+  TEST_CASE("merge_process_title_pairs = false uses only user values") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_process_title_pairs_with_defaults = false\n";
+      file << "process_title_pairs = [\n";
+      file << "  { process = \"only.exe\", title = \"Only Window\" }\n";
+      file << "]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& pairs = result.options.ignoreOptions.ignored_process_title_pairs;
+    CHECK(pairs.size() == 1);
+    CHECK(pairs[0].first == "only.exe");
+    CHECK(pairs[0].second == "Only Window");
+  }
+
+  TEST_CASE("duplicate values are not added when merging") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    auto defaults = get_default_ignore_options();
+    REQUIRE(!defaults.ignored_processes.empty());
+
+    // Use a default process name as user value
+    std::string duplicateProcess = defaults.ignored_processes[0];
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_processes_with_defaults = true\n";
+      file << "processes = [\"" << duplicateProcess << "\", \"NewApp.exe\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto& processes = result.options.ignoreOptions.ignored_processes;
+
+    // Should have defaults + 1 new (duplicate should not be added twice)
+    CHECK(processes.size() == defaults.ignored_processes.size() + 1);
+
+    // Count occurrences of duplicate
+    auto count = std::count(processes.begin(), processes.end(), duplicateProcess);
+    CHECK(count == 1);
+  }
+
+  TEST_CASE("merge flags are written to TOML") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    GlobalOptions options;
+    options.ignoreOptions.merge_processes = false;
+    options.ignoreOptions.merge_window_titles = true;
+    options.ignoreOptions.merge_process_title_pairs = false;
+    options.ignoreOptions.ignored_processes = {"test.exe"};
+
+    auto writeResult = write_options_toml(options, temp_path);
+    REQUIRE(writeResult.success);
+
+    auto readResult = read_options_toml(temp_path);
+    REQUIRE(readResult.success);
+
+    // When merge is false, we get only user values back
+    CHECK(readResult.options.ignoreOptions.merge_processes == false);
+    CHECK(readResult.options.ignoreOptions.merge_window_titles == true);
+    CHECK(readResult.options.ignoreOptions.merge_process_title_pairs == false);
+  }
+
+  TEST_CASE("independent merge flags work correctly") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_processes_with_defaults = false\n";
+      file << "merge_window_titles_with_defaults = true\n";
+      file << "merge_process_title_pairs_with_defaults = false\n";
+      file << "processes = [\"custom.exe\"]\n";
+      file << "window_titles = [\"Custom Title\"]\n";
+      file << "process_title_pairs = [\n";
+      file << "  { process = \"app.exe\", title = \"Window\" }\n";
+      file << "]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.success);
+
+    auto defaults = get_default_ignore_options();
+
+    // processes: merge=false, should have only user value
+    CHECK(result.options.ignoreOptions.ignored_processes.size() == 1);
+    CHECK(result.options.ignoreOptions.ignored_processes[0] == "custom.exe");
+
+    // window_titles: merge=true, should have defaults + user (defaults is empty)
+    CHECK(result.options.ignoreOptions.ignored_window_titles.size() ==
+          defaults.ignored_window_titles.size() + 1);
+
+    // process_title_pairs: merge=false, should have only user value
+    CHECK(result.options.ignoreOptions.ignored_process_title_pairs.size() == 1);
+  }
+}
+
 #endif // !DOCTEST_CONFIG_DISABLE

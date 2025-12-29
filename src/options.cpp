@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <fstream>
 #include <magic_enum/magic_enum.hpp>
 #include <toml++/toml.hpp>
@@ -151,6 +152,12 @@ WriteResult write_options_toml(const GlobalOptions& options,
     // Build ignore section
     toml::table ignore;
 
+    // Write merge flags
+    ignore.insert("merge_processes_with_defaults", options.ignoreOptions.merge_processes);
+    ignore.insert("merge_window_titles_with_defaults", options.ignoreOptions.merge_window_titles);
+    ignore.insert("merge_process_title_pairs_with_defaults",
+                  options.ignoreOptions.merge_process_title_pairs);
+
     toml::array processes;
     for (const auto& p : options.ignoreOptions.ignored_processes) {
       processes.push_back(p);
@@ -235,11 +242,34 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
     GlobalOptions options;
 
     // Parse ignore section
+    auto defaultIgnore = get_default_ignore_options();
+
+    // Read merge flags (default to true if not present)
+    bool mergeProcesses = true;
+    bool mergeWindowTitles = true;
+    bool mergeProcessTitlePairs = true;
+
+    // Temporary storage for user values
+    std::vector<std::string> userProcesses;
+    std::vector<std::string> userWindowTitles;
+    std::vector<std::pair<std::string, std::string>> userProcessTitlePairs;
+
     if (auto ignore = tbl["ignore"].as_table()) {
+      // Read merge flags
+      if (auto flag = (*ignore)["merge_processes_with_defaults"].as_boolean()) {
+        mergeProcesses = flag->get();
+      }
+      if (auto flag = (*ignore)["merge_window_titles_with_defaults"].as_boolean()) {
+        mergeWindowTitles = flag->get();
+      }
+      if (auto flag = (*ignore)["merge_process_title_pairs_with_defaults"].as_boolean()) {
+        mergeProcessTitlePairs = flag->get();
+      }
+
       if (auto processes = (*ignore)["processes"].as_array()) {
         for (const auto& p : *processes) {
           if (auto str = p.as_string()) {
-            options.ignoreOptions.ignored_processes.push_back(str->get());
+            userProcesses.push_back(str->get());
           }
         }
       }
@@ -247,7 +277,7 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       if (auto titles = (*ignore)["window_titles"].as_array()) {
         for (const auto& t : *titles) {
           if (auto str = t.as_string()) {
-            options.ignoreOptions.ignored_window_titles.push_back(str->get());
+            userWindowTitles.push_back(str->get());
           }
         }
       }
@@ -258,8 +288,7 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
             auto process = (*tbl)["process"].as_string();
             auto title = (*tbl)["title"].as_string();
             if (process && title) {
-              options.ignoreOptions.ignored_process_title_pairs.emplace_back(process->get(),
-                                                                             title->get());
+              userProcessTitlePairs.emplace_back(process->get(), title->get());
             }
           }
         }
@@ -273,6 +302,53 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
               SmallWindowBarrier{static_cast<int>(width->get()), static_cast<int>(height->get())};
         }
       }
+    }
+
+    // Store merge flags in options
+    options.ignoreOptions.merge_processes = mergeProcesses;
+    options.ignoreOptions.merge_window_titles = mergeWindowTitles;
+    options.ignoreOptions.merge_process_title_pairs = mergeProcessTitlePairs;
+
+    // Apply merge logic for processes
+    if (mergeProcesses) {
+      options.ignoreOptions.ignored_processes = defaultIgnore.ignored_processes;
+      for (const auto& proc : userProcesses) {
+        if (std::find(options.ignoreOptions.ignored_processes.begin(),
+                      options.ignoreOptions.ignored_processes.end(),
+                      proc) == options.ignoreOptions.ignored_processes.end()) {
+          options.ignoreOptions.ignored_processes.push_back(proc);
+        }
+      }
+    } else {
+      options.ignoreOptions.ignored_processes = std::move(userProcesses);
+    }
+
+    // Apply merge logic for window titles
+    if (mergeWindowTitles) {
+      options.ignoreOptions.ignored_window_titles = defaultIgnore.ignored_window_titles;
+      for (const auto& title : userWindowTitles) {
+        if (std::find(options.ignoreOptions.ignored_window_titles.begin(),
+                      options.ignoreOptions.ignored_window_titles.end(),
+                      title) == options.ignoreOptions.ignored_window_titles.end()) {
+          options.ignoreOptions.ignored_window_titles.push_back(title);
+        }
+      }
+    } else {
+      options.ignoreOptions.ignored_window_titles = std::move(userWindowTitles);
+    }
+
+    // Apply merge logic for process/title pairs
+    if (mergeProcessTitlePairs) {
+      options.ignoreOptions.ignored_process_title_pairs = defaultIgnore.ignored_process_title_pairs;
+      for (const auto& pair : userProcessTitlePairs) {
+        if (std::find(options.ignoreOptions.ignored_process_title_pairs.begin(),
+                      options.ignoreOptions.ignored_process_title_pairs.end(),
+                      pair) == options.ignoreOptions.ignored_process_title_pairs.end()) {
+          options.ignoreOptions.ignored_process_title_pairs.push_back(pair);
+        }
+      }
+    } else {
+      options.ignoreOptions.ignored_process_title_pairs = std::move(userProcessTitlePairs);
     }
 
     // Parse keyboard section
