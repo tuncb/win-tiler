@@ -44,7 +44,8 @@ enum class HotkeyAction {
   Move,
   SplitIncrease,
   SplitDecrease,
-  ExchangeSiblings
+  ExchangeSiblings,
+  ToggleZen
 };
 
 // Maps a hotkey action to its keyboard shortcut string

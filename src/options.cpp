@@ -41,6 +41,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "SplitDecrease";
   case HotkeyAction::ExchangeSiblings:
     return "ExchangeSiblings";
+  case HotkeyAction::ToggleZen:
+    return "ToggleZen";
   }
   return "Unknown";
 }
@@ -74,6 +76,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::SplitDecrease;
   if (str == "ExchangeSiblings")
     return HotkeyAction::ExchangeSiblings;
+  if (str == "ToggleZen")
+    return HotkeyAction::ToggleZen;
   return std::nullopt;
 }
 
@@ -107,6 +111,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+pagedown";
   case HotkeyAction::ExchangeSiblings:
     return "super+shift+e";
+  case HotkeyAction::ToggleZen:
+    return "super+shift+'";
   }
   return "";
 }

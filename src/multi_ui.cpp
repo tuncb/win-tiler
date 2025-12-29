@@ -233,6 +233,8 @@ std::optional<HotkeyAction> get_key_action() {
     return HotkeyAction::SplitDecrease;
   if (IsKeyPressed(KEY_E))
     return HotkeyAction::ExchangeSiblings;
+  if (IsKeyPressed(KEY_APOSTROPHE))
+    return HotkeyAction::ToggleZen;
   return std::nullopt;
 }
 
@@ -310,10 +312,6 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
     if (IsKeyPressed(KEY_C)) {
       cells::validate_system(app_state.system);
-    }
-
-    if (IsKeyPressed(KEY_APOSTROPHE)) {
-      (void)app_state.system.toggle_selected_zen();
     }
 
     // Keyboard input (HotkeyAction enum actions)
@@ -408,6 +406,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         if (app_state.system.exchange_selected_with_sibling()) {
           center_mouse_on_selection(app_state, vt);
         }
+        break;
+      case HotkeyAction::ToggleZen:
+        (void)app_state.system.toggle_selected_zen();
         break;
       case HotkeyAction::Exit:
       case HotkeyAction::ToggleGlobal:
