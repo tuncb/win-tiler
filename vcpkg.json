@@ -3,6 +3,7 @@
     "raylib",
     "doctest",
     "spdlog",
-    "tomlplusplus"
+    "tomlplusplus",
+    "magic-enum"
   ]
 }

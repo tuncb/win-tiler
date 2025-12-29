@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <fstream>
+#include <magic_enum/magic_enum.hpp>
 #include <toml++/toml.hpp>
 
 namespace wintiler {
@@ -75,6 +76,40 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
   return std::nullopt;
 }
 
+std::string get_default_hotkey(HotkeyAction action) {
+  switch (action) {
+  case HotkeyAction::NavigateLeft:
+    return "super+shift+h";
+  case HotkeyAction::NavigateDown:
+    return "super+shift+j";
+  case HotkeyAction::NavigateUp:
+    return "super+shift+k";
+  case HotkeyAction::NavigateRight:
+    return "super+shift+l";
+  case HotkeyAction::ToggleSplit:
+    return "super+shift+y";
+  case HotkeyAction::Exit:
+    return "super+shift+escape";
+  case HotkeyAction::ToggleGlobal:
+    return "super+shift+;";
+  case HotkeyAction::StoreCell:
+    return "super+shift+[";
+  case HotkeyAction::ClearStored:
+    return "super+shift+]";
+  case HotkeyAction::Exchange:
+    return "super+shift+,";
+  case HotkeyAction::Move:
+    return "super+shift+.";
+  case HotkeyAction::SplitIncrease:
+    return "super+shift+pageup";
+  case HotkeyAction::SplitDecrease:
+    return "super+shift+pagedown";
+  case HotkeyAction::ExchangeSiblings:
+    return "super+shift+e";
+  }
+  return "";
+}
+
 } // anonymous namespace
 
 IgnoreOptions get_default_ignore_options() {
@@ -102,22 +137,9 @@ IgnoreOptions get_default_ignore_options() {
 GlobalOptions get_default_global_options() {
   GlobalOptions options;
   options.ignoreOptions = get_default_ignore_options();
-  options.keyboardOptions.bindings = {
-      {HotkeyAction::NavigateLeft, "super+shift+h"},
-      {HotkeyAction::NavigateDown, "super+shift+j"},
-      {HotkeyAction::NavigateUp, "super+shift+k"},
-      {HotkeyAction::NavigateRight, "super+shift+l"},
-      {HotkeyAction::ToggleSplit, "super+shift+y"},
-      {HotkeyAction::Exit, "super+shift+escape"},
-      {HotkeyAction::ToggleGlobal, "super+shift+;"},
-      {HotkeyAction::StoreCell, "super+shift+["},
-      {HotkeyAction::ClearStored, "super+shift+]"},
-      {HotkeyAction::Exchange, "super+shift+,"},
-      {HotkeyAction::Move, "super+shift+."},
-      {HotkeyAction::SplitIncrease, "super+shift+pageup"},
-      {HotkeyAction::SplitDecrease, "super+shift+pagedown"},
-      {HotkeyAction::ExchangeSiblings, "super+shift+e"},
-  };
+  for (auto action : magic_enum::enum_values<HotkeyAction>()) {
+    options.keyboardOptions.bindings.push_back({action, get_default_hotkey(action)});
+  }
   return options;
 }
 
