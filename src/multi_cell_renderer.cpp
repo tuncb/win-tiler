@@ -68,8 +68,8 @@ void render(const cells::System& system, const RenderOptions& config,
     cells::Rect zen_display_rect =
         cells::get_cell_display_rect(pc, zen_cell_index, true, config.zen_percentage);
 
-    // Determine color based on selection state (zen cells use gold base color)
-    overlay::Color color = config.zen_color;
+    // Determine color based on selection state
+    overlay::Color color = config.normal_color;
     if (system.selection.has_value() && system.selection->cluster_id == pc.id &&
         system.selection->cell_index == zen_cell_index) {
       color = config.selected_color;

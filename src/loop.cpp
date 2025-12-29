@@ -651,13 +651,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     std::string current_toast =
         (std::chrono::steady_clock::now() < toast_expiry) ? toast_message : "";
     renderer::RenderOptions render_opts{
-        options.visualizationOptions.normalColor,
-        options.visualizationOptions.selectedColor,
-        options.visualizationOptions.storedColor,
-        options.visualizationOptions.zenColor,
-        options.visualizationOptions.borderWidth,
-        options.visualizationOptions.toastFontSize,
-        options.zenOptions.percentage,
+        options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
+        options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
+        options.visualizationOptions.toastFontSize, options.zenOptions.percentage,
     };
     renderer::render(system, render_opts, stored_cell, current_toast);
 

@@ -230,7 +230,6 @@ WriteResult write_options_toml(const GlobalOptions& options,
     render.insert("normal_color", colorToArray(options.visualizationOptions.normalColor));
     render.insert("selected_color", colorToArray(options.visualizationOptions.selectedColor));
     render.insert("stored_color", colorToArray(options.visualizationOptions.storedColor));
-    render.insert("zen_color", colorToArray(options.visualizationOptions.zenColor));
     render.insert("border_width", options.visualizationOptions.borderWidth);
     render.insert("toast_font_size", options.visualizationOptions.toastFontSize);
     render.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
@@ -473,11 +472,6 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
         options.visualizationOptions.storedColor = *color;
       } else if ((*render)["stored_color"]) {
         spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
-      }
-      if (auto color = parseColor((*render)["zen_color"].as_array())) {
-        options.visualizationOptions.zenColor = *color;
-      } else if ((*render)["zen_color"]) {
-        spdlog::error("Invalid zen_color: values must be 0-255. Using default.");
       }
       if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
         options.visualizationOptions.borderWidth = static_cast<float>(borderWidth->get());
