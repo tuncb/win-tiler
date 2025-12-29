@@ -713,6 +713,13 @@ bool System::move_selection(Direction dir) {
   auto [next_cluster_id, next_cell_index] = *next_opt;
   selection = CellIndicatorByIndex{next_cluster_id, next_cell_index};
 
+  // Clear zen if moving to non-zen cell in a cluster that has zen
+  PositionedCluster* pc = get_cluster(next_cluster_id);
+  if (pc && pc->cluster.zen_cell_index.has_value() &&
+      *pc->cluster.zen_cell_index != next_cell_index) {
+    pc->cluster.zen_cell_index.reset();
+  }
+
   return true;
 }
 
@@ -743,16 +750,13 @@ std::optional<Rect> get_selected_cell_global_rect(const System& system) {
   return get_cell_global_rect(*pc, cell_index);
 }
 
-std::optional<std::pair<ClusterId, int>> get_signified_cell(const System& system) {
-  if (!system.signified.has_value()) {
-    return std::nullopt;
-  }
-  return std::make_pair(system.signified->cluster_id, system.signified->cell_index);
+std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
+  return cluster.zen_cell_index;
 }
 
-Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_signified,
+Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
                            float gap_horizontal, float gap_vertical) {
-  if (is_signified) {
+  if (is_zen) {
     // Return cluster bounds with gaps from edges
     float x = pc.global_x + gap_horizontal;
     float y = pc.global_y + gap_vertical;
@@ -764,15 +768,12 @@ Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_
   return get_cell_global_rect(pc, cell_index);
 }
 
-std::optional<Rect> get_signified_cell_display_rect(const System& system) {
-  if (!system.signified.has_value()) {
+std::optional<Rect> get_cluster_zen_display_rect(const System& system, ClusterId cluster_id) {
+  const PositionedCluster* pc = system.get_cluster(cluster_id);
+  if (!pc || !pc->cluster.zen_cell_index.has_value()) {
     return std::nullopt;
   }
-  const PositionedCluster* pc = system.get_cluster(system.signified->cluster_id);
-  if (!pc) {
-    return std::nullopt;
-  }
-  return get_cell_display_rect(*pc, system.signified->cell_index, true, system.gap_horizontal,
+  return get_cell_display_rect(*pc, *pc->cluster.zen_cell_index, true, system.gap_horizontal,
                                system.gap_vertical);
 }
 
@@ -927,7 +928,7 @@ bool System::exchange_selected_with_sibling() {
   return true;
 }
 
-bool System::set_signified(ClusterId cluster_id, size_t leaf_id) {
+bool System::set_zen(ClusterId cluster_id, size_t leaf_id) {
   PositionedCluster* pc = get_cluster(cluster_id);
   if (!pc) {
     return false;
@@ -939,17 +940,48 @@ bool System::set_signified(ClusterId cluster_id, size_t leaf_id) {
   if (!is_leaf(pc->cluster, *cell_index_opt)) {
     return false;
   }
-  signified = CellIndicatorByIndex{cluster_id, *cell_index_opt};
+  pc->cluster.zen_cell_index = *cell_index_opt;
   return true;
 }
 
-void System::clear_signified() {
-  signified.reset();
+void System::clear_zen(ClusterId cluster_id) {
+  PositionedCluster* pc = get_cluster(cluster_id);
+  if (pc) {
+    pc->cluster.zen_cell_index.reset();
+  }
 }
 
-bool System::is_cell_signified(ClusterId cluster_id, int cell_index) const {
-  return signified.has_value() && signified->cluster_id == cluster_id &&
-         signified->cell_index == cell_index;
+bool System::is_cell_zen(ClusterId cluster_id, int cell_index) const {
+  const PositionedCluster* pc = get_cluster(cluster_id);
+  if (!pc) {
+    return false;
+  }
+  return pc->cluster.zen_cell_index.has_value() && *pc->cluster.zen_cell_index == cell_index;
+}
+
+bool System::toggle_selected_zen() {
+  if (!selection.has_value()) {
+    return false;
+  }
+
+  PositionedCluster* pc = get_cluster(selection->cluster_id);
+  if (!pc) {
+    return false;
+  }
+
+  if (!is_leaf(pc->cluster, selection->cell_index)) {
+    return false;
+  }
+
+  // Toggle: if already zen, clear; otherwise set
+  if (pc->cluster.zen_cell_index.has_value() &&
+      *pc->cluster.zen_cell_index == selection->cell_index) {
+    pc->cluster.zen_cell_index.reset();
+  } else {
+    pc->cluster.zen_cell_index = selection->cell_index;
+  }
+
+  return true;
 }
 
 SwapResult System::swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
@@ -1133,10 +1165,22 @@ MoveResult System::move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
   if (source_was_selected) {
     // Source was selected - follow it to its new position
     selection = CellIndicatorByIndex{target_cluster_id, new_cell_idx};
+
+    // Clear zen if selecting non-zen cell in a cluster with zen
+    if (tgt_pc->cluster.zen_cell_index.has_value() &&
+        *tgt_pc->cluster.zen_cell_index != new_cell_idx) {
+      tgt_pc->cluster.zen_cell_index.reset();
+    }
   } else if (target_was_selected) {
     // Target was selected - it's now a parent, so select its first child
     // (which keeps the target's original leaf_id)
     selection = CellIndicatorByIndex{target_cluster_id, first_child_idx};
+
+    // Clear zen if selecting non-zen cell in a cluster with zen
+    if (tgt_pc->cluster.zen_cell_index.has_value() &&
+        *tgt_pc->cluster.zen_cell_index != first_child_idx) {
+      tgt_pc->cluster.zen_cell_index.reset();
+    }
   }
 
   return {true, new_cell_idx, target_cluster_id, ""};
@@ -1494,6 +1538,11 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
         result.added_leaf_ids.push_back(leaf_id);
       }
     }
+
+    // Reset zen if cells were added or removed from this cluster
+    if (!to_delete.empty() || !to_add.empty()) {
+      pc->cluster.zen_cell_index.reset();
+    }
   }
 
   // Update selection
@@ -1510,6 +1559,12 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
       } else {
         selection = CellIndicatorByIndex{cluster_id, *cell_index_opt};
         result.selection_updated = true;
+
+        // Clear zen if selecting non-zen cell in a cluster with zen
+        if (pc->cluster.zen_cell_index.has_value() &&
+            *pc->cluster.zen_cell_index != *cell_index_opt) {
+          pc->cluster.zen_cell_index.reset();
+        }
       }
     }
   }
