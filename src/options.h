@@ -65,6 +65,9 @@ constexpr float kDefaultGapVertical = 10.0f;
 // Default loop interval
 constexpr int kDefaultLoopIntervalMs = 100;
 
+// Default zen percentage (0.0-1.0 range, 1.0 = full cluster)
+constexpr float kDefaultZenPercentage = 0.85f;
+
 // Gap configuration for window spacing
 struct GapOptions {
   float horizontal = kDefaultGapHorizontal;
@@ -81,9 +84,15 @@ struct VisualizationOptions {
   overlay::Color normalColor{255, 255, 255, 100}; // Semi-transparent white
   overlay::Color selectedColor{0, 120, 255, 200}; // Blue
   overlay::Color storedColor{255, 180, 0, 200};   // Orange
+  overlay::Color zenColor{255, 215, 0, 200};      // Gold for zen cells
   float borderWidth = 3.0f;
   float toastFontSize = 60.0f;
   int toastDurationMs = 2000;
+};
+
+// Zen mode configuration
+struct ZenOptions {
+  float percentage = kDefaultZenPercentage; // 0.0-1.0 range, centered in cluster
 };
 
 // Global options container
@@ -93,6 +102,7 @@ struct GlobalOptions {
   GapOptions gapOptions;
   LoopOptions loopOptions;
   VisualizationOptions visualizationOptions;
+  ZenOptions zenOptions;
 };
 
 // Get default global options

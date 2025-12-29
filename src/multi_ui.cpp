@@ -499,9 +499,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
       int zen_cell_index = *pc.cluster.zen_cell_index;
 
-      // Get full-cluster rect with gaps
-      cells::Rect zen_display_rect = cells::get_cell_display_rect(
-          pc, zen_cell_index, true, app_state.system.gap_horizontal, app_state.system.gap_vertical);
+      // Get zen display rect (centered at percentage of cluster)
+      cells::Rect zen_display_rect =
+          cells::get_cell_display_rect(pc, zen_cell_index, true, options.zenOptions.percentage);
       Rectangle zen_screen_rect = to_screen_rect(vt, zen_display_rect);
 
       // Draw semi-transparent fill

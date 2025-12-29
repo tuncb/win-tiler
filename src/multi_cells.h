@@ -207,14 +207,14 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 [[nodiscard]] std::optional<int> get_cluster_zen_cell(const CellCluster& cluster);
 
 // Get the global rect of a cell, considering zen state.
-// If is_zen is true, returns cluster bounds (with gaps from edges).
+// If is_zen is true, returns centered rect at zen_percentage of cluster size.
 // Otherwise returns the cell's normal tree position.
 [[nodiscard]] Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
-                                         float gap_horizontal, float gap_vertical);
+                                         float zen_percentage);
 
-// Get display rect for zen cell of a specific cluster (full cluster bounds with gaps).
-[[nodiscard]] std::optional<Rect> get_cluster_zen_display_rect(const System& system,
-                                                               ClusterId cluster_id);
+// Get display rect for zen cell of a specific cluster (centered at zen_percentage).
+[[nodiscard]] std::optional<Rect>
+get_cluster_zen_display_rect(const System& system, ClusterId cluster_id, float zen_percentage);
 
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.

@@ -454,7 +454,7 @@ gather_current_window_state(const IgnoreOptions& ignore_options) {
 }
 
 // Helper: Apply tile layout by updating window positions
-void apply_tile_layout(const cells::System& system) {
+void apply_tile_layout(const cells::System& system, float zen_percentage) {
   for (const auto& pc : system.clusters) {
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -468,9 +468,8 @@ void apply_tile_layout(const cells::System& system) {
       // Check if this cell is the zen cell for its cluster
       bool is_zen = pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index == i;
 
-      // Use zen display rect (full cluster) or normal rect
-      cells::Rect global_rect =
-          cells::get_cell_display_rect(pc, i, is_zen, system.gap_horizontal, system.gap_vertical);
+      // Use zen display rect (centered at percentage) or normal rect
+      cells::Rect global_rect = cells::get_cell_display_rect(pc, i, is_zen, zen_percentage);
 
       winapi::WindowPosition pos;
       pos.x = static_cast<int>(global_rect.x);
@@ -520,7 +519,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   spdlog::info("=== Initial Tile Layout ===");
   print_tile_layout(system);
 
-  timed_void("initial apply_tile_layout", [&system] { apply_tile_layout(system); });
+  timed_void("initial apply_tile_layout",
+             [&system, &options] { apply_tile_layout(system, options.zenOptions.percentage); });
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -637,16 +637,21 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         }
       }
 
-      timed_void("apply_tile_layout", [&system] { apply_tile_layout(system); });
+      timed_void("apply_tile_layout",
+                 [&system, &options] { apply_tile_layout(system, options.zenOptions.percentage); });
     }
 
     // Render cell system overlay
     std::string current_toast =
         (std::chrono::steady_clock::now() < toast_expiry) ? toast_message : "";
     renderer::RenderOptions render_opts{
-        options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
-        options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
+        options.visualizationOptions.normalColor,
+        options.visualizationOptions.selectedColor,
+        options.visualizationOptions.storedColor,
+        options.visualizationOptions.zenColor,
+        options.visualizationOptions.borderWidth,
         options.visualizationOptions.toastFontSize,
+        options.zenOptions.percentage,
     };
     renderer::render(system, render_opts, stored_cell, current_toast);
 

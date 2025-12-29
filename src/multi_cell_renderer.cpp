@@ -64,9 +64,9 @@ void render(const cells::System& system, const RenderOptions& config,
 
     int zen_cell_index = *pc.cluster.zen_cell_index;
 
-    // Get full-cluster rect with gaps
-    cells::Rect zen_display_rect = cells::get_cell_display_rect(
-        pc, zen_cell_index, true, system.gap_horizontal, system.gap_vertical);
+    // Get zen display rect (centered at percentage of cluster)
+    cells::Rect zen_display_rect =
+        cells::get_cell_display_rect(pc, zen_cell_index, true, config.zen_percentage);
 
     // Determine color based on selection state (zen cells use gold base color)
     overlay::Color color = config.zen_color;

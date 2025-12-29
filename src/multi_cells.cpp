@@ -777,26 +777,26 @@ std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
 }
 
 Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
-                           float gap_horizontal, float gap_vertical) {
+                           float zen_percentage) {
   if (is_zen) {
-    // Return cluster bounds with gaps from edges
-    float x = pc.global_x + gap_horizontal;
-    float y = pc.global_y + gap_vertical;
-    float w = pc.cluster.window_width - 2.0f * gap_horizontal;
-    float h = pc.cluster.window_height - 2.0f * gap_vertical;
-    return Rect{x, y, w > 0.0f ? w : 0.0f, h > 0.0f ? h : 0.0f};
+    // Return centered rect at zen_percentage of cluster size
+    float zen_w = pc.cluster.window_width * zen_percentage;
+    float zen_h = pc.cluster.window_height * zen_percentage;
+    float offset_x = (pc.cluster.window_width - zen_w) / 2.0f;
+    float offset_y = (pc.cluster.window_height - zen_h) / 2.0f;
+    return Rect{pc.global_x + offset_x, pc.global_y + offset_y, zen_w, zen_h};
   }
   // Normal: return cell's tree position
   return get_cell_global_rect(pc, cell_index);
 }
 
-std::optional<Rect> get_cluster_zen_display_rect(const System& system, ClusterId cluster_id) {
+std::optional<Rect> get_cluster_zen_display_rect(const System& system, ClusterId cluster_id,
+                                                 float zen_percentage) {
   const PositionedCluster* pc = system.get_cluster(cluster_id);
   if (!pc || !pc->cluster.zen_cell_index.has_value()) {
     return std::nullopt;
   }
-  return get_cell_display_rect(*pc, *pc->cluster.zen_cell_index, true, system.gap_horizontal,
-                               system.gap_vertical);
+  return get_cell_display_rect(*pc, *pc->cluster.zen_cell_index, true, zen_percentage);
 }
 
 bool System::toggle_selected_split_dir() {

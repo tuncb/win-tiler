@@ -18,6 +18,7 @@ struct RenderOptions {
   overlay::Color zen_color{255, 215, 0, 200}; // Gold color for zen cells
   float border_width = 3.0f;
   float toast_font_size = 60.0f;
+  float zen_percentage = 0.85f; // Zen cell size as percentage of cluster (0.0-1.0)
 };
 
 // Render the cell system
