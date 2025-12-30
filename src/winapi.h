@@ -109,6 +109,9 @@ std::optional<DragInfo> get_drag_info();
 // Clear the drag ended flag after handling it
 void clear_drag_ended();
 
+// Check if Ctrl key is currently pressed
+bool is_ctrl_pressed();
+
 // Fullscreen detection
 // Check if a specific window covers its entire monitor (fullscreen)
 bool is_window_fullscreen(HWND_T hwnd);

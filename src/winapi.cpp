@@ -603,6 +603,10 @@ void clear_drag_ended() {
   g_moving_hwnd = nullptr;
 }
 
+bool is_ctrl_pressed() {
+  return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+}
+
 bool is_window_fullscreen(HWND_T hwnd) {
   if (hwnd == nullptr) {
     return false;

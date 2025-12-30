@@ -399,18 +399,37 @@ bool handle_mouse_drop_move(cells::System& system,
     return false;
   }
 
-  // Perform the move operation
-  auto result =
-      system.move_cell(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+  // Check if Ctrl is held for exchange operation
+  bool do_exchange = winapi::is_ctrl_pressed();
 
-  if (result.success) {
-    spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_id,
-                 target_cluster_id);
-    move_cursor_to_selected_cell(system);
-    return true;
+  if (do_exchange) {
+    // Exchange: swap source and target positions
+    auto result =
+        system.swap_cells(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+
+    if (result.success) {
+      spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
+                   source_cluster_id, target_cluster_id);
+      move_cursor_to_selected_cell(system);
+      return true;
+    } else {
+      spdlog::warn("Mouse drop: exchange failed - {}", result.error_message);
+      return false;
+    }
   } else {
-    spdlog::warn("Mouse drop: move failed - {}", result.error_message);
-    return false;
+    // Move: source becomes sibling of target
+    auto result =
+        system.move_cell(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+
+    if (result.success) {
+      spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_id,
+                   target_cluster_id);
+      move_cursor_to_selected_cell(system);
+      return true;
+    } else {
+      spdlog::warn("Mouse drop: move failed - {}", result.error_message);
+      return false;
+    }
   }
 }
 
