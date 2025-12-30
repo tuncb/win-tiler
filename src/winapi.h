@@ -96,4 +96,8 @@ void register_move_size_hook();
 void unregister_move_size_hook();
 bool is_any_window_being_moved();
 
+// Fullscreen detection
+// Check if a specific window covers its entire monitor (fullscreen)
+bool is_window_fullscreen(HWND_T hwnd);
+
 } // namespace winapi

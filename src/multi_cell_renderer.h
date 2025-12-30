@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "multi_cells.h"
@@ -25,9 +26,11 @@ struct RenderOptions {
 // - config: Colors and styling
 // - stored_cell: Optional stored cell (ClusterId, leafId) to highlight
 // - message: Optional text to show at bottom-right of primary monitor
+// - fullscreen_clusters: Set of cluster IDs that have fullscreen apps (skip rendering)
 void render(const cells::System& system, const RenderOptions& config,
             std::optional<std::pair<cells::ClusterId, size_t>> stored_cell,
-            const std::string& message);
+            const std::string& message,
+            const std::unordered_set<cells::ClusterId>& fullscreen_clusters);
 
 } // namespace renderer
 } // namespace wintiler

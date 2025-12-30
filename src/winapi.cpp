@@ -554,4 +554,40 @@ bool is_any_window_being_moved() {
   return g_is_moving.load();
 }
 
+bool is_window_fullscreen(HWND_T hwnd) {
+  if (hwnd == nullptr) {
+    return false;
+  }
+
+  HWND win = reinterpret_cast<HWND>(hwnd);
+
+  // Skip invisible windows
+  if (!IsWindowVisible(win)) {
+    return false;
+  }
+
+  // Get the monitor this window is on
+  HMONITOR monitor = MonitorFromWindow(win, MONITOR_DEFAULTTONULL);
+  if (monitor == nullptr) {
+    return false;
+  }
+
+  // Get monitor info
+  MONITORINFO mi;
+  mi.cbSize = sizeof(MONITORINFO);
+  if (!GetMonitorInfoA(monitor, &mi)) {
+    return false;
+  }
+
+  // Get window rect
+  RECT windowRect;
+  if (!GetWindowRect(win, &windowRect)) {
+    return false;
+  }
+
+  // Check if window covers the entire monitor (use full rect, not work area)
+  return windowRect.left <= mi.rcMonitor.left && windowRect.top <= mi.rcMonitor.top &&
+         windowRect.right >= mi.rcMonitor.right && windowRect.bottom >= mi.rcMonitor.bottom;
+}
+
 } // namespace winapi

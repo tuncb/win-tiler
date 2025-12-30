@@ -7,14 +7,15 @@ namespace renderer {
 
 void render(const cells::System& system, const RenderOptions& config,
             std::optional<std::pair<cells::ClusterId, size_t>> stored_cell,
-            const std::string& message) {
+            const std::string& message,
+            const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
   // Begin frame
   overlay::begin_frame();
 
-  // Draw all leaf cells (skip clusters with zen cells - they're handled below)
+  // Draw all leaf cells (skip clusters with zen cells or fullscreen apps)
   for (const auto& pc : system.clusters) {
-    // Skip this cluster if it has a zen cell (will be rendered in zen loop)
-    if (pc.cluster.zen_cell_index.has_value()) {
+    // Skip this cluster if it has a zen cell (will be rendered in zen loop) or fullscreen app
+    if (pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(pc.id)) {
       continue;
     }
 
@@ -56,9 +57,9 @@ void render(const cells::System& system, const RenderOptions& config,
     }
   }
 
-  // Draw zen cell overlays for each cluster
+  // Draw zen cell overlays for each cluster (skip fullscreen clusters)
   for (const auto& pc : system.clusters) {
-    if (!pc.cluster.zen_cell_index.has_value()) {
+    if (!pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(pc.id)) {
       continue;
     }
 
