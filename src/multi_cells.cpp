@@ -524,6 +524,10 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
     pc.id = info.id;
     pc.global_x = info.x;
     pc.global_y = info.y;
+    pc.monitor_x = info.monitor_x;
+    pc.monitor_y = info.monitor_y;
+    pc.monitor_width = info.monitor_width;
+    pc.monitor_height = info.monitor_height;
     pc.cluster = create_initial_state(info.width, info.height);
 
     int selection_index = -1;
@@ -1402,16 +1406,86 @@ std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_
   return std::nullopt;
 }
 
+static bool is_cluster_empty(const CellCluster& cluster) {
+  if (cluster.cells.empty()) {
+    return true;
+  }
+  for (const auto& cell : cluster.cells) {
+    if (!cell.is_dead) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool is_point_in_cluster(const PositionedCluster& pc, float x, float y) {
+  return x >= pc.monitor_x && x < pc.monitor_x + pc.monitor_width && y >= pc.monitor_y &&
+         y < pc.monitor_y + pc.monitor_height;
+}
+
 UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
-                            std::optional<std::pair<ClusterId, size_t>> new_selection) {
+                            std::optional<std::pair<ClusterId, size_t>> new_selection,
+                            std::pair<float, float> pointer_coords) {
   UpdateResult result;
   result.selection_updated = false;
 
   // Make a mutable copy for redirection
   std::vector<ClusterCellIds> redirected_cell_ids = cluster_cell_ids;
 
-  // Redirect new windows to selection if present
-  if (selection.has_value()) {
+  // Find empty cluster under pointer for redirection
+  std::optional<ClusterId> pointer_cluster_id;
+  for (const auto& pc : clusters) {
+    if (is_point_in_cluster(pc, pointer_coords.first, pointer_coords.second) &&
+        is_cluster_empty(pc.cluster)) {
+      pointer_cluster_id = pc.id;
+      break;
+    }
+  }
+
+  // Redirect new windows to pointer's empty cluster if found
+  if (pointer_cluster_id.has_value()) {
+    // Collect new windows (not in any cluster)
+    std::vector<size_t> new_windows;
+    for (const auto& upd : redirected_cell_ids) {
+      for (size_t leaf_id : upd.leaf_ids) {
+        bool is_new = true;
+        for (const auto& pc : clusters) {
+          if (find_cell_by_leaf_id(pc.cluster, leaf_id).has_value()) {
+            is_new = false;
+            break;
+          }
+        }
+        if (is_new) {
+          new_windows.push_back(leaf_id);
+        }
+      }
+    }
+
+    if (!new_windows.empty()) {
+      // Remove from detected clusters
+      for (auto& upd : redirected_cell_ids) {
+        auto& ids = upd.leaf_ids;
+        ids.erase(std::remove_if(ids.begin(), ids.end(),
+                                 [&new_windows](size_t id) {
+                                   return std::find(new_windows.begin(), new_windows.end(), id) !=
+                                          new_windows.end();
+                                 }),
+                  ids.end());
+      }
+
+      // Add to pointer's empty cluster
+      for (auto& upd : redirected_cell_ids) {
+        if (upd.cluster_id == *pointer_cluster_id) {
+          for (size_t id : new_windows) {
+            upd.leaf_ids.push_back(id);
+          }
+          break;
+        }
+      }
+    }
+  }
+  // Redirect new windows to selection if present (fallback when pointer not in empty cluster)
+  else if (selection.has_value()) {
     ClusterId selected_cluster_id = selection->cluster_id;
 
     // Check if selected cluster is in the updates list

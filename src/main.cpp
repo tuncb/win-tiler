@@ -75,10 +75,16 @@ void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
     const auto& monitor = monitors[monitorIndex];
 
+    // Workspace bounds (for tiling)
     float x = static_cast<float>(monitor.workArea.left);
     float y = static_cast<float>(monitor.workArea.top);
     float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+    // Full monitor bounds (for pointer detection)
+    float mx = static_cast<float>(monitor.rect.left);
+    float my = static_cast<float>(monitor.rect.top);
+    float mw = static_cast<float>(monitor.rect.right - monitor.rect.left);
+    float mh = static_cast<float>(monitor.rect.bottom - monitor.rect.top);
 
     auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, globalOptions.ignoreOptions);
     std::vector<size_t> cellIds;
@@ -86,7 +92,7 @@ void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
     }
 
-    infos.push_back({monitorIndex, x, y, w, h, cellIds});
+    infos.push_back({monitorIndex, x, y, w, h, mx, my, mw, mh, cellIds});
   }
 
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
@@ -113,13 +119,23 @@ void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& option
   std::vector<cells::ClusterInitInfo> infos;
 
   if (cmd.clusters.empty()) {
-    // Default: two monitors side by side
-    infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
-    infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+    // Default: two monitors side by side (monitor bounds = workspace bounds for UI test)
+    infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+    infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
   } else {
     size_t clusterId = 0;
     for (const auto& cluster : cmd.clusters) {
-      infos.push_back({clusterId++, cluster.x, cluster.y, cluster.width, cluster.height, {}});
+      // monitor bounds = workspace bounds for UI test
+      infos.push_back({clusterId++,
+                       cluster.x,
+                       cluster.y,
+                       cluster.width,
+                       cluster.height,
+                       cluster.x,
+                       cluster.y,
+                       cluster.width,
+                       cluster.height,
+                       {}});
     }
   }
 
