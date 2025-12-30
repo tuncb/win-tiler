@@ -137,7 +137,8 @@ IgnoreOptions get_default_ignore_options() {
       {"WidgetBoard.exe", "Windows Widgets"},
       {"msedgewebview2.exe", "MSN"},
   };
-  options.small_window_barrier = SmallWindowBarrier{50, 50};
+  options.small_window_barrier =
+      SmallWindowBarrier{kDefaultSmallWindowBarrierWidth, kDefaultSmallWindowBarrierHeight};
   return options;
 }
 
@@ -314,8 +315,16 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
         auto width = (*barrier)["width"].as_integer();
         auto height = (*barrier)["height"].as_integer();
         if (width && height) {
-          options.ignoreOptions.small_window_barrier =
-              SmallWindowBarrier{static_cast<int>(width->get()), static_cast<int>(height->get())};
+          int w = static_cast<int>(width->get());
+          int h = static_cast<int>(height->get());
+          if (w < 0 || h < 0) {
+            spdlog::error(
+                "Invalid small_window_barrier: dimensions must be non-negative. Using default.");
+            options.ignoreOptions.small_window_barrier = SmallWindowBarrier{
+                kDefaultSmallWindowBarrierWidth, kDefaultSmallWindowBarrierHeight};
+          } else {
+            options.ignoreOptions.small_window_barrier = SmallWindowBarrier{w, h};
+          }
         }
       }
     }
@@ -488,7 +497,21 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
     if (options.visualizationOptions.toastDurationMs < 0) {
       spdlog::error("Invalid toast_duration_ms value ({}): must be non-negative. Using default.",
                     options.visualizationOptions.toastDurationMs);
-      options.visualizationOptions.toastDurationMs = 2000;
+      options.visualizationOptions.toastDurationMs = kDefaultToastDurationMs;
+    }
+
+    // Validate border width - negative values not allowed
+    if (options.visualizationOptions.borderWidth < 0) {
+      spdlog::error("Invalid border_width value ({}): must be non-negative. Using default.",
+                    options.visualizationOptions.borderWidth);
+      options.visualizationOptions.borderWidth = kDefaultBorderWidth;
+    }
+
+    // Validate toast font size - must be positive
+    if (options.visualizationOptions.toastFontSize < 1.0f) {
+      spdlog::error("Invalid toast_font_size value ({}): must be >= 1.0. Using default.",
+                    options.visualizationOptions.toastFontSize);
+      options.visualizationOptions.toastFontSize = kDefaultToastFontSize;
     }
 
     // Parse zen section

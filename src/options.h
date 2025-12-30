@@ -68,6 +68,15 @@ constexpr int kDefaultLoopIntervalMs = 100;
 // Default zen percentage (0.0-1.0 range, 1.0 = full cluster)
 constexpr float kDefaultZenPercentage = 0.85f;
 
+// Default visualization options
+constexpr float kDefaultBorderWidth = 3.0f;
+constexpr float kDefaultToastFontSize = 60.0f;
+constexpr int kDefaultToastDurationMs = 2000;
+
+// Default small window barrier dimensions
+constexpr int kDefaultSmallWindowBarrierWidth = 50;
+constexpr int kDefaultSmallWindowBarrierHeight = 50;
+
 // Gap configuration for window spacing
 struct GapOptions {
   float horizontal = kDefaultGapHorizontal;
@@ -84,9 +93,9 @@ struct VisualizationOptions {
   overlay::Color normalColor{255, 255, 255, 100}; // Semi-transparent white
   overlay::Color selectedColor{0, 120, 255, 200}; // Blue
   overlay::Color storedColor{255, 180, 0, 200};   // Orange
-  float borderWidth = 3.0f;
-  float toastFontSize = 60.0f;
-  int toastDurationMs = 2000;
+  float borderWidth = kDefaultBorderWidth;
+  float toastFontSize = kDefaultToastFontSize;
+  int toastDurationMs = kDefaultToastDurationMs;
 };
 
 // Zen mode configuration
