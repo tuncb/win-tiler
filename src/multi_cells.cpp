@@ -471,16 +471,71 @@ static bool validate_state(const CellCluster& state) {
 // ============================================================================
 
 // ============================================================================
+// Split Mode Helpers
+// ============================================================================
+
+// Determine the split direction based on mode, parent cell, and global state
+static SplitDir determine_split_dir(const CellCluster& cluster, int selected_index, SplitMode mode,
+                                    SplitDir global_split_dir) {
+  switch (mode) {
+  case SplitMode::AlwaysVertical:
+    return SplitDir::Vertical;
+  case SplitMode::AlwaysHorizontal:
+    return SplitDir::Horizontal;
+  case SplitMode::AlternateLocally: {
+    // If splitting an existing cell, use opposite of its parent's direction
+    if (selected_index >= 0 && selected_index < static_cast<int>(cluster.cells.size())) {
+      const Cell& selected = cluster.cells[static_cast<size_t>(selected_index)];
+      if (selected.parent.has_value()) {
+        const Cell& parent = cluster.cells[static_cast<size_t>(*selected.parent)];
+        return (parent.split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+      }
+    }
+    // Fall back to global for root-level splits
+    return global_split_dir;
+  }
+  case SplitMode::AlternateGlobally:
+  default:
+    return global_split_dir;
+  }
+}
+
+// Returns true if the mode requires toggling global_split_dir after a split
+static bool should_toggle_global(SplitMode mode) {
+  return mode == SplitMode::AlternateGlobally;
+}
+
+// Convert split mode to string for debug output
+static const char* split_mode_to_string(SplitMode mode) {
+  switch (mode) {
+  case SplitMode::AlternateLocally:
+    return "alternate-locally";
+  case SplitMode::AlternateGlobally:
+    return "alternate-globally";
+  case SplitMode::AlwaysVertical:
+    return "always-vertical";
+  case SplitMode::AlwaysHorizontal:
+    return "always-horizontal";
+  default:
+    return "unknown";
+  }
+}
+
+// ============================================================================
 // Helper: Pre-create leaves in a cluster from initialCellIds
 // Returns the selection index (or -1 if no cells created)
 // ============================================================================
 
 static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& cell_ids,
-                             float gap_horizontal, float gap_vertical, SplitDir& split_dir) {
+                             float gap_horizontal, float gap_vertical, SplitMode mode,
+                             SplitDir& global_split_dir) {
   int current_selection = -1;
 
   for (size_t i = 0; i < cell_ids.size(); ++i) {
     size_t cell_id = cell_ids[i];
+
+    // Determine split direction based on mode
+    SplitDir split_dir = determine_split_dir(pc.cluster, current_selection, mode, global_split_dir);
 
     if (pc.cluster.cells.empty()) {
       // First cell: create root leaf (pass -1 for empty cluster)
@@ -497,8 +552,11 @@ static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& c
       if (result_opt.has_value()) {
         // After split, selection moves to first child
         current_selection = result_opt->new_selection_index;
-        // Toggle split direction for next split
-        split_dir = (split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+        // Toggle global split direction only for AlternateGlobally mode
+        if (should_toggle_global(mode)) {
+          global_split_dir =
+              (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+        }
       }
     }
   }
@@ -531,8 +589,9 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
     int selection_index = -1;
     // Pre-create leaves if initial_cell_ids provided
     if (!info.initial_cell_ids.empty()) {
-      selection_index = pre_create_leaves(pc, info.initial_cell_ids, system.gap_horizontal,
-                                          system.gap_vertical, system.global_split_dir);
+      selection_index =
+          pre_create_leaves(pc, info.initial_cell_ids, system.gap_horizontal, system.gap_vertical,
+                            system.split_mode, system.global_split_dir);
     }
 
     // If this is the first cluster with cells, make it the selected cluster
@@ -817,6 +876,24 @@ bool System::toggle_selected_split_dir() {
 bool System::toggle_global_split_dir() {
   global_split_dir =
       (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+  return true;
+}
+
+bool System::cycle_split_mode() {
+  switch (split_mode) {
+  case SplitMode::AlternateLocally:
+    split_mode = SplitMode::AlternateGlobally;
+    break;
+  case SplitMode::AlternateGlobally:
+    split_mode = SplitMode::AlwaysVertical;
+    break;
+  case SplitMode::AlwaysVertical:
+    split_mode = SplitMode::AlwaysHorizontal;
+    break;
+  case SplitMode::AlwaysHorizontal:
+    split_mode = SplitMode::AlternateLocally;
+    break;
+  }
   return true;
 }
 
@@ -1152,17 +1229,21 @@ MoveResult System::move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
     return {false, -1, 0, "Target lost after delete"};
   }
 
-  // Split target with the saved leaf_id
+  // Determine split direction based on mode and split target
+  SplitDir split_dir =
+      determine_split_dir(tgt_pc->cluster, *tgt_idx_opt, split_mode, global_split_dir);
   auto split_result = split_leaf(tgt_pc->cluster, *tgt_idx_opt, gap_horizontal, gap_vertical,
-                                 saved_leaf_id, global_split_dir);
+                                 saved_leaf_id, split_dir);
 
   if (!split_result.has_value()) {
     return {false, -1, 0, "Split failed"};
   }
 
-  // Toggle split direction after successful split
-  global_split_dir =
-      (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+  // Toggle split direction after successful split (only for AlternateGlobally mode)
+  if (should_toggle_global(split_mode)) {
+    global_split_dir =
+        (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+  }
 
   // Find the new cell (second child)
   int first_child_idx = split_result->new_selection_index;
@@ -1316,6 +1397,7 @@ bool validate_system(const System& system) {
 void debug_print_system(const System& system) {
   spdlog::debug("===== MultiClusterSystem =====");
   spdlog::debug("clusters.size = {}", system.clusters.size());
+  spdlog::debug("split_mode = {}", split_mode_to_string(system.split_mode));
   spdlog::debug("global_split_dir = {}",
                 system.global_split_dir == SplitDir::Vertical ? "Vertical" : "Horizontal");
 
@@ -1622,15 +1704,18 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
       }
 
       bool is_root_creation = (current_selection == -1);
+      // Determine split direction based on mode
+      SplitDir split_dir =
+          determine_split_dir(pc->cluster, current_selection, split_mode, global_split_dir);
       auto result_opt = split_leaf(pc->cluster, current_selection, gap_horizontal, gap_vertical,
-                                   leaf_id, global_split_dir);
+                                   leaf_id, split_dir);
 
       if (result_opt.has_value()) {
         // Update split_from_index to follow the first child for subsequent additions
         split_from_index = result_opt->new_selection_index;
         result.added_leaf_ids.push_back(leaf_id);
-        // Toggle split direction only for actual splits (not root creation)
-        if (!is_root_creation) {
+        // Toggle split direction only for actual splits and AlternateGlobally mode
+        if (!is_root_creation && should_toggle_global(split_mode)) {
           global_split_dir =
               (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
         }
