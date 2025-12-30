@@ -61,6 +61,32 @@ void log_monitors(const std::vector<MonitorInfo>& monitors) {
   }
 }
 
+bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    const auto& ma = a[i];
+    const auto& mb = b[i];
+    // Compare rect
+    if (ma.rect.left != mb.rect.left || ma.rect.top != mb.rect.top ||
+        ma.rect.right != mb.rect.right || ma.rect.bottom != mb.rect.bottom) {
+      return false;
+    }
+    // Compare workArea
+    if (ma.workArea.left != mb.workArea.left || ma.workArea.top != mb.workArea.top ||
+        ma.workArea.right != mb.workArea.right || ma.workArea.bottom != mb.workArea.bottom) {
+      return false;
+    }
+    // Compare isPrimary
+    if (ma.isPrimary != mb.isPrimary) {
+      return false;
+    }
+    // Note: handle is not compared as it may change between enumerations
+  }
+  return true;
+}
+
 std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
   DWORD pid = 0;
   GetWindowThreadProcessId((HWND)hwnd, &pid);

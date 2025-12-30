@@ -529,10 +529,8 @@ void apply_tile_layout(const cells::System& system, float zen_percentage,
   }
 }
 
-cells::System create_initial_system(const GlobalOptions& options) {
-  auto monitors = winapi::get_monitors();
-  winapi::log_monitors(monitors);
-
+cells::System create_initial_system_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
+                                                  const GlobalOptions& options) {
   std::vector<cells::ClusterInitInfo> cluster_infos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
@@ -559,13 +557,23 @@ cells::System create_initial_system(const GlobalOptions& options) {
                               options.gapOptions.vertical);
 }
 
+cells::System create_initial_system(const GlobalOptions& options) {
+  auto monitors = winapi::get_monitors();
+  winapi::log_monitors(monitors);
+  return create_initial_system_from_monitors(monitors, options);
+}
+
 } // namespace
 
 void run_loop_mode(GlobalOptionsProvider& provider) {
   const auto& options = provider.options;
 
-  auto system =
-      timed("create_initial_system", [&options] { return create_initial_system(options); });
+  // Get initial monitor configuration and create system
+  auto monitors = winapi::get_monitors();
+  winapi::log_monitors(monitors);
+  auto system = timed("create_initial_system", [&monitors, &options] {
+    return create_initial_system_from_monitors(monitors, options);
+  });
 
   // Track which clusters have fullscreen apps
   std::unordered_set<cells::ClusterId> fullscreen_clusters;
@@ -625,6 +633,21 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
 
         spdlog::info("Config hot-reloaded");
+      }
+
+      // Check for monitor configuration changes
+      auto current_monitors = winapi::get_monitors();
+      if (!winapi::monitors_equal(monitors, current_monitors)) {
+        spdlog::info("Monitor configuration changed, reinitializing system...");
+        winapi::log_monitors(current_monitors);
+        monitors = current_monitors;
+        system = create_initial_system_from_monitors(monitors, options);
+        fullscreen_clusters.clear();
+        stored_cell.reset();
+        spdlog::info("=== Reinitialized Tile Layout ===");
+        print_tile_layout(system);
+        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+        continue;
       }
 
       // Check for keyboard hotkeys
