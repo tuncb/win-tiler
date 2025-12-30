@@ -79,8 +79,13 @@ using ClusterId = size_t;
 struct PositionedCluster {
   ClusterId id;
   CellCluster cluster;
-  float global_x; // Global position of cluster's top-left
+  float global_x; // Workspace position (for tiling)
   float global_y;
+  // Full monitor bounds (for pointer detection)
+  float monitor_x;
+  float monitor_y;
+  float monitor_width;
+  float monitor_height;
 };
 
 // Points to a specific cell by cluster ID and cell index.
@@ -158,7 +163,8 @@ struct System {
   void update_gaps(float horizontal, float vertical);
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
-                      std::optional<std::pair<ClusterId, size_t>> new_selection);
+                      std::optional<std::pair<ClusterId, size_t>> new_selection,
+                      std::pair<float, float> pointer_coords);
 
   // Zen cell operations (per-cluster)
   [[nodiscard]] bool set_zen(ClusterId cluster_id, size_t leaf_id);
@@ -169,10 +175,15 @@ struct System {
 
 struct ClusterInitInfo {
   ClusterId id;
-  float x;
-  float y;
-  float width;
-  float height;
+  float x;      // workspace x (for tiling)
+  float y;      // workspace y
+  float width;  // workspace width
+  float height; // workspace height
+  // Full monitor bounds (for pointer detection)
+  float monitor_x;
+  float monitor_y;
+  float monitor_width;
+  float monitor_height;
   std::vector<size_t> initial_cell_ids; // Optional pre-assigned leaf IDs
 };
 

@@ -536,17 +536,23 @@ cells::System create_initial_system(const GlobalOptions& options) {
   std::vector<cells::ClusterInitInfo> cluster_infos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
+    // Workspace bounds (for tiling)
     float x = static_cast<float>(monitor.workArea.left);
     float y = static_cast<float>(monitor.workArea.top);
     float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
     float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
+    // Full monitor bounds (for pointer detection)
+    float mx = static_cast<float>(monitor.rect.left);
+    float my = static_cast<float>(monitor.rect.top);
+    float mw = static_cast<float>(monitor.rect.right - monitor.rect.left);
+    float mh = static_cast<float>(monitor.rect.bottom - monitor.rect.top);
 
     auto hwnds = winapi::get_hwnds_for_monitor(i, options.ignoreOptions);
     std::vector<size_t> cell_ids;
     for (auto hwnd : hwnds) {
       cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
     }
-    cluster_infos.push_back({i, x, y, w, h, cell_ids});
+    cluster_infos.push_back({i, x, y, w, h, mx, my, mw, mh, cell_ids});
   }
 
   return cells::create_system(cluster_infos, options.gapOptions.horizontal,
@@ -644,8 +650,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       });
 
       // Use update to sync
-      auto result = timed("update", [&system, &current_state] {
-        return system.update(current_state, std::nullopt);
+      auto cursor_pos = winapi::get_cursor_pos();
+      float cursor_x = cursor_pos.has_value() ? static_cast<float>(cursor_pos->x) : 0.0f;
+      float cursor_y = cursor_pos.has_value() ? static_cast<float>(cursor_pos->y) : 0.0f;
+      auto result = timed("update", [&system, &current_state, cursor_x, cursor_y] {
+        return system.update(current_state, std::nullopt, {cursor_x, cursor_y});
       });
 
       // Update fullscreen state before selection (affects mouse selection and rendering)

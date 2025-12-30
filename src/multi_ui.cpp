@@ -150,7 +150,8 @@ std::vector<cells::ClusterCellIds> build_current_state(const cells::System& syst
   return state;
 }
 
-void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process_id) {
+void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process_id,
+                           const ViewTransform& vt) {
   if (!app_state.system.selection.has_value()) {
     return;
   }
@@ -167,11 +168,17 @@ void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process
     }
   }
 
+  // Get mouse position in global coordinates
+  Vector2 mouse_pos = GetMousePosition();
+  float global_x, global_y;
+  to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
+
   // Update system and select the newly added cell
-  app_state.system.update(state, std::make_pair(selected_cluster_id, new_leaf_id));
+  app_state.system.update(state, std::make_pair(selected_cluster_id, new_leaf_id),
+                          {global_x, global_y});
 }
 
-void delete_selected_process_multi(MultiClusterAppState& app_state) {
+void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTransform& vt) {
   auto selected = cells::get_selected_cell(app_state.system);
   if (!selected.has_value()) {
     return;
@@ -200,8 +207,13 @@ void delete_selected_process_multi(MultiClusterAppState& app_state) {
     }
   }
 
+  // Get mouse position in global coordinates
+  Vector2 mouse_pos = GetMousePosition();
+  float global_x, global_y;
+  to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
+
   // Update system (selection will auto-update)
-  app_state.system.update(state, std::nullopt);
+  app_state.system.update(state, std::nullopt, {global_x, global_y});
 }
 
 Color get_cluster_color(cells::ClusterId id) {
@@ -299,11 +311,11 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
     // Keyboard input (actions not in HotkeyAction enum)
     if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process_multi(app_state, next_process_id);
+      add_new_process_multi(app_state, next_process_id, vt);
     }
 
     if (IsKeyPressed(KEY_D)) {
-      delete_selected_process_multi(app_state);
+      delete_selected_process_multi(app_state, vt);
     }
 
     if (IsKeyPressed(KEY_I)) {
