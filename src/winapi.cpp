@@ -535,18 +535,28 @@ std::optional<int> check_keyboard_action() {
 // Window move/resize detection using SetWinEventHook
 namespace {
 std::atomic<bool> g_is_moving{false};
+std::atomic<HWND> g_moving_hwnd{nullptr};
+std::atomic<bool> g_move_just_ended{false};
 HWINEVENTHOOK g_move_start_hook = nullptr;
 HWINEVENTHOOK g_move_end_hook = nullptr;
 
-void CALLBACK move_size_hook_proc(HWINEVENTHOOK /*hWinEventHook*/, DWORD event, HWND /*hwnd*/,
-                                  LONG /*idObject*/, LONG /*idChild*/, DWORD /*idEventThread*/,
+void CALLBACK move_size_hook_proc(HWINEVENTHOOK /*hWinEventHook*/, DWORD event, HWND hwnd,
+                                  LONG idObject, LONG idChild, DWORD /*idEventThread*/,
                                   DWORD /*dwmsEventTime*/) {
+  // Only handle window events (OBJID_WINDOW == 0 and CHILDID_SELF == 0)
+  if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) {
+    return;
+  }
+
   if (event == EVENT_SYSTEM_MOVESIZESTART) {
+    g_moving_hwnd = hwnd;
     g_is_moving = true;
-    spdlog::trace("Window move/resize started");
+    g_move_just_ended = false;
+    spdlog::trace("Window move/resize started: hwnd={}", static_cast<void*>(hwnd));
   } else if (event == EVENT_SYSTEM_MOVESIZEEND) {
     g_is_moving = false;
-    spdlog::trace("Window move/resize ended");
+    g_move_just_ended = true;
+    spdlog::trace("Window move/resize ended: hwnd={}", static_cast<void*>(g_moving_hwnd.load()));
   }
 }
 } // namespace
@@ -578,6 +588,19 @@ void unregister_move_size_hook() {
 
 bool is_any_window_being_moved() {
   return g_is_moving.load();
+}
+
+std::optional<DragInfo> get_drag_info() {
+  HWND hwnd = g_moving_hwnd.load();
+  if (hwnd == nullptr) {
+    return std::nullopt;
+  }
+  return DragInfo{reinterpret_cast<HWND_T>(hwnd), g_move_just_ended.load()};
+}
+
+void clear_drag_ended() {
+  g_move_just_ended = false;
+  g_moving_hwnd = nullptr;
 }
 
 bool is_window_fullscreen(HWND_T hwnd) {
