@@ -271,10 +271,10 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
-    CHECK(result.options.ignoreOptions.merge_processes == true);
-    CHECK(result.options.ignoreOptions.merge_window_titles == true);
-    CHECK(result.options.ignoreOptions.merge_process_title_pairs == true);
+    REQUIRE(result.has_value());
+    CHECK(result.value().ignoreOptions.merge_processes == true);
+    CHECK(result.value().ignoreOptions.merge_window_titles == true);
+    CHECK(result.value().ignoreOptions.merge_process_title_pairs == true);
   }
 
   TEST_CASE("merge_processes = true merges user values with defaults") {
@@ -289,9 +289,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& processes = result.options.ignoreOptions.ignored_processes;
+    auto& processes = result.value().ignoreOptions.ignored_processes;
     auto defaults = get_default_ignore_options();
 
     // Should contain all defaults plus user additions
@@ -319,9 +319,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& processes = result.options.ignoreOptions.ignored_processes;
+    auto& processes = result.value().ignoreOptions.ignored_processes;
 
     // Should only contain user value
     CHECK(processes.size() == 1);
@@ -340,9 +340,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& titles = result.options.ignoreOptions.ignored_window_titles;
+    auto& titles = result.value().ignoreOptions.ignored_window_titles;
     auto defaults = get_default_ignore_options();
 
     // Default window_titles is empty, so should just have user values
@@ -363,9 +363,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& titles = result.options.ignoreOptions.ignored_window_titles;
+    auto& titles = result.value().ignoreOptions.ignored_window_titles;
     CHECK(titles.size() == 1);
     CHECK(titles[0] == "Only This Title");
   }
@@ -384,9 +384,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& pairs = result.options.ignoreOptions.ignored_process_title_pairs;
+    auto& pairs = result.value().ignoreOptions.ignored_process_title_pairs;
     auto defaults = get_default_ignore_options();
 
     // Should contain all defaults plus user addition
@@ -411,9 +411,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& pairs = result.options.ignoreOptions.ignored_process_title_pairs;
+    auto& pairs = result.value().ignoreOptions.ignored_process_title_pairs;
     CHECK(pairs.size() == 1);
     CHECK(pairs[0].first == "only.exe");
     CHECK(pairs[0].second == "Only Window");
@@ -437,9 +437,9 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
-    auto& processes = result.options.ignoreOptions.ignored_processes;
+    auto& processes = result.value().ignoreOptions.ignored_processes;
 
     // Should have defaults + 1 new (duplicate should not be added twice)
     CHECK(processes.size() == defaults.ignored_processes.size() + 1);
@@ -460,15 +460,15 @@ TEST_SUITE("IgnoreOptions Merge") {
     options.ignoreOptions.ignored_processes = {"test.exe"};
 
     auto writeResult = write_options_toml(options, temp_path);
-    REQUIRE(writeResult.success);
+    REQUIRE(writeResult.has_value());
 
     auto readResult = read_options_toml(temp_path);
-    REQUIRE(readResult.success);
+    REQUIRE(readResult.has_value());
 
     // When merge is false, we get only user values back
-    CHECK(readResult.options.ignoreOptions.merge_processes == false);
-    CHECK(readResult.options.ignoreOptions.merge_window_titles == true);
-    CHECK(readResult.options.ignoreOptions.merge_process_title_pairs == false);
+    CHECK(readResult.value().ignoreOptions.merge_processes == false);
+    CHECK(readResult.value().ignoreOptions.merge_window_titles == true);
+    CHECK(readResult.value().ignoreOptions.merge_process_title_pairs == false);
   }
 
   TEST_CASE("independent merge flags work correctly") {
@@ -489,20 +489,20 @@ TEST_SUITE("IgnoreOptions Merge") {
     }
 
     auto result = read_options_toml(temp_path);
-    REQUIRE(result.success);
+    REQUIRE(result.has_value());
 
     auto defaults = get_default_ignore_options();
 
     // processes: merge=false, should have only user value
-    CHECK(result.options.ignoreOptions.ignored_processes.size() == 1);
-    CHECK(result.options.ignoreOptions.ignored_processes[0] == "custom.exe");
+    CHECK(result.value().ignoreOptions.ignored_processes.size() == 1);
+    CHECK(result.value().ignoreOptions.ignored_processes[0] == "custom.exe");
 
     // window_titles: merge=true, should have defaults + user (defaults is empty)
-    CHECK(result.options.ignoreOptions.ignored_window_titles.size() ==
+    CHECK(result.value().ignoreOptions.ignored_window_titles.size() ==
           defaults.ignored_window_titles.size() + 1);
 
     // process_title_pairs: merge=false, should have only user value
-    CHECK(result.options.ignoreOptions.ignored_process_title_pairs.size() == 1);
+    CHECK(result.value().ignoreOptions.ignored_process_title_pairs.size() == 1);
   }
 }
 

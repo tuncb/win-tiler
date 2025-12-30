@@ -4,6 +4,7 @@
     "doctest",
     "spdlog",
     "tomlplusplus",
-    "magic-enum"
+    "magic-enum",
+    "tl-expected"
   ]
 }

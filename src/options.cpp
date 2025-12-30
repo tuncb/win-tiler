@@ -151,8 +151,8 @@ GlobalOptions get_default_global_options() {
   return options;
 }
 
-WriteResult write_options_toml(const GlobalOptions& options,
-                               const std::filesystem::path& filepath) {
+tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
+                                                   const std::filesystem::path& filepath) {
   try {
     toml::table root;
 
@@ -244,16 +244,19 @@ WriteResult write_options_toml(const GlobalOptions& options,
     // Write to file
     std::ofstream file(filepath);
     if (!file) {
-      return WriteResult{false, "Failed to open file for writing: " + filepath.string()};
+      return tl::unexpected("Failed to open file for writing: " + filepath.string());
     }
     file << root;
-    return WriteResult{true, ""};
+    return {};
   } catch (const std::exception& e) {
-    return WriteResult{false, std::string("Error writing TOML: ") + e.what()};
+    return tl::unexpected(std::string("Error writing TOML: ") + e.what());
   }
 }
 
-ReadResult read_options_toml(const std::filesystem::path& filepath) {
+// Reads options from a TOML file at the given path.
+// All fields are optional; missing fields will use default values.
+// All fields are validated; invalid values will be replaced with defaults.
+tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem::path& filepath) {
   try {
     auto tbl = toml::parse_file(filepath.string());
     GlobalOptions options;
@@ -532,11 +535,11 @@ ReadResult read_options_toml(const std::filesystem::path& filepath) {
       options.zenOptions.percentage = 1.0f;
     }
 
-    return ReadResult{true, "", options};
+    return options;
   } catch (const toml::parse_error& e) {
-    return ReadResult{false, std::string("TOML parse error: ") + e.what(), {}};
+    return tl::unexpected(std::string("TOML parse error: ") + e.what());
   } catch (const std::exception& e) {
-    return ReadResult{false, std::string("Error reading TOML: ") + e.what(), {}};
+    return tl::unexpected(std::string("Error reading TOML: ") + e.what());
   }
 }
 
@@ -544,11 +547,11 @@ GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path
     : configPath(std::move(path)), options(get_default_global_options()), lastModified{} {
   if (configPath.has_value() && std::filesystem::exists(*configPath)) {
     auto result = read_options_toml(*configPath);
-    if (result.success) {
-      options = result.options;
+    if (result.has_value()) {
+      options = result.value();
       lastModified = std::filesystem::last_write_time(*configPath);
     } else {
-      spdlog::error("Failed to load config: {}", result.error);
+      spdlog::error("Failed to load config: {}", result.error());
     }
   }
 }
@@ -567,13 +570,13 @@ bool GlobalOptionsProvider::refresh() {
   }
 
   auto result = read_options_toml(*configPath);
-  if (result.success) {
-    options = result.options;
+  if (result.has_value()) {
+    options = result.value();
     lastModified = currentModified;
     spdlog::info("Config reloaded from: {}", configPath->string());
     return true;
   }
-  spdlog::error("Failed to reload config: {}", result.error);
+  spdlog::error("Failed to reload config: {}", result.error());
   return false;
 }
 

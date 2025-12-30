@@ -178,17 +178,17 @@ int main(int argc, char* argv[]) {
   // Load config
   if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
     auto loaded = read_options_toml(configPath);
-    if (loaded.success) {
-      globalOptions = loaded.options;
+    if (loaded.has_value()) {
+      globalOptions = loaded.value();
       spdlog::info("Loaded config from: {}", configPath.string());
     } else {
       if (configExplicitlySpecified) {
         // Explicit config path failed - error out
-        spdlog::error("Failed to load config: {}", loaded.error);
+        spdlog::error("Failed to load config: {}", loaded.error());
         return 1;
       }
       // Default config failed to load - just use defaults silently
-      spdlog::debug("Default config not loaded: {}", loaded.error);
+      spdlog::debug("Default config not loaded: {}", loaded.error());
     }
   }
 
@@ -212,10 +212,10 @@ int main(int argc, char* argv[]) {
               auto targetPath =
                   cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
               auto writeResult = write_options_toml(get_default_global_options(), targetPath);
-              if (writeResult.success) {
+              if (writeResult.has_value()) {
                 spdlog::info("Config written to: {}", targetPath.string());
               } else {
-                spdlog::error("Failed to write config: {}", writeResult.error);
+                spdlog::error("Failed to write config: {}", writeResult.error());
               }
             },
         },
