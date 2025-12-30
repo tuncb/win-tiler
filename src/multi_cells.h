@@ -77,10 +77,7 @@ struct SplitResult {
 // Multi-Cluster System
 // ============================================================================
 
-using ClusterId = size_t;
-
 struct PositionedCluster {
-  ClusterId id;
   CellCluster cluster;
   float global_x; // Workspace position (for tiling)
   float global_y;
@@ -91,9 +88,9 @@ struct PositionedCluster {
   float monitor_height;
 };
 
-// Points to a specific cell by cluster ID and cell index.
+// Points to a specific cell by cluster index and cell index.
 struct CellIndicatorByIndex {
-  ClusterId cluster_id;
+  size_t cluster_index;
   int cell_index; // always a leaf index
 };
 
@@ -106,7 +103,7 @@ constexpr float kDefaultCellGapVertical = 10.0f;
 // ============================================================================
 
 struct ClusterCellIds {
-  ClusterId cluster_id;
+  size_t cluster_index;
   std::vector<size_t> leaf_ids; // Desired leaf IDs for this cluster
 };
 
@@ -117,7 +114,7 @@ struct UpdateError {
     SelectionInvalid,
   };
   Type type;
-  ClusterId cluster_id;
+  size_t cluster_index;
   size_t leaf_id; // relevant leaf ID (if applicable)
 };
 
@@ -136,7 +133,7 @@ struct SwapResult {
 struct MoveResult {
   bool success;
   int new_cell_index;        // Index of source cell in its new position
-  ClusterId new_cluster_id;  // Cluster where source ended up
+  size_t new_cluster_index;  // Cluster where source ended up
   std::string error_message; // Empty if success
 };
 
@@ -152,33 +149,30 @@ struct System {
   SplitMode split_mode = SplitMode::AlternateLocally; // How splits determine direction
 
   // Mutating member functions
-  PositionedCluster* get_cluster(ClusterId id);
-  [[nodiscard]] const PositionedCluster* get_cluster(ClusterId id) const;
   [[nodiscard]] bool move_selection(Direction dir);
   [[nodiscard]] bool toggle_selected_split_dir();
   [[nodiscard]] bool cycle_split_mode();
   [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
   [[nodiscard]] bool adjust_selected_split_ratio(float delta);
   [[nodiscard]] bool exchange_selected_with_sibling();
-  SwapResult swap_cells(ClusterId cluster_id1, size_t leaf_id1, ClusterId cluster_id2,
+  SwapResult swap_cells(size_t cluster_index1, size_t leaf_id1, size_t cluster_index2,
                         size_t leaf_id2);
-  MoveResult move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
-                       ClusterId target_cluster_id, size_t target_leaf_id);
+  MoveResult move_cell(size_t source_cluster_index, size_t source_leaf_id,
+                       size_t target_cluster_index, size_t target_leaf_id);
   void update_gaps(float horizontal, float vertical);
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
-                      std::optional<std::pair<ClusterId, size_t>> new_selection,
+                      std::optional<std::pair<size_t, size_t>> new_selection,
                       std::pair<float, float> pointer_coords);
 
   // Zen cell operations (per-cluster)
-  [[nodiscard]] bool set_zen(ClusterId cluster_id, size_t leaf_id);
-  void clear_zen(ClusterId cluster_id);
-  [[nodiscard]] bool is_cell_zen(ClusterId cluster_id, int cell_index) const;
+  [[nodiscard]] bool set_zen(size_t cluster_index, size_t leaf_id);
+  void clear_zen(size_t cluster_index);
+  [[nodiscard]] bool is_cell_zen(size_t cluster_index, int cell_index) const;
   [[nodiscard]] bool toggle_selected_zen();
 };
 
 struct ClusterInitInfo {
-  ClusterId id;
   float x;      // workspace x (for tiling)
   float y;      // workspace y
   float width;  // workspace width
@@ -213,7 +207,7 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 // ============================================================================
 
 // Get the currently selected cell across the entire system.
-[[nodiscard]] std::optional<std::pair<ClusterId, int>> get_selected_cell(const System& system);
+[[nodiscard]] std::optional<std::pair<size_t, int>> get_selected_cell(const System& system);
 
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
@@ -229,7 +223,7 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 
 // Get display rect for zen cell of a specific cluster (centered at zen_percentage).
 [[nodiscard]] std::optional<Rect>
-get_cluster_zen_display_rect(const System& system, ClusterId cluster_id, float zen_percentage);
+get_cluster_zen_display_rect(const System& system, size_t cluster_index, float zen_percentage);
 
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.
@@ -258,7 +252,7 @@ void debug_print_system(const System& system);
 
 // Find the cluster and cell at a global point.
 // Returns nullopt if no cell contains the point.
-[[nodiscard]] std::optional<std::pair<ClusterId, int>>
+[[nodiscard]] std::optional<std::pair<size_t, int>>
 find_cell_at_point(const System& system, float global_x, float global_y);
 
 // ============================================================================

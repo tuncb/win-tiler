@@ -146,13 +146,10 @@ void move_cursor_to_selected_cell(const cells::System& system) {
     return;
   }
 
-  auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = system.get_cluster(cluster_id);
-  if (pc == nullptr) {
-    return;
-  }
+  auto [cluster_index, cell_index] = *selected_cell;
+  const auto& pc = system.clusters[cluster_index];
 
-  cells::Rect global_rect = cells::get_cell_global_rect(*pc, cell_index);
+  cells::Rect global_rect = cells::get_cell_global_rect(pc, cell_index);
   long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
   long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
 
@@ -174,14 +171,10 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
     return;
   }
 
-  auto [cluster_id, cell_index] = *selected_cell;
-  const auto* pc = system.get_cluster(cluster_id);
-  if (pc == nullptr) {
-    spdlog::error("Failed to get cluster {}", cluster_id);
-    return;
-  }
+  auto [cluster_index, cell_index] = *selected_cell;
+  const auto& pc = system.clusters[cluster_index];
 
-  const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
+  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
   if (!cell.leaf_id.has_value()) {
     spdlog::error("Selected cell has no leaf_id");
     return;
@@ -199,11 +192,11 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   // Move mouse to center of selected cell
   move_cursor_to_selected_cell(system);
 
-  spdlog::trace("Navigated to cell {} in cluster {}", cell_index, cluster_id);
+  spdlog::trace("Navigated to cell {} in cluster {}", cell_index, cluster_index);
 }
 
 // Type alias for stored cell used in swap/move operations
-using stored_cell_t = std::optional<std::pair<cells::ClusterId, size_t>>;
+using stored_cell_t = std::optional<std::pair<size_t, size_t>>;
 
 ActionResult handle_toggle_split(cells::System& system) {
   if (system.toggle_selected_split_dir()) {
@@ -229,14 +222,12 @@ ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_mes
 
 ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell) {
   if (system.selection.has_value()) {
-    const auto* pc = system.get_cluster(system.selection->cluster_id);
-    if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-      if (cell.leaf_id.has_value()) {
-        stored_cell = {system.selection->cluster_id, *cell.leaf_id};
-        spdlog::info("Stored cell for operation: cluster={}, leaf_id={}",
-                     system.selection->cluster_id, *cell.leaf_id);
-      }
+    const auto& pc = system.clusters[system.selection->cluster_index];
+    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+    if (cell.leaf_id.has_value()) {
+      stored_cell = {system.selection->cluster_index, *cell.leaf_id};
+      spdlog::info("Stored cell for operation: cluster={}, leaf_id={}",
+                   system.selection->cluster_index, *cell.leaf_id);
     }
   }
   return ActionResult::Continue;
@@ -250,16 +241,14 @@ ActionResult handle_clear_stored(stored_cell_t& stored_cell) {
 
 ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = system.get_cluster(system.selection->cluster_id);
-    if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-      if (cell.leaf_id.has_value()) {
-        auto result = system.swap_cells(system.selection->cluster_id, *cell.leaf_id,
-                                        stored_cell->first, stored_cell->second);
-        if (result.success) {
-          stored_cell.reset();
-          spdlog::info("Exchanged cells successfully");
-        }
+    const auto& pc = system.clusters[system.selection->cluster_index];
+    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+    if (cell.leaf_id.has_value()) {
+      auto result = system.swap_cells(system.selection->cluster_index, *cell.leaf_id,
+                                      stored_cell->first, stored_cell->second);
+      if (result.success) {
+        stored_cell.reset();
+        spdlog::info("Exchanged cells successfully");
       }
     }
   }
@@ -268,16 +257,14 @@ ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) 
 
 ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto* pc = system.get_cluster(system.selection->cluster_id);
-    if (pc != nullptr) {
-      const auto& cell = pc->cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-      if (cell.leaf_id.has_value()) {
-        auto result = system.move_cell(stored_cell->first, stored_cell->second,
-                                       system.selection->cluster_id, *cell.leaf_id);
-        if (result.success) {
-          stored_cell.reset();
-          spdlog::info("Moved cell successfully");
-        }
+    const auto& pc = system.clusters[system.selection->cluster_index];
+    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
+    if (cell.leaf_id.has_value()) {
+      auto result = system.move_cell(stored_cell->first, stored_cell->second,
+                                     system.selection->cluster_index, *cell.leaf_id);
+      if (result.success) {
+        stored_cell.reset();
+        spdlog::info("Moved cell successfully");
       }
     }
   }
@@ -318,7 +305,7 @@ ActionResult handle_toggle_zen(cells::System& system) {
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
 bool handle_mouse_drop_move(cells::System& system,
-                            const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
+                            const std::unordered_set<size_t>& fullscreen_clusters) {
   auto drag_info = winapi::get_drag_info();
   if (!drag_info.has_value() || !drag_info->move_ended) {
     return false;
@@ -344,20 +331,17 @@ bool handle_mouse_drop_move(cells::System& system,
     return false;
   }
 
-  auto [target_cluster_id, target_cell_index] = *target_cell;
+  auto [target_cluster_index, target_cell_index] = *target_cell;
 
   // Skip if target cluster has fullscreen app
-  if (fullscreen_clusters.contains(target_cluster_id)) {
+  if (fullscreen_clusters.contains(target_cluster_index)) {
     spdlog::trace("Mouse drop: target cluster has fullscreen app");
     return false;
   }
 
   // Get target cell's leaf_id
-  const auto* target_pc = system.get_cluster(target_cluster_id);
-  if (target_pc == nullptr) {
-    return false;
-  }
-  const auto& target_cell_data = target_pc->cluster.cells[static_cast<size_t>(target_cell_index)];
+  const auto& target_pc = system.clusters[target_cluster_index];
+  const auto& target_cell_data = target_pc.cluster.cells[static_cast<size_t>(target_cell_index)];
   if (!target_cell_data.leaf_id.has_value()) {
     return false;
   }
@@ -373,12 +357,12 @@ bool handle_mouse_drop_move(cells::System& system,
   }
 
   // Find which cluster contains the source
-  cells::ClusterId source_cluster_id = 0;
+  size_t source_cluster_index = 0;
   bool found_source = false;
-  for (const auto& pc : system.clusters) {
-    auto cell_idx = cells::find_cell_by_leaf_id(pc.cluster, source_leaf_id);
+  for (size_t i = 0; i < system.clusters.size(); ++i) {
+    auto cell_idx = cells::find_cell_by_leaf_id(system.clusters[i].cluster, source_leaf_id);
     if (cell_idx.has_value()) {
-      source_cluster_id = pc.id;
+      source_cluster_index = i;
       found_source = true;
       break;
     }
@@ -389,7 +373,7 @@ bool handle_mouse_drop_move(cells::System& system,
   }
 
   // Check if dropping on same cell (source == target)
-  if (source_cluster_id == target_cluster_id && source_leaf_id == target_leaf_id) {
+  if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
     spdlog::trace("Mouse drop: dropped on same cell, no-op");
     return false;
   }
@@ -399,12 +383,12 @@ bool handle_mouse_drop_move(cells::System& system,
 
   if (do_exchange) {
     // Exchange: swap source and target positions
-    auto result =
-        system.swap_cells(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+    auto result = system.swap_cells(source_cluster_index, source_leaf_id, target_cluster_index,
+                                    target_leaf_id);
 
     if (result.success) {
       spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
-                   source_cluster_id, target_cluster_id);
+                   source_cluster_index, target_cluster_index);
       move_cursor_to_selected_cell(system);
       return true;
     } else {
@@ -413,12 +397,12 @@ bool handle_mouse_drop_move(cells::System& system,
     }
   } else {
     // Move: source becomes sibling of target
-    auto result =
-        system.move_cell(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+    auto result = system.move_cell(source_cluster_index, source_leaf_id, target_cluster_index,
+                                   target_leaf_id);
 
     if (result.success) {
-      spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_id,
-                   target_cluster_id);
+      spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_index,
+                   target_cluster_index);
       move_cursor_to_selected_cell(system);
       return true;
     } else {
@@ -468,7 +452,7 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
 }
 
 void update_foreground_selection_from_mouse_position(
-    cells::System& system, const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
+    cells::System& system, const std::unordered_set<size_t>& fullscreen_clusters) {
   auto foreground_hwnd = winapi::get_foreground_window();
 
   if (foreground_hwnd == nullptr ||
@@ -491,35 +475,34 @@ void update_foreground_selection_from_mouse_position(
     return;
   }
 
-  auto [cluster_id, cell_index] = *cell_at_cursor;
+  auto [cluster_index, cell_index] = *cell_at_cursor;
 
   // Skip selection update if this cluster has an active zen cell or a fullscreen app
-  const auto* zen_check_pc = system.get_cluster(cluster_id);
-  if (zen_check_pc != nullptr && (zen_check_pc->cluster.zen_cell_index.has_value() ||
-                                  fullscreen_clusters.contains(cluster_id))) {
+  const auto& zen_check_pc = system.clusters[cluster_index];
+  if (zen_check_pc.cluster.zen_cell_index.has_value() ||
+      fullscreen_clusters.contains(cluster_index)) {
     return;
   }
 
-  bool needs_update = !system.selection.has_value() || system.selection->cluster_id != cluster_id ||
+  bool needs_update = !system.selection.has_value() ||
+                      system.selection->cluster_index != cluster_index ||
                       system.selection->cell_index != cell_index;
 
   if (!needs_update) {
     return;
   }
 
-  system.selection = cells::CellIndicatorByIndex{cluster_id, cell_index};
+  system.selection = cells::CellIndicatorByIndex{cluster_index, cell_index};
 
-  const auto* pc = system.get_cluster(cluster_id);
-  if (pc != nullptr) {
-    const auto& cell = pc->cluster.cells[static_cast<size_t>(cell_index)];
-    if (cell.leaf_id.has_value()) {
-      winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
-      if (!winapi::set_foreground_window(cell_hwnd)) {
-        spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
-      }
-      spdlog::trace("======================Selection updated: cluster={}, cell={}", cluster_id,
-                    cell_index);
+  const auto& pc = system.clusters[cluster_index];
+  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
+  if (cell.leaf_id.has_value()) {
+    winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
+    if (!winapi::set_foreground_window(cell_hwnd)) {
+      spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
     }
+    spdlog::trace("======================Selection updated: cluster={}, cell={}", cluster_index,
+                  cell_index);
   }
 }
 
@@ -528,8 +511,9 @@ void print_tile_layout(const cells::System& system) {
   size_t total_windows = cells::count_total_leaves(system);
   spdlog::debug("Total windows: {}", total_windows);
 
-  for (const auto& pc : system.clusters) {
-    spdlog::debug("--- Monitor {} ---", pc.id);
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
+    spdlog::debug("--- Monitor {} ---", cluster_idx);
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -572,10 +556,11 @@ gather_current_window_state(const IgnoreOptions& ignore_options) {
 
 // Helper: Update fullscreen state for all clusters
 void update_fullscreen_state(const cells::System& system,
-                             std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
-  std::unordered_set<cells::ClusterId> new_fullscreen;
+                             std::unordered_set<size_t>& fullscreen_clusters) {
+  std::unordered_set<size_t> new_fullscreen;
 
-  for (const auto& pc : system.clusters) {
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
     // Check if any cell's window is fullscreen
     for (const auto& cell : pc.cluster.cells) {
       if (cell.is_dead || !cell.leaf_id.has_value()) {
@@ -583,18 +568,18 @@ void update_fullscreen_state(const cells::System& system,
       }
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
       if (winapi::is_window_fullscreen(hwnd)) {
-        new_fullscreen.insert(pc.id);
+        new_fullscreen.insert(cluster_idx);
         break;
       }
     }
 
     // Log state changes
-    bool was_fullscreen = fullscreen_clusters.contains(pc.id);
-    bool is_fullscreen = new_fullscreen.contains(pc.id);
+    bool was_fullscreen = fullscreen_clusters.contains(cluster_idx);
+    bool is_fullscreen = new_fullscreen.contains(cluster_idx);
     if (is_fullscreen && !was_fullscreen) {
-      spdlog::debug("Fullscreen app detected on monitor {}", pc.id);
+      spdlog::debug("Fullscreen app detected on monitor {}", cluster_idx);
     } else if (!is_fullscreen && was_fullscreen) {
-      spdlog::debug("Fullscreen app exited on monitor {}", pc.id);
+      spdlog::debug("Fullscreen app exited on monitor {}", cluster_idx);
     }
   }
 
@@ -603,10 +588,11 @@ void update_fullscreen_state(const cells::System& system,
 
 // Helper: Apply tile layout by updating window positions
 void apply_tile_layout(const cells::System& system, float zen_percentage,
-                       const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
-  for (const auto& pc : system.clusters) {
+                       const std::unordered_set<size_t>& fullscreen_clusters) {
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
     // Skip tiling if this cluster has a fullscreen app
-    if (fullscreen_clusters.contains(pc.id)) {
+    if (fullscreen_clusters.contains(cluster_idx)) {
       continue;
     }
 
@@ -658,7 +644,7 @@ cells::System create_initial_system_from_monitors(const std::vector<winapi::Moni
     for (auto hwnd : hwnds) {
       cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
     }
-    cluster_infos.push_back({i, x, y, w, h, mx, my, mw, mh, cell_ids});
+    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids});
   }
 
   return cells::create_system(cluster_infos, options.gapOptions.horizontal,
@@ -684,7 +670,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   });
 
   // Track which clusters have fullscreen apps
-  std::unordered_set<cells::ClusterId> fullscreen_clusters;
+  std::unordered_set<size_t> fullscreen_clusters;
 
   // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");

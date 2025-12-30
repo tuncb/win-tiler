@@ -92,7 +92,7 @@ void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
       cellIds.push_back(reinterpret_cast<size_t>(hwnd));
     }
 
-    infos.push_back({monitorIndex, x, y, w, h, mx, my, mw, mh, cellIds});
+    infos.push_back({x, y, w, h, mx, my, mw, mh, cellIds});
   }
 
   winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
@@ -120,14 +120,12 @@ void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& option
 
   if (cmd.clusters.empty()) {
     // Default: two monitors side by side (monitor bounds = workspace bounds for UI test)
-    infos.push_back({0, 0.0f, 0.0f, 1920.0f, 1080.0f, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
-    infos.push_back({1, 1920.0f, 0.0f, 1920.0f, 1080.0f, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
+    infos.push_back({0.0f, 0.0f, 1920.0f, 1080.0f, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
+    infos.push_back({1920.0f, 0.0f, 1920.0f, 1080.0f, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
   } else {
-    size_t clusterId = 0;
     for (const auto& cluster : cmd.clusters) {
       // monitor bounds = workspace bounds for UI test
-      infos.push_back({clusterId++,
-                       cluster.x,
+      infos.push_back({cluster.x,
                        cluster.y,
                        cluster.width,
                        cluster.height,

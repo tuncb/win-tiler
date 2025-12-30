@@ -6,16 +6,16 @@ namespace wintiler {
 namespace renderer {
 
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<std::pair<cells::ClusterId, size_t>> stored_cell,
-            const std::string& message,
-            const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
+            std::optional<std::pair<size_t, size_t>> stored_cell, const std::string& message,
+            const std::unordered_set<size_t>& fullscreen_clusters) {
   // Begin frame
   overlay::begin_frame();
 
   // Draw all leaf cells (skip clusters with zen cells or fullscreen apps)
-  for (const auto& pc : system.clusters) {
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
     // Skip this cluster if it has a zen cell (will be rendered in zen loop) or fullscreen app
-    if (pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(pc.id)) {
+    if (pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(cluster_idx)) {
       continue;
     }
 
@@ -34,13 +34,13 @@ void render(const cells::System& system, const RenderOptions& config,
       overlay::Color color = config.normal_color;
 
       // Check if this is the stored cell (operation) - prioritize over selection
-      if (stored_cell.has_value() && stored_cell->first == pc.id) {
+      if (stored_cell.has_value() && stored_cell->first == cluster_idx) {
         if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->second) {
           color = config.stored_color;
         }
       }
       // Check if this is the selected cell
-      else if (system.selection.has_value() && system.selection->cluster_id == pc.id &&
+      else if (system.selection.has_value() && system.selection->cluster_index == cluster_idx &&
                system.selection->cell_index == i) {
         color = config.selected_color;
       }
@@ -58,8 +58,9 @@ void render(const cells::System& system, const RenderOptions& config,
   }
 
   // Draw zen cell overlays for each cluster (skip fullscreen clusters)
-  for (const auto& pc : system.clusters) {
-    if (!pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(pc.id)) {
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
+    if (!pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(cluster_idx)) {
       continue;
     }
 
@@ -71,13 +72,13 @@ void render(const cells::System& system, const RenderOptions& config,
 
     // Determine color based on selection state
     overlay::Color color = config.normal_color;
-    if (system.selection.has_value() && system.selection->cluster_id == pc.id &&
+    if (system.selection.has_value() && system.selection->cluster_index == cluster_idx &&
         system.selection->cell_index == zen_cell_index) {
       color = config.selected_color;
     }
 
     // Check if zen cell is also the stored cell
-    if (stored_cell.has_value() && stored_cell->first == pc.id) {
+    if (stored_cell.has_value() && stored_cell->first == cluster_idx) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
       if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->second) {
         color = config.stored_color;
