@@ -37,7 +37,7 @@ enum class HotkeyAction {
   NavigateRight,
   ToggleSplit,
   Exit,
-  ToggleGlobal,
+  CycleSplitMode,
   StoreCell,
   ClearStored,
   Exchange,

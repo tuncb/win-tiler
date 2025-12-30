@@ -247,6 +247,8 @@ std::optional<HotkeyAction> get_key_action() {
     return HotkeyAction::ExchangeSiblings;
   if (IsKeyPressed(KEY_APOSTROPHE))
     return HotkeyAction::ToggleZen;
+  if (IsKeyPressed(KEY_SEMICOLON))
+    return HotkeyAction::CycleSplitMode;
   return std::nullopt;
 }
 
@@ -422,8 +424,10 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       case HotkeyAction::ToggleZen:
         (void)app_state.system.toggle_selected_zen();
         break;
+      case HotkeyAction::CycleSplitMode:
+        (void)app_state.system.cycle_split_mode();
+        break;
       case HotkeyAction::Exit:
-      case HotkeyAction::ToggleGlobal:
         // Not implemented in multi_ui
         break;
       }

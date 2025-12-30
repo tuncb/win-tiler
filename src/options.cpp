@@ -25,8 +25,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "ToggleSplit";
   case HotkeyAction::Exit:
     return "Exit";
-  case HotkeyAction::ToggleGlobal:
-    return "ToggleGlobal";
+  case HotkeyAction::CycleSplitMode:
+    return "CycleSplitMode";
   case HotkeyAction::StoreCell:
     return "StoreCell";
   case HotkeyAction::ClearStored:
@@ -60,8 +60,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::ToggleSplit;
   if (str == "Exit")
     return HotkeyAction::Exit;
-  if (str == "ToggleGlobal")
-    return HotkeyAction::ToggleGlobal;
+  if (str == "CycleSplitMode")
+    return HotkeyAction::CycleSplitMode;
   if (str == "StoreCell")
     return HotkeyAction::StoreCell;
   if (str == "ClearStored")
@@ -95,7 +95,7 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+y";
   case HotkeyAction::Exit:
     return "super+shift+escape";
-  case HotkeyAction::ToggleGlobal:
+  case HotkeyAction::CycleSplitMode:
     return "super+shift+;";
   case HotkeyAction::StoreCell:
     return "super+shift+[";

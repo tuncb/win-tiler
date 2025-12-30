@@ -89,8 +89,8 @@ const char* hotkey_action_to_string(HotkeyAction action) {
     return "Toggle Split";
   case HotkeyAction::Exit:
     return "Exit";
-  case HotkeyAction::ToggleGlobal:
-    return "Toggle Global";
+  case HotkeyAction::CycleSplitMode:
+    return "Cycle Split Mode";
   case HotkeyAction::StoreCell:
     return "Store Cell";
   case HotkeyAction::ClearStored:
@@ -125,7 +125,7 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
     return cells::Direction::Right;
   case HotkeyAction::ToggleSplit:
   case HotkeyAction::Exit:
-  case HotkeyAction::ToggleGlobal:
+  case HotkeyAction::CycleSplitMode:
   case HotkeyAction::StoreCell:
   case HotkeyAction::ClearStored:
   case HotkeyAction::Exchange:
@@ -217,12 +217,26 @@ ActionResult handle_exit() {
   return ActionResult::Exit;
 }
 
-ActionResult handle_toggle_global(cells::System& system, std::string& out_message) {
-  (void)system.toggle_global_split_dir();
-  const char* dir_str =
-      (system.global_split_dir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
-  spdlog::info("Toggled global split direction: {}", dir_str);
-  out_message = std::string("Toggled: ") + dir_str;
+const char* split_mode_to_string(cells::SplitMode mode) {
+  switch (mode) {
+  case cells::SplitMode::AlternateLocally:
+    return "AlternateLocally";
+  case cells::SplitMode::AlternateGlobally:
+    return "AlternateGlobally";
+  case cells::SplitMode::AlwaysVertical:
+    return "AlwaysVertical";
+  case cells::SplitMode::AlwaysHorizontal:
+    return "AlwaysHorizontal";
+  default:
+    return "Unknown";
+  }
+}
+
+ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_message) {
+  (void)system.cycle_split_mode();
+  const char* mode_str = split_mode_to_string(system.split_mode);
+  spdlog::info("Cycled split mode: {}", mode_str);
+  out_message = std::string("Split mode: ") + mode_str;
   return ActionResult::Continue;
 }
 
@@ -322,8 +336,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
     return handle_toggle_split(system);
   case HotkeyAction::Exit:
     return handle_exit();
-  case HotkeyAction::ToggleGlobal:
-    return handle_toggle_global(system, out_message);
+  case HotkeyAction::CycleSplitMode:
+    return handle_cycle_split_mode(system, out_message);
   case HotkeyAction::StoreCell:
     return handle_store_cell(system, stored_cell);
   case HotkeyAction::ClearStored:
