@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -125,16 +126,9 @@ struct UpdateResult {
   bool selection_updated;
 };
 
-struct SwapResult {
-  bool success;
-  std::string error_message; // Empty if success
-};
-
-struct MoveResult {
-  bool success;
-  int new_cell_index;        // Index of source cell in its new position
-  size_t new_cluster_index;  // Cluster where source ended up
-  std::string error_message; // Empty if success
+struct MoveSuccess {
+  int new_cell_index;       // Index of source cell in its new position
+  size_t new_cluster_index; // Cluster where source ended up
 };
 
 // ============================================================================
@@ -155,10 +149,12 @@ struct System {
   [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
   [[nodiscard]] bool adjust_selected_split_ratio(float delta);
   [[nodiscard]] bool exchange_selected_with_sibling();
-  SwapResult swap_cells(size_t cluster_index1, size_t leaf_id1, size_t cluster_index2,
-                        size_t leaf_id2);
-  MoveResult move_cell(size_t source_cluster_index, size_t source_leaf_id,
-                       size_t target_cluster_index, size_t target_leaf_id);
+  tl::expected<void, std::string> swap_cells(size_t cluster_index1, size_t leaf_id1,
+                                             size_t cluster_index2, size_t leaf_id2);
+  tl::expected<MoveSuccess, std::string> move_cell(size_t source_cluster_index,
+                                                   size_t source_leaf_id,
+                                                   size_t target_cluster_index,
+                                                   size_t target_leaf_id);
   void update_gaps(float horizontal, float vertical);
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,

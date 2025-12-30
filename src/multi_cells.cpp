@@ -1014,14 +1014,14 @@ bool System::toggle_selected_zen() {
   return true;
 }
 
-SwapResult System::swap_cells(size_t cluster_index1, size_t leaf_id1, size_t cluster_index2,
-                              size_t leaf_id2) {
+tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
+                                                   size_t cluster_index2, size_t leaf_id2) {
   // Validate cluster indices
   if (cluster_index1 >= clusters.size()) {
-    return {false, "Cluster 1 not found"};
+    return tl::unexpected("Cluster 1 not found");
   }
   if (cluster_index2 >= clusters.size()) {
-    return {false, "Cluster 2 not found"};
+    return tl::unexpected("Cluster 2 not found");
   }
   PositionedCluster& pc1 = clusters[cluster_index1];
   PositionedCluster& pc2 = clusters[cluster_index2];
@@ -1031,10 +1031,10 @@ SwapResult System::swap_cells(size_t cluster_index1, size_t leaf_id1, size_t clu
   auto idx2_opt = find_cell_by_leaf_id(pc2.cluster, leaf_id2);
 
   if (!idx1_opt.has_value()) {
-    return {false, "Leaf 1 not found"};
+    return tl::unexpected("Leaf 1 not found");
   }
   if (!idx2_opt.has_value()) {
-    return {false, "Leaf 2 not found"};
+    return tl::unexpected("Leaf 2 not found");
   }
 
   int idx1 = *idx1_opt;
@@ -1042,15 +1042,15 @@ SwapResult System::swap_cells(size_t cluster_index1, size_t leaf_id1, size_t clu
 
   // Check if same cell (no-op)
   if (cluster_index1 == cluster_index2 && leaf_id1 == leaf_id2) {
-    return {true, ""};
+    return {};
   }
 
   // Validate both are leaves
   if (!is_leaf(pc1.cluster, idx1)) {
-    return {false, "Cell 1 is not a leaf"};
+    return tl::unexpected("Cell 1 is not a leaf");
   }
   if (!is_leaf(pc2.cluster, idx2)) {
-    return {false, "Cell 2 is not a leaf"};
+    return tl::unexpected("Cell 2 is not a leaf");
   }
 
   if (cluster_index1 == cluster_index2) {
@@ -1101,17 +1101,19 @@ SwapResult System::swap_cells(size_t cluster_index1, size_t leaf_id1, size_t clu
     // because the selection tracks cell index, not leaf_id
   }
 
-  return {true, ""};
+  return {};
 }
 
-MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
-                             size_t target_cluster_index, size_t target_leaf_id) {
+tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_index,
+                                                         size_t source_leaf_id,
+                                                         size_t target_cluster_index,
+                                                         size_t target_leaf_id) {
   // Validate cluster indices
   if (source_cluster_index >= clusters.size()) {
-    return {false, -1, 0, "Source cluster not found"};
+    return tl::unexpected("Source cluster not found");
   }
   if (target_cluster_index >= clusters.size()) {
-    return {false, -1, 0, "Target cluster not found"};
+    return tl::unexpected("Target cluster not found");
   }
   PositionedCluster& src_pc = clusters[source_cluster_index];
   PositionedCluster& tgt_pc = clusters[target_cluster_index];
@@ -1121,23 +1123,23 @@ MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
   auto tgt_idx_opt = find_cell_by_leaf_id(tgt_pc.cluster, target_leaf_id);
 
   if (!src_idx_opt.has_value()) {
-    return {false, -1, 0, "Source leaf not found"};
+    return tl::unexpected("Source leaf not found");
   }
   if (!tgt_idx_opt.has_value()) {
-    return {false, -1, 0, "Target leaf not found"};
+    return tl::unexpected("Target leaf not found");
   }
 
   // Check if same cell (no-op)
   if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
-    return {true, *src_idx_opt, source_cluster_index, ""};
+    return MoveSuccess{*src_idx_opt, source_cluster_index};
   }
 
   // Validate both are leaves
   if (!is_leaf(src_pc.cluster, *src_idx_opt)) {
-    return {false, -1, 0, "Source cell is not a leaf"};
+    return tl::unexpected("Source cell is not a leaf");
   }
   if (!is_leaf(tgt_pc.cluster, *tgt_idx_opt)) {
-    return {false, -1, 0, "Target cell is not a leaf"};
+    return tl::unexpected("Target cell is not a leaf");
   }
 
   // Remember if source or target was selected
@@ -1159,7 +1161,7 @@ MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
   // Note: tgt_pc is a reference, so if source == target cluster, it's already updated
   tgt_idx_opt = find_cell_by_leaf_id(clusters[target_cluster_index].cluster, target_leaf_id);
   if (!tgt_idx_opt.has_value()) {
-    return {false, -1, 0, "Target lost after delete"};
+    return tl::unexpected("Target lost after delete");
   }
 
   // Determine split direction based on mode and split target
@@ -1169,7 +1171,7 @@ MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
                                  gap_horizontal, gap_vertical, saved_leaf_id, split_dir);
 
   if (!split_result.has_value()) {
-    return {false, -1, 0, "Split failed"};
+    return tl::unexpected("Split failed");
   }
 
   // Find the new cell (second child)
@@ -1178,14 +1180,14 @@ MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
       clusters[target_cluster_index].cluster.cells[static_cast<size_t>(first_child_idx)];
 
   if (!first_child.parent.has_value()) {
-    return {false, -1, 0, "Could not find parent after split"};
+    return tl::unexpected("Could not find parent after split");
   }
 
   int parent_idx = *first_child.parent;
   Cell& parent = clusters[target_cluster_index].cluster.cells[static_cast<size_t>(parent_idx)];
 
   if (!parent.second_child.has_value()) {
-    return {false, -1, 0, "Could not find new cell after split"};
+    return tl::unexpected("Could not find new cell after split");
   }
 
   int new_cell_idx = *parent.second_child;
@@ -1212,7 +1214,7 @@ MoveResult System::move_cell(size_t source_cluster_index, size_t source_leaf_id,
     }
   }
 
-  return {true, new_cell_idx, target_cluster_index, ""};
+  return MoveSuccess{new_cell_idx, target_cluster_index};
 }
 
 // ============================================================================

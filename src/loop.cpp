@@ -246,7 +246,7 @@ ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) 
     if (cell.leaf_id.has_value()) {
       auto result = system.swap_cells(system.selection->cluster_index, *cell.leaf_id,
                                       stored_cell->first, stored_cell->second);
-      if (result.success) {
+      if (result.has_value()) {
         stored_cell.reset();
         spdlog::info("Exchanged cells successfully");
       }
@@ -262,7 +262,7 @@ ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
     if (cell.leaf_id.has_value()) {
       auto result = system.move_cell(stored_cell->first, stored_cell->second,
                                      system.selection->cluster_index, *cell.leaf_id);
-      if (result.success) {
+      if (result.has_value()) {
         stored_cell.reset();
         spdlog::info("Moved cell successfully");
       }
@@ -386,13 +386,13 @@ bool handle_mouse_drop_move(cells::System& system,
     auto result = system.swap_cells(source_cluster_index, source_leaf_id, target_cluster_index,
                                     target_leaf_id);
 
-    if (result.success) {
+    if (result.has_value()) {
       spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
                    source_cluster_index, target_cluster_index);
       move_cursor_to_selected_cell(system);
       return true;
     } else {
-      spdlog::warn("Mouse drop: exchange failed - {}", result.error_message);
+      spdlog::warn("Mouse drop: exchange failed - {}", result.error());
       return false;
     }
   } else {
@@ -400,13 +400,13 @@ bool handle_mouse_drop_move(cells::System& system,
     auto result = system.move_cell(source_cluster_index, source_leaf_id, target_cluster_index,
                                    target_leaf_id);
 
-    if (result.success) {
+    if (result.has_value()) {
       spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_index,
                    target_cluster_index);
       move_cursor_to_selected_cell(system);
       return true;
     } else {
-      spdlog::warn("Mouse drop: move failed - {}", result.error_message);
+      spdlog::warn("Mouse drop: move failed - {}", result.error());
       return false;
     }
   }

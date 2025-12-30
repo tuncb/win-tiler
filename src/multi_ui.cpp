@@ -390,7 +390,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
             auto result =
                 app_state.system.swap_cells(app_state.system.selection->cluster_index,
                                             *cell.leaf_id, stored_cell->first, stored_cell->second);
-            if (result.success) {
+            if (result.has_value()) {
               stored_cell.reset();
             }
           }
@@ -406,7 +406,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
             auto result = app_state.system.move_cell(stored_cell->first, stored_cell->second,
                                                      app_state.system.selection->cluster_index,
                                                      *cell.leaf_id);
-            if (result.success) {
+            if (result.has_value()) {
               stored_cell.reset();
             }
           }

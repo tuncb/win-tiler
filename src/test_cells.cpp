@@ -689,8 +689,7 @@ TEST_SUITE("cells - swap and move") {
     // Swap
     auto result = system.swap_cells(0, 10, 0, 20);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
+    CHECK(result.has_value());
 
     // Re-find cells (indices may have changed)
     idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
@@ -716,8 +715,7 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.swap_cells(0, 10, 0, 10);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
+    CHECK(result.has_value());
     CHECK(cells::validate_system(system));
   }
 
@@ -733,8 +731,7 @@ TEST_SUITE("cells - swap and move") {
     // Swap cross-cluster
     auto result = system.swap_cells(0, 10, 1, 20);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
+    CHECK(result.has_value());
 
     // After cross-cluster swap, leafIds are exchanged
     // Cell in cluster 1 now has leafId 20, cell in cluster 2 has leafId 10
@@ -753,8 +750,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.swap_cells(0, 10, 999, 20);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("swapCells returns error for non-existent leaf") {
@@ -763,8 +760,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.swap_cells(0, 10, 0, 999);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("swapCells updates selection correctly in same cluster") {
@@ -780,7 +777,7 @@ TEST_SUITE("cells - swap and move") {
 
     // Swap
     auto result = system.swap_cells(0, 10, 0, 20);
-    CHECK(result.success);
+    CHECK(result.has_value());
 
     // Selection should still point to the cell with leafId 10 (now at different index)
     REQUIRE(system.selection.has_value());
@@ -798,9 +795,8 @@ TEST_SUITE("cells - swap and move") {
     // Move 10 to 20
     auto result = system.move_cell(0, 10, 0, 20);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
-    CHECK(result.new_cluster_index == 0);
+    CHECK(result.has_value());
+    CHECK(result->new_cluster_index == 0);
 
     // Should now have 2 leaves (20 was split, creating a new leaf for 10)
     CHECK(cells::count_total_leaves(system) == 2);
@@ -822,8 +818,7 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(0, 10, 0, 10);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
+    CHECK(result.has_value());
     CHECK(cells::count_total_leaves(system) == 1);
   }
 
@@ -837,9 +832,8 @@ TEST_SUITE("cells - swap and move") {
     // Move 10 from cluster 1 to cluster 2 (split from 20)
     auto result = system.move_cell(0, 10, 1, 20);
 
-    CHECK(result.success);
-    CHECK(result.error_message.empty());
-    CHECK(result.new_cluster_index == 1);
+    CHECK(result.has_value());
+    CHECK(result->new_cluster_index == 1);
 
     // Cluster 1 should now have 1 leaf (11)
     REQUIRE(system.clusters.size() >= 2);
@@ -865,14 +859,14 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(0, 10, 0, 20);
 
-    CHECK(result.success);
+    CHECK(result.has_value());
 
     // The moved cell should still have leafId 10
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
     auto idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
     CHECK(idx10.has_value());
-    CHECK(*idx10 == result.new_cell_index);
+    CHECK(*idx10 == result->new_cell_index);
   }
 
   TEST_CASE("moveCell returns error for non-existent source cluster") {
@@ -881,8 +875,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(999, 10, 1, 10);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("moveCell returns error for non-existent target cluster") {
@@ -891,8 +885,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(0, 10, 999, 20);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("moveCell returns error for non-existent source leaf") {
@@ -901,8 +895,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(0, 999, 0, 10);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("moveCell returns error for non-existent target leaf") {
@@ -911,8 +905,8 @@ TEST_SUITE("cells - swap and move") {
 
     auto result = system.move_cell(0, 10, 0, 999);
 
-    CHECK(!result.success);
-    CHECK(!result.error_message.empty());
+    CHECK(!result.has_value());
+    CHECK(!result.error().empty());
   }
 
   TEST_CASE("moveCell updates selection when source was selected") {
@@ -929,11 +923,11 @@ TEST_SUITE("cells - swap and move") {
     // Move 10 to 20
     auto result = system.move_cell(0, 10, 0, 20);
 
-    CHECK(result.success);
+    CHECK(result.has_value());
 
     // Selection should be updated to the new cell
     REQUIRE(system.selection.has_value());
-    CHECK(system.selection->cell_index == result.new_cell_index);
+    CHECK(system.selection->cell_index == result->new_cell_index);
 
     // The selected cell should have leafId 10
     auto& selectedCell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
@@ -949,7 +943,7 @@ TEST_SUITE("cells - swap and move") {
     // Move the only cell from cluster 1 to cluster 2
     auto result = system.move_cell(0, 10, 1, 20);
 
-    CHECK(result.success);
+    CHECK(result.has_value());
 
     // Cluster 0 should now be empty
     REQUIRE(system.clusters.size() >= 1);
