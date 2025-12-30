@@ -320,6 +320,119 @@ ActionResult handle_toggle_zen(cells::System& system) {
   return ActionResult::Continue;
 }
 
+// Handle mouse drag-drop move operation
+// Returns true if an operation was performed
+bool handle_mouse_drop_move(cells::System& system,
+                            const std::unordered_set<cells::ClusterId>& fullscreen_clusters) {
+  auto drag_info = winapi::get_drag_info();
+  if (!drag_info.has_value() || !drag_info->move_ended) {
+    return false;
+  }
+
+  // Clear the flag immediately to avoid re-processing
+  winapi::clear_drag_ended();
+
+  // Get cursor position
+  auto cursor_pos = winapi::get_cursor_pos();
+  if (!cursor_pos.has_value()) {
+    spdlog::trace("Mouse drop: could not get cursor position");
+    return false;
+  }
+
+  float cursor_x = static_cast<float>(cursor_pos->x);
+  float cursor_y = static_cast<float>(cursor_pos->y);
+
+  // Find cell at cursor position (target)
+  auto target_cell = cells::find_cell_at_point(system, cursor_x, cursor_y);
+  if (!target_cell.has_value()) {
+    spdlog::trace("Mouse drop: no cell at cursor position ({}, {})", cursor_x, cursor_y);
+    return false;
+  }
+
+  auto [target_cluster_id, target_cell_index] = *target_cell;
+
+  // Skip if target cluster has fullscreen app
+  if (fullscreen_clusters.contains(target_cluster_id)) {
+    spdlog::trace("Mouse drop: target cluster has fullscreen app");
+    return false;
+  }
+
+  // Get target cell's leaf_id
+  const auto* target_pc = system.get_cluster(target_cluster_id);
+  if (target_pc == nullptr) {
+    return false;
+  }
+  const auto& target_cell_data = target_pc->cluster.cells[static_cast<size_t>(target_cell_index)];
+  if (!target_cell_data.leaf_id.has_value()) {
+    return false;
+  }
+  size_t target_leaf_id = *target_cell_data.leaf_id;
+
+  // Find source cell by dragged HWND
+  size_t source_leaf_id = reinterpret_cast<size_t>(drag_info->hwnd);
+
+  // Check if source window is managed by the system
+  if (!cells::has_leaf_id(system, source_leaf_id)) {
+    spdlog::trace("Mouse drop: dragged window not managed by system");
+    return false;
+  }
+
+  // Find which cluster contains the source
+  cells::ClusterId source_cluster_id = 0;
+  bool found_source = false;
+  for (const auto& pc : system.clusters) {
+    auto cell_idx = cells::find_cell_by_leaf_id(pc.cluster, source_leaf_id);
+    if (cell_idx.has_value()) {
+      source_cluster_id = pc.id;
+      found_source = true;
+      break;
+    }
+  }
+
+  if (!found_source) {
+    return false;
+  }
+
+  // Check if dropping on same cell (source == target)
+  if (source_cluster_id == target_cluster_id && source_leaf_id == target_leaf_id) {
+    spdlog::trace("Mouse drop: dropped on same cell, no-op");
+    return false;
+  }
+
+  // Check if Ctrl is held for exchange operation
+  bool do_exchange = winapi::is_ctrl_pressed();
+
+  if (do_exchange) {
+    // Exchange: swap source and target positions
+    auto result =
+        system.swap_cells(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+
+    if (result.success) {
+      spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
+                   source_cluster_id, target_cluster_id);
+      move_cursor_to_selected_cell(system);
+      return true;
+    } else {
+      spdlog::warn("Mouse drop: exchange failed - {}", result.error_message);
+      return false;
+    }
+  } else {
+    // Move: source becomes sibling of target
+    auto result =
+        system.move_cell(source_cluster_id, source_leaf_id, target_cluster_id, target_leaf_id);
+
+    if (result.success) {
+      spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_id,
+                   target_cluster_id);
+      move_cursor_to_selected_cell(system);
+      return true;
+    } else {
+      spdlog::warn("Mouse drop: move failed - {}", result.error_message);
+      return false;
+    }
+  }
+}
+
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
                                     stored_cell_t& stored_cell, std::string& out_message) {
   // Handle other actions
@@ -619,6 +732,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Skip all processing while user is dragging a window - only render
     if (!winapi::is_any_window_being_moved()) {
+      // Check if a drag operation just completed and handle drop
+      if (handle_mouse_drop_move(system, fullscreen_clusters)) {
+        // Move was performed, apply layout immediately
+        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+      }
+
       // Check for config file changes and hot-reload
       if (provider.refresh()) {
         // Re-register hotkeys with new bindings (options is ref to provider.options, already

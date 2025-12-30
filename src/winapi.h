@@ -97,6 +97,21 @@ void register_move_size_hook();
 void unregister_move_size_hook();
 bool is_any_window_being_moved();
 
+// Drag operation tracking (for mouse-based window move operations)
+struct DragInfo {
+  HWND_T hwnd;     // Window being dragged
+  bool move_ended; // True when drag just ended (one-shot detection)
+};
+
+// Get current drag state (returns nullopt if no drag has occurred)
+std::optional<DragInfo> get_drag_info();
+
+// Clear the drag ended flag after handling it
+void clear_drag_ended();
+
+// Check if Ctrl key is currently pressed
+bool is_ctrl_pressed();
+
 // Fullscreen detection
 // Check if a specific window covers its entire monitor (fullscreen)
 bool is_window_fullscreen(HWND_T hwnd);
