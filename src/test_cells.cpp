@@ -387,59 +387,51 @@ TEST_SUITE("cells - navigation") {
     CHECK(pc->cluster.cells[0].split_dir != initialDir);
   }
 
-  TEST_CASE("toggleClusterGlobalSplitDir toggles cluster split direction") {
+  TEST_CASE("toggle_global_split_dir toggles system split direction") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
-    auto* pc = system.get_cluster(1);
-    REQUIRE(pc != nullptr);
-
     // Get initial global split dir
-    cells::SplitDir initialDir = pc->cluster.global_split_dir;
+    cells::SplitDir initialDir = system.global_split_dir;
 
-    bool result = system.toggle_cluster_global_split_dir();
+    bool result = system.toggle_global_split_dir();
     CHECK(result);
 
     // Check direction changed
-    CHECK(pc->cluster.global_split_dir != initialDir);
+    CHECK(system.global_split_dir != initialDir);
 
     // Toggle again should return to original
-    result = system.toggle_cluster_global_split_dir();
+    result = system.toggle_global_split_dir();
     CHECK(result);
-    CHECK(pc->cluster.global_split_dir == initialDir);
+    CHECK(system.global_split_dir == initialDir);
   }
 
-  TEST_CASE("toggleClusterGlobalSplitDir returns false with no selection") {
+  TEST_CASE("toggle_global_split_dir works without selection") {
     auto system = cells::create_system({});
 
-    bool result = system.toggle_cluster_global_split_dir();
-    CHECK(!result);
+    // Should succeed even with no selection
+    bool result = system.toggle_global_split_dir();
+    CHECK(result);
+
+    // Verify it toggled from default Vertical to Horizontal
+    CHECK(system.global_split_dir == cells::SplitDir::Horizontal);
   }
 
-  TEST_CASE("toggleClusterGlobalSplitDir affects correct cluster") {
+  TEST_CASE("toggle_global_split_dir affects all clusters") {
     cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, 0.0f, 0.0f, 400.0f, 600.0f, {1}};
     cells::ClusterInitInfo info2{2,      400.0f, 0.0f,   400.0f, 600.0f,
                                  400.0f, 0.0f,   400.0f, 600.0f, {2}};
     auto system = cells::create_system({info1, info2});
 
-    // Selection should be in cluster 1
-    REQUIRE(system.selection.has_value());
-    REQUIRE(system.selection->cluster_id == 1);
+    // Get initial global split dir
+    cells::SplitDir initialDir = system.global_split_dir;
 
-    auto* pc1 = system.get_cluster(1);
-    auto* pc2 = system.get_cluster(2);
-    REQUIRE(pc1 != nullptr);
-    REQUIRE(pc2 != nullptr);
-
-    cells::SplitDir initialDir1 = pc1->cluster.global_split_dir;
-    cells::SplitDir initialDir2 = pc2->cluster.global_split_dir;
-
-    // Toggle should only affect cluster 1 (selected)
-    bool result = system.toggle_cluster_global_split_dir();
+    // Toggle - affects system-wide, not per-cluster
+    bool result = system.toggle_global_split_dir();
     CHECK(result);
 
-    CHECK(pc1->cluster.global_split_dir != initialDir1); // Changed
-    CHECK(pc2->cluster.global_split_dir == initialDir2); // Unchanged
+    // Both clusters see the same global_split_dir from system
+    CHECK(system.global_split_dir != initialDir);
   }
 }
 

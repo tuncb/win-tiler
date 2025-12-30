@@ -218,17 +218,11 @@ ActionResult handle_exit() {
 }
 
 ActionResult handle_toggle_global(cells::System& system, std::string& out_message) {
-  if (system.toggle_cluster_global_split_dir()) {
-    if (system.selection.has_value()) {
-      const auto* pc = system.get_cluster(system.selection->cluster_id);
-      if (pc != nullptr) {
-        const char* dir_str =
-            (pc->cluster.global_split_dir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
-        spdlog::info("Toggled cluster global split direction: {}", dir_str);
-        out_message = std::string("Toggled: ") + dir_str;
-      }
-    }
-  }
+  (void)system.toggle_global_split_dir();
+  const char* dir_str =
+      (system.global_split_dir == cells::SplitDir::Vertical) ? "vertical" : "horizontal";
+  spdlog::info("Toggled global split direction: {}", dir_str);
+  out_message = std::string("Toggled: ") + dir_str;
   return ActionResult::Continue;
 }
 

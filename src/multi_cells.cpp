@@ -22,8 +22,6 @@ static CellCluster create_initial_state(float width, float height) {
   state.window_width = width;
   state.window_height = height;
 
-  state.global_split_dir = SplitDir::Vertical;
-
   return state;
 }
 
@@ -190,11 +188,12 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
 
 static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_index,
                                              float gap_horizontal, float gap_vertical,
-                                             size_t new_leaf_id, float split_ratio = 0.5f) {
+                                             size_t new_leaf_id, SplitDir split_dir,
+                                             float split_ratio = 0.5f) {
   // Special case: if cluster is empty and selected_index is -1, create root
   if (state.cells.empty() && selected_index == -1) {
     Cell root{};
-    root.split_dir = state.global_split_dir;
+    root.split_dir = split_dir;
     root.is_dead = false;
     root.parent = std::nullopt;
     root.first_child = std::nullopt;
@@ -228,7 +227,7 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
   Rect first_rect{};
   Rect second_rect{};
 
-  if (state.global_split_dir == SplitDir::Vertical) {
+  if (split_dir == SplitDir::Vertical) {
     float available_width = r.width - gap_horizontal;
     float first_width = available_width > 0.0f ? available_width * split_ratio : 0.0f;
     float second_width = available_width > 0.0f ? available_width * (1.0f - split_ratio) : 0.0f;
@@ -242,12 +241,12 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
     second_rect = Rect{r.x, r.y + first_height + gap_vertical, r.width, second_height};
   }
 
-  leaf.split_dir = state.global_split_dir;
+  leaf.split_dir = split_dir;
   leaf.split_ratio = split_ratio;
   leaf.leaf_id = std::nullopt;
 
   Cell first_child{};
-  first_child.split_dir = state.global_split_dir;
+  first_child.split_dir = split_dir;
   first_child.is_dead = false;
   first_child.parent = selected_index;
   first_child.first_child = std::nullopt;
@@ -256,7 +255,7 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
   first_child.leaf_id = parent_leaf_id;
 
   Cell second_child{};
-  second_child.split_dir = state.global_split_dir;
+  second_child.split_dir = split_dir;
   second_child.is_dead = false;
   second_child.parent = selected_index;
   second_child.first_child = std::nullopt;
@@ -272,9 +271,6 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
     parent.first_child = first_index;
     parent.second_child = second_index;
   }
-
-  state.global_split_dir =
-      (state.global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
 
   return SplitResult{new_leaf_id, first_index};
 }
@@ -331,8 +327,6 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
 static void debug_print_state(const CellCluster& state) {
   spdlog::debug("===== CellCluster =====");
   spdlog::debug("cells.size = {}", state.cells.size());
-  spdlog::debug("global_split_dir = {}",
-                state.global_split_dir == SplitDir::Vertical ? "Vertical" : "Horizontal");
 
   for (std::size_t i = 0; i < state.cells.size(); ++i) {
     const Cell& c = state.cells[i];
@@ -482,7 +476,7 @@ static bool validate_state(const CellCluster& state) {
 // ============================================================================
 
 static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& cell_ids,
-                             float gap_horizontal, float gap_vertical) {
+                             float gap_horizontal, float gap_vertical, SplitDir& split_dir) {
   int current_selection = -1;
 
   for (size_t i = 0; i < cell_ids.size(); ++i) {
@@ -490,17 +484,21 @@ static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& c
 
     if (pc.cluster.cells.empty()) {
       // First cell: create root leaf (pass -1 for empty cluster)
-      auto result_opt = split_leaf(pc.cluster, -1, gap_horizontal, gap_vertical, cell_id);
+      // Note: creating root does NOT toggle split direction (no actual split occurs)
+      auto result_opt =
+          split_leaf(pc.cluster, -1, gap_horizontal, gap_vertical, cell_id, split_dir);
       if (result_opt.has_value()) {
         current_selection = result_opt->new_selection_index;
       }
     } else {
       // Subsequent cells: split current selection
-      auto result_opt =
-          split_leaf(pc.cluster, current_selection, gap_horizontal, gap_vertical, cell_id);
+      auto result_opt = split_leaf(pc.cluster, current_selection, gap_horizontal, gap_vertical,
+                                   cell_id, split_dir);
       if (result_opt.has_value()) {
         // After split, selection moves to first child
         current_selection = result_opt->new_selection_index;
+        // Toggle split direction for next split
+        split_dir = (split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
       }
     }
   }
@@ -533,8 +531,8 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
     int selection_index = -1;
     // Pre-create leaves if initial_cell_ids provided
     if (!info.initial_cell_ids.empty()) {
-      selection_index =
-          pre_create_leaves(pc, info.initial_cell_ids, system.gap_horizontal, system.gap_vertical);
+      selection_index = pre_create_leaves(pc, info.initial_cell_ids, system.gap_horizontal,
+                                          system.gap_vertical, system.global_split_dir);
     }
 
     // If this is the first cluster with cells, make it the selected cluster
@@ -816,17 +814,9 @@ bool System::toggle_selected_split_dir() {
   return toggle_split_dir(pc->cluster, selection->cell_index, gap_horizontal, gap_vertical);
 }
 
-bool System::toggle_cluster_global_split_dir() {
-  if (!selection.has_value()) {
-    return false;
-  }
-  auto* pc = get_cluster(selection->cluster_id);
-  if (pc == nullptr) {
-    return false;
-  }
-  pc->cluster.global_split_dir = (pc->cluster.global_split_dir == SplitDir::Vertical)
-                                     ? SplitDir::Horizontal
-                                     : SplitDir::Vertical;
+bool System::toggle_global_split_dir() {
+  global_split_dir =
+      (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
   return true;
 }
 
@@ -1163,12 +1153,16 @@ MoveResult System::move_cell(ClusterId source_cluster_id, size_t source_leaf_id,
   }
 
   // Split target with the saved leaf_id
-  auto split_result =
-      split_leaf(tgt_pc->cluster, *tgt_idx_opt, gap_horizontal, gap_vertical, saved_leaf_id);
+  auto split_result = split_leaf(tgt_pc->cluster, *tgt_idx_opt, gap_horizontal, gap_vertical,
+                                 saved_leaf_id, global_split_dir);
 
   if (!split_result.has_value()) {
     return {false, -1, 0, "Split failed"};
   }
+
+  // Toggle split direction after successful split
+  global_split_dir =
+      (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
 
   // Find the new cell (second child)
   int first_child_idx = split_result->new_selection_index;
@@ -1322,6 +1316,8 @@ bool validate_system(const System& system) {
 void debug_print_system(const System& system) {
   spdlog::debug("===== MultiClusterSystem =====");
   spdlog::debug("clusters.size = {}", system.clusters.size());
+  spdlog::debug("global_split_dir = {}",
+                system.global_split_dir == SplitDir::Vertical ? "Vertical" : "Horizontal");
 
   if (system.selection.has_value()) {
     spdlog::debug("selection = cluster={}, cell_index={}", system.selection->cluster_id,
@@ -1625,13 +1621,19 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
         }
       }
 
-      auto result_opt =
-          split_leaf(pc->cluster, current_selection, gap_horizontal, gap_vertical, leaf_id);
+      bool is_root_creation = (current_selection == -1);
+      auto result_opt = split_leaf(pc->cluster, current_selection, gap_horizontal, gap_vertical,
+                                   leaf_id, global_split_dir);
 
       if (result_opt.has_value()) {
         // Update split_from_index to follow the first child for subsequent additions
         split_from_index = result_opt->new_selection_index;
         result.added_leaf_ids.push_back(leaf_id);
+        // Toggle split direction only for actual splits (not root creation)
+        if (!is_root_creation) {
+          global_split_dir =
+              (global_split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+        }
       }
     }
 
