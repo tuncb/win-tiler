@@ -17,6 +17,12 @@ enum class SplitDir {
   Horizontal,
 };
 
+enum class SplitMode {
+  AlternateLocally, // Opposite of parent's split direction (Vertical for root)
+  AlwaysVertical,   // Always vertical
+  AlwaysHorizontal, // Always horizontal
+};
+
 struct Rect {
   float x;
   float y;
@@ -41,9 +47,6 @@ struct Cell {
 
 struct CellCluster {
   std::vector<Cell> cells;
-
-  // Global split direction that alternates on each cell creation.
-  SplitDir global_split_dir;
 
   // Logical window size used to derive the initial root cell rect
   // when the first cell is created lazily on a split.
@@ -146,13 +149,14 @@ struct System {
   std::optional<CellIndicatorByIndex> selection; // System-wide selection
   float gap_horizontal = kDefaultCellGapHorizontal;
   float gap_vertical = kDefaultCellGapVertical;
+  SplitMode split_mode = SplitMode::AlternateLocally; // How splits determine direction
 
   // Mutating member functions
   PositionedCluster* get_cluster(ClusterId id);
   [[nodiscard]] const PositionedCluster* get_cluster(ClusterId id) const;
   [[nodiscard]] bool move_selection(Direction dir);
   [[nodiscard]] bool toggle_selected_split_dir();
-  [[nodiscard]] bool toggle_cluster_global_split_dir();
+  [[nodiscard]] bool cycle_split_mode();
   [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
   [[nodiscard]] bool adjust_selected_split_ratio(float delta);
   [[nodiscard]] bool exchange_selected_with_sibling();
