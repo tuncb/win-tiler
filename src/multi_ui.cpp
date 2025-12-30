@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string>
 
@@ -333,31 +334,37 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
     if (action.has_value()) {
       switch (*action) {
       case HotkeyAction::NavigateLeft:
+        spdlog::info("NavigateLeft: moving selection to the left");
         if (app_state.system.move_selection(cells::Direction::Left)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateDown:
+        spdlog::info("NavigateDown: moving selection downward");
         if (app_state.system.move_selection(cells::Direction::Down)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateUp:
+        spdlog::info("NavigateUp: moving selection upward");
         if (app_state.system.move_selection(cells::Direction::Up)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::NavigateRight:
+        spdlog::info("NavigateRight: moving selection to the right");
         if (app_state.system.move_selection(cells::Direction::Right)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::ToggleSplit:
+        spdlog::info("ToggleSplit: toggling split direction of selected cell");
         if (!app_state.system.toggle_selected_split_dir()) {
           spdlog::trace("Failed to toggle split direction");
         }
         break;
       case HotkeyAction::StoreCell:
+        spdlog::info("StoreCell: storing current cell for swap/move operation");
         if (app_state.system.selection.has_value()) {
           auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
@@ -370,9 +377,11 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         break;
       case HotkeyAction::ClearStored:
+        spdlog::info("ClearStored: clearing stored cell reference");
         stored_cell.reset();
         break;
       case HotkeyAction::Exchange:
+        spdlog::info("Exchange: swapping stored cell with selected cell");
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
           auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
@@ -390,6 +399,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         break;
       case HotkeyAction::Move:
+        spdlog::info("Move: moving stored cell to selected cell's position");
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
           auto* pc = app_state.system.get_cluster(app_state.system.selection->cluster_id);
           if (pc) {
@@ -407,27 +417,34 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         break;
       case HotkeyAction::SplitIncrease:
+        spdlog::info("SplitIncrease: increasing split ratio by 5%%");
         if (app_state.system.adjust_selected_split_ratio(0.05f)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::SplitDecrease:
+        spdlog::info("SplitDecrease: decreasing split ratio by 5%%");
         if (app_state.system.adjust_selected_split_ratio(-0.05f)) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::ExchangeSiblings:
+        spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
         if (app_state.system.exchange_selected_with_sibling()) {
           center_mouse_on_selection(app_state, vt);
         }
         break;
       case HotkeyAction::ToggleZen:
+        spdlog::info("ToggleZen: toggling zen mode for selected cell");
         (void)app_state.system.toggle_selected_zen();
         break;
       case HotkeyAction::CycleSplitMode:
         (void)app_state.system.cycle_split_mode();
+        spdlog::info("CycleSplitMode: switched to {}",
+                     magic_enum::enum_name(app_state.system.split_mode));
         break;
       case HotkeyAction::Exit:
+        spdlog::info("Exit: exit action (not implemented in multi_ui)");
         // Not implemented in multi_ui
         break;
       }

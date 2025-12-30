@@ -387,63 +387,12 @@ TEST_SUITE("cells - navigation") {
     CHECK(pc->cluster.cells[0].split_dir != initialDir);
   }
 
-  TEST_CASE("toggle_global_split_dir toggles system split direction") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
-    auto system = cells::create_system({info});
-
-    // Get initial global split dir
-    cells::SplitDir initialDir = system.global_split_dir;
-
-    bool result = system.toggle_global_split_dir();
-    CHECK(result);
-
-    // Check direction changed
-    CHECK(system.global_split_dir != initialDir);
-
-    // Toggle again should return to original
-    result = system.toggle_global_split_dir();
-    CHECK(result);
-    CHECK(system.global_split_dir == initialDir);
-  }
-
-  TEST_CASE("toggle_global_split_dir works without selection") {
-    auto system = cells::create_system({});
-
-    // Should succeed even with no selection
-    bool result = system.toggle_global_split_dir();
-    CHECK(result);
-
-    // Verify it toggled from default Vertical to Horizontal
-    CHECK(system.global_split_dir == cells::SplitDir::Horizontal);
-  }
-
-  TEST_CASE("toggle_global_split_dir affects all clusters") {
-    cells::ClusterInitInfo info1{1, 0.0f, 0.0f, 400.0f, 600.0f, 0.0f, 0.0f, 400.0f, 600.0f, {1}};
-    cells::ClusterInitInfo info2{2,      400.0f, 0.0f,   400.0f, 600.0f,
-                                 400.0f, 0.0f,   400.0f, 600.0f, {2}};
-    auto system = cells::create_system({info1, info2});
-
-    // Get initial global split dir
-    cells::SplitDir initialDir = system.global_split_dir;
-
-    // Toggle - affects system-wide, not per-cluster
-    bool result = system.toggle_global_split_dir();
-    CHECK(result);
-
-    // Both clusters see the same global_split_dir from system
-    CHECK(system.global_split_dir != initialDir);
-  }
-
   TEST_CASE("cycle_split_mode cycles through all modes") {
     cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {}};
     auto system = cells::create_system({info});
 
     // Default is AlternateLocally
     CHECK(system.split_mode == cells::SplitMode::AlternateLocally);
-
-    // Cycle to AlternateGlobally
-    CHECK(system.cycle_split_mode());
-    CHECK(system.split_mode == cells::SplitMode::AlternateGlobally);
 
     // Cycle to AlwaysVertical
     CHECK(system.cycle_split_mode());
@@ -506,52 +455,6 @@ TEST_SUITE("cells - navigation") {
     // Root should be horizontal split
     REQUIRE(pc->cluster.cells.size() >= 1);
     CHECK(pc->cluster.cells[0].split_dir == cells::SplitDir::Horizontal);
-  }
-
-  TEST_CASE("AlternateGlobally mode toggles global_split_dir after splits") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {}};
-    auto system = cells::create_system({info});
-
-    // Set to AlternateGlobally
-    system.split_mode = cells::SplitMode::AlternateGlobally;
-    system.global_split_dir = cells::SplitDir::Vertical;
-
-    // Add first window (root creation, no toggle)
-    cells::ClusterCellIds updates{1, {1}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-    CHECK(system.global_split_dir == cells::SplitDir::Vertical);
-
-    // Add second window (actual split, should toggle)
-    updates = cells::ClusterCellIds{1, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-    CHECK(system.global_split_dir == cells::SplitDir::Horizontal);
-
-    // Add third window (should toggle again)
-    updates = cells::ClusterCellIds{1, {1, 2, 3}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-    CHECK(system.global_split_dir == cells::SplitDir::Vertical);
-  }
-
-  TEST_CASE("AlternateLocally mode does not toggle global_split_dir") {
-    cells::ClusterInitInfo info{1, 0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {}};
-    auto system = cells::create_system({info});
-
-    // Default is AlternateLocally
-    CHECK(system.split_mode == cells::SplitMode::AlternateLocally);
-    system.global_split_dir = cells::SplitDir::Vertical;
-
-    // Add windows
-    cells::ClusterCellIds updates{1, {1}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-
-    updates = cells::ClusterCellIds{1, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-
-    updates = cells::ClusterCellIds{1, {1, 2, 3}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
-
-    // global_split_dir should remain unchanged
-    CHECK(system.global_split_dir == cells::SplitDir::Vertical);
   }
 }
 

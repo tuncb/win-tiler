@@ -217,26 +217,11 @@ ActionResult handle_exit() {
   return ActionResult::Exit;
 }
 
-const char* split_mode_to_string(cells::SplitMode mode) {
-  switch (mode) {
-  case cells::SplitMode::AlternateLocally:
-    return "AlternateLocally";
-  case cells::SplitMode::AlternateGlobally:
-    return "AlternateGlobally";
-  case cells::SplitMode::AlwaysVertical:
-    return "AlwaysVertical";
-  case cells::SplitMode::AlwaysHorizontal:
-    return "AlwaysHorizontal";
-  default:
-    return "Unknown";
-  }
-}
-
 ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_message) {
   (void)system.cycle_split_mode();
-  const char* mode_str = split_mode_to_string(system.split_mode);
+  auto mode_str = magic_enum::enum_name(system.split_mode);
   spdlog::info("Cycled split mode: {}", mode_str);
-  out_message = std::string("Split mode: ") + mode_str;
+  out_message = std::string("Split mode: ").append(mode_str);
   return ActionResult::Continue;
 }
 
