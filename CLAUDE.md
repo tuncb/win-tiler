@@ -58,3 +58,7 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 - **raylib** - Graphics/UI visualization
 - **doctest** - Unit testing framework
 - **Windows API** - Dwmapi.lib, Psapi.lib for window management
+
+## Syntax Rules
+
+ - Do not use (void), log error for handling return statements from [[nodiscard]] functions.

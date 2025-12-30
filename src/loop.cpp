@@ -218,7 +218,9 @@ ActionResult handle_exit() {
 }
 
 ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_message) {
-  (void)system.cycle_split_mode();
+  if (!system.cycle_split_mode()) {
+    spdlog::error("Failed to cycle split mode");
+  }
   auto mode_str = magic_enum::enum_name(system.split_mode);
   spdlog::info("Cycled split mode: {}", mode_str);
   out_message = std::string("Split mode: ").append(mode_str);

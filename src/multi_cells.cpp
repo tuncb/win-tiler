@@ -309,8 +309,7 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
     return false;
   }
 
-  Cell& sibling = state.cells[static_cast<std::size_t>(sibling_index)];
-  if (sibling.is_dead) {
+  if (state.cells[static_cast<std::size_t>(sibling_index)].is_dead) {
     return false;
   }
 
@@ -318,8 +317,6 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
       (parent.split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
 
   recompute_subtree_rects(state, parent_index, gap_horizontal, gap_vertical);
-
-  (void)sibling;
 
   return true;
 }

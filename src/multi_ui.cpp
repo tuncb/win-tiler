@@ -436,10 +436,14 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::ToggleZen:
         spdlog::info("ToggleZen: toggling zen mode for selected cell");
-        (void)app_state.system.toggle_selected_zen();
+        if (!app_state.system.toggle_selected_zen()) {
+          spdlog::error("ToggleZen: failed to toggle zen mode");
+        }
         break;
       case HotkeyAction::CycleSplitMode:
-        (void)app_state.system.cycle_split_mode();
+        if (!app_state.system.cycle_split_mode()) {
+          spdlog::error("CycleSplitMode: failed to cycle split mode");
+        }
         spdlog::info("CycleSplitMode: switched to {}",
                      magic_enum::enum_name(app_state.system.split_mode));
         break;
