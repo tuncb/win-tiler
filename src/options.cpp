@@ -117,6 +117,18 @@ std::string get_default_hotkey(HotkeyAction action) {
   return "";
 }
 
+// Helper to read a numeric value, accepting both float and integer TOML types
+template <typename T>
+std::optional<T> get_number(const toml::node_view<toml::node>& node) {
+  if (auto fp = node.as_floating_point()) {
+    return static_cast<T>(fp->get());
+  }
+  if (auto integer = node.as_integer()) {
+    return static_cast<T>(integer->get());
+  }
+  return std::nullopt;
+}
+
 } // anonymous namespace
 
 IgnoreOptions get_default_ignore_options() {
@@ -256,6 +268,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
 // Reads options from a TOML file at the given path.
 // All fields are optional; missing fields will use default values.
 // All fields are validated; invalid values will be replaced with defaults.
+// Float values should also accept integer values from TOML files.
 tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem::path& filepath) {
   try {
     auto tbl = toml::parse_file(filepath.string());
@@ -414,11 +427,11 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 
     // Parse gap section
     if (auto gap = tbl["gap"].as_table()) {
-      if (auto horizontal = (*gap)["horizontal"].as_floating_point()) {
-        options.gapOptions.horizontal = static_cast<float>(horizontal->get());
+      if (auto horizontal = get_number<float>((*gap)["horizontal"])) {
+        options.gapOptions.horizontal = *horizontal;
       }
-      if (auto vertical = (*gap)["vertical"].as_floating_point()) {
-        options.gapOptions.vertical = static_cast<float>(vertical->get());
+      if (auto vertical = get_number<float>((*gap)["vertical"])) {
+        options.gapOptions.vertical = *vertical;
       }
     }
 
@@ -485,11 +498,11 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       } else if ((*render)["stored_color"]) {
         spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
       }
-      if (auto borderWidth = (*render)["border_width"].as_floating_point()) {
-        options.visualizationOptions.borderWidth = static_cast<float>(borderWidth->get());
+      if (auto borderWidth = get_number<float>((*render)["border_width"])) {
+        options.visualizationOptions.borderWidth = *borderWidth;
       }
-      if (auto toastFontSize = (*render)["toast_font_size"].as_floating_point()) {
-        options.visualizationOptions.toastFontSize = static_cast<float>(toastFontSize->get());
+      if (auto toastFontSize = get_number<float>((*render)["toast_font_size"])) {
+        options.visualizationOptions.toastFontSize = *toastFontSize;
       }
       if (auto toastDurationMs = (*render)["toast_duration_ms"].as_integer()) {
         options.visualizationOptions.toastDurationMs = static_cast<int>(toastDurationMs->get());
@@ -519,8 +532,8 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 
     // Parse zen section
     if (auto zen = tbl["zen"].as_table()) {
-      if (auto percentage = (*zen)["percentage"].as_floating_point()) {
-        options.zenOptions.percentage = static_cast<float>(percentage->get());
+      if (auto percentage = get_number<float>((*zen)["percentage"])) {
+        options.zenOptions.percentage = *percentage;
       }
     }
 

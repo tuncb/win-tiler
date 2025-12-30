@@ -506,4 +506,197 @@ TEST_SUITE("IgnoreOptions Merge") {
   }
 }
 
+// ============================================================================
+// TOML Parse Error Tests
+// ============================================================================
+
+TEST_SUITE("TOML Parse Errors") {
+  TEST_CASE("unclosed table bracket returns error") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap\n"; // Missing closing bracket
+      file << "horizontal = 20.0\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    CHECK(!result.has_value());
+    CHECK(result.error().find("parse error") != std::string::npos);
+  }
+
+  TEST_CASE("unclosed string returns error") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "processes = [\"unclosed\n"; // Missing closing quote and bracket
+    }
+
+    auto result = read_options_toml(temp_path);
+    CHECK(!result.has_value());
+    CHECK(result.error().find("parse error") != std::string::npos);
+  }
+
+  TEST_CASE("invalid value returns error") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = @invalid\n"; // Invalid TOML value
+    }
+
+    auto result = read_options_toml(temp_path);
+    CHECK(!result.has_value());
+    CHECK(result.error().find("parse error") != std::string::npos);
+  }
+
+  TEST_CASE("empty file parses successfully with defaults") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      // Empty file
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    // Should have all defaults
+    CHECK(result.value().gapOptions.horizontal == kDefaultGapHorizontal);
+    CHECK(result.value().gapOptions.vertical == kDefaultGapVertical);
+  }
+}
+
+// ============================================================================
+// Type Coercion Tests
+// ============================================================================
+
+TEST_SUITE("Type Coercion") {
+  TEST_CASE("integer gap values are accepted and converted to float") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 20\n"; // Integer, not float
+      file << "vertical = 25\n";   // Integer, not float
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    // Integers should be converted to float
+    CHECK(result.value().gapOptions.horizontal == 20.0f);
+    CHECK(result.value().gapOptions.vertical == 25.0f);
+  }
+
+  TEST_CASE("float gap values are correctly read") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 20.5\n"; // Float
+      file << "vertical = 25.5\n";   // Float
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().gapOptions.horizontal == 20.5f);
+    CHECK(result.value().gapOptions.vertical == 25.5f);
+  }
+
+  TEST_CASE("mixed integer and float gap values both work") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 20\n"; // Integer
+      file << "vertical = 25.5\n"; // Float
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().gapOptions.horizontal == 20.0f);
+    CHECK(result.value().gapOptions.vertical == 25.5f);
+  }
+
+  TEST_CASE("integer border_width is accepted") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[render]\n";
+      file << "border_width = 5\n"; // Integer
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().visualizationOptions.borderWidth == 5.0f);
+  }
+
+  TEST_CASE("integer toast_font_size is accepted") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[render]\n";
+      file << "toast_font_size = 24\n"; // Integer
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().visualizationOptions.toastFontSize == 24.0f);
+  }
+
+  TEST_CASE("integer zen percentage is accepted") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[zen]\n";
+      file << "percentage = 1\n"; // Integer (will be clamped to 1.0)
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().zenOptions.percentage == 1.0f);
+  }
+
+  TEST_CASE("integer loop interval_ms works (already uses as_integer)") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "interval_ms = 100\n"; // Integer (expected type)
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.intervalMs == 100);
+  }
+}
+
 #endif // !DOCTEST_CONFIG_DISABLE
