@@ -14,6 +14,7 @@ using namespace wintiler;
 // Default gap values for tests
 constexpr float TEST_GAP_H = 10.0f;
 constexpr float TEST_GAP_V = 10.0f;
+constexpr float TEST_ZEN_PERCENTAGE = 0.8f;
 
 // ============================================================================
 // Multi-Cluster System Tests
@@ -165,7 +166,7 @@ TEST_SUITE("cells - multi-cluster") {
     auto system = cells::create_system({info});
 
     // Point inside the cell
-    auto result = cells::find_cell_at_point(system, 400.0f, 300.0f);
+    auto result = cells::find_cell_at_point(system, 400.0f, 300.0f, TEST_ZEN_PERCENTAGE);
 
     REQUIRE(result.has_value());
     CHECK(result->first == 0);  // Cluster index
@@ -177,7 +178,7 @@ TEST_SUITE("cells - multi-cluster") {
     auto system = cells::create_system({info});
 
     // Point outside the cluster
-    auto result = cells::find_cell_at_point(system, 1000.0f, 1000.0f);
+    auto result = cells::find_cell_at_point(system, 1000.0f, 1000.0f, TEST_ZEN_PERCENTAGE);
 
     CHECK(!result.has_value());
   }
@@ -199,13 +200,15 @@ TEST_SUITE("cells - multi-cluster") {
     auto rect2 = cells::get_cell_global_rect(pc, *idx2);
 
     // Test point in first cell
-    auto result1 = cells::find_cell_at_point(system, rect1.x + 10.0f, rect1.y + 10.0f);
+    auto result1 =
+        cells::find_cell_at_point(system, rect1.x + 10.0f, rect1.y + 10.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result1.has_value());
     CHECK(result1->first == 0);
     CHECK(result1->second == *idx1);
 
     // Test point in second cell
-    auto result2 = cells::find_cell_at_point(system, rect2.x + 10.0f, rect2.y + 10.0f);
+    auto result2 =
+        cells::find_cell_at_point(system, rect2.x + 10.0f, rect2.y + 10.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result2.has_value());
     CHECK(result2->first == 0);
     CHECK(result2->second == *idx2);
@@ -217,12 +220,12 @@ TEST_SUITE("cells - multi-cluster") {
     auto system = cells::create_system({info1, info2});
 
     // Point in cluster 0
-    auto result1 = cells::find_cell_at_point(system, 200.0f, 300.0f);
+    auto result1 = cells::find_cell_at_point(system, 200.0f, 300.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result1.has_value());
     CHECK(result1->first == 0);
 
     // Point in cluster 1
-    auto result2 = cells::find_cell_at_point(system, 600.0f, 300.0f);
+    auto result2 = cells::find_cell_at_point(system, 600.0f, 300.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result2.has_value());
     CHECK(result2->first == 1);
   }
@@ -230,7 +233,7 @@ TEST_SUITE("cells - multi-cluster") {
   TEST_CASE("findCellAtPoint returns nullopt for empty system") {
     auto system = cells::create_system({});
 
-    auto result = cells::find_cell_at_point(system, 100.0f, 100.0f);
+    auto result = cells::find_cell_at_point(system, 100.0f, 100.0f, TEST_ZEN_PERCENTAGE);
 
     CHECK(!result.has_value());
   }
@@ -243,25 +246,25 @@ TEST_SUITE("cells - multi-cluster") {
     // Cell starts at (110, 60), size (780, 580), ends at (890, 640)
 
     // Point in edge margin (outside cell)
-    auto result0 = cells::find_cell_at_point(system, 100.0f, 50.0f);
+    auto result0 = cells::find_cell_at_point(system, 100.0f, 50.0f, TEST_ZEN_PERCENTAGE);
     CHECK(!result0.has_value());
 
     // Point exactly at cell top-left corner (inclusive)
-    auto result1 = cells::find_cell_at_point(system, 110.0f, 60.0f);
+    auto result1 = cells::find_cell_at_point(system, 110.0f, 60.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result1.has_value());
     CHECK(result1->first == 0);
 
     // Point just before cell bottom-right edge (exclusive)
-    auto result2 = cells::find_cell_at_point(system, 889.0f, 639.0f);
+    auto result2 = cells::find_cell_at_point(system, 889.0f, 639.0f, TEST_ZEN_PERCENTAGE);
     REQUIRE(result2.has_value());
     CHECK(result2->first == 0);
 
     // Point exactly at cell right edge (exclusive - outside)
-    auto result3 = cells::find_cell_at_point(system, 890.0f, 300.0f);
+    auto result3 = cells::find_cell_at_point(system, 890.0f, 300.0f, TEST_ZEN_PERCENTAGE);
     CHECK(!result3.has_value());
 
     // Point exactly at bottom edge (exclusive - outside)
-    auto result4 = cells::find_cell_at_point(system, 500.0f, 650.0f);
+    auto result4 = cells::find_cell_at_point(system, 500.0f, 650.0f, TEST_ZEN_PERCENTAGE);
     CHECK(!result4.has_value());
   }
 
