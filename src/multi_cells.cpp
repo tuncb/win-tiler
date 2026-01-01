@@ -1450,6 +1450,58 @@ static bool is_point_in_cluster(const PositionedCluster& pc, float x, float y) {
          y < pc.monitor_y + pc.monitor_height;
 }
 
+// Helper: Find windows in cell_ids that don't exist in any cluster
+static std::vector<size_t> find_unmanaged_windows(const std::vector<ClusterCellIds>& cell_ids,
+                                                  const std::vector<PositionedCluster>& clusters) {
+  std::vector<size_t> new_windows;
+  for (const auto& upd : cell_ids) {
+    for (size_t leaf_id : upd.leaf_ids) {
+      bool exists = false;
+      for (const auto& pc : clusters) {
+        if (find_cell_by_leaf_id(pc.cluster, leaf_id).has_value()) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) {
+        new_windows.push_back(leaf_id);
+      }
+    }
+  }
+  return new_windows;
+}
+
+// Helper: Move windows from their detected clusters to target cluster
+static void redirect_windows_to_cluster(std::vector<ClusterCellIds>& cell_ids,
+                                        const std::vector<size_t>& windows_to_redirect,
+                                        size_t target_cluster_index) {
+  if (windows_to_redirect.empty()) {
+    return;
+  }
+
+  // Remove from all clusters
+  for (auto& upd : cell_ids) {
+    auto& ids = upd.leaf_ids;
+    ids.erase(std::remove_if(ids.begin(), ids.end(),
+                             [&windows_to_redirect](size_t id) {
+                               return std::find(windows_to_redirect.begin(),
+                                                windows_to_redirect.end(),
+                                                id) != windows_to_redirect.end();
+                             }),
+              ids.end());
+  }
+
+  // Add to target cluster
+  for (auto& upd : cell_ids) {
+    if (upd.cluster_index == target_cluster_index) {
+      for (size_t id : windows_to_redirect) {
+        upd.leaf_ids.push_back(id);
+      }
+      break;
+    }
+  }
+}
+
 UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
                             std::optional<std::pair<size_t, size_t>> new_selection,
                             std::pair<float, float> pointer_coords) {
@@ -1470,53 +1522,16 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
     }
   }
 
-  // Redirect new windows to pointer's empty cluster if found
+  // Determine target cluster for new window redirection
+  std::optional<size_t> redirect_target;
+
+  // Priority 1: Empty cluster under pointer
   if (pointer_cluster_index.has_value()) {
-    // Collect new windows (not in any cluster)
-    std::vector<size_t> new_windows;
-    for (const auto& upd : redirected_cell_ids) {
-      for (size_t leaf_id : upd.leaf_ids) {
-        bool is_new = true;
-        for (const auto& pc : clusters) {
-          if (find_cell_by_leaf_id(pc.cluster, leaf_id).has_value()) {
-            is_new = false;
-            break;
-          }
-        }
-        if (is_new) {
-          new_windows.push_back(leaf_id);
-        }
-      }
-    }
-
-    if (!new_windows.empty()) {
-      // Remove from detected clusters
-      for (auto& upd : redirected_cell_ids) {
-        auto& ids = upd.leaf_ids;
-        ids.erase(std::remove_if(ids.begin(), ids.end(),
-                                 [&new_windows](size_t id) {
-                                   return std::find(new_windows.begin(), new_windows.end(), id) !=
-                                          new_windows.end();
-                                 }),
-                  ids.end());
-      }
-
-      // Add to pointer's empty cluster
-      for (auto& upd : redirected_cell_ids) {
-        if (upd.cluster_index == *pointer_cluster_index) {
-          for (size_t id : new_windows) {
-            upd.leaf_ids.push_back(id);
-          }
-          break;
-        }
-      }
-    }
+    redirect_target = *pointer_cluster_index;
   }
-  // Redirect new windows to selection if present (fallback when pointer not in empty cluster)
+  // Priority 2: Selected cluster (if in updates)
   else if (selection.has_value()) {
     size_t selected_cluster_index = selection->cluster_index;
-
-    // Check if selected cluster is in the updates list
     bool selected_cluster_in_updates = false;
     for (const auto& upd : redirected_cell_ids) {
       if (upd.cluster_index == selected_cluster_index) {
@@ -1524,49 +1539,15 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
         break;
       }
     }
-
-    // Only redirect if selected cluster is in updates
     if (selected_cluster_in_updates) {
-      // Collect new windows (not in any cluster)
-      std::vector<size_t> new_windows;
-      for (const auto& upd : redirected_cell_ids) {
-        for (size_t leaf_id : upd.leaf_ids) {
-          bool is_new = true;
-          for (const auto& pc : clusters) {
-            if (find_cell_by_leaf_id(pc.cluster, leaf_id).has_value()) {
-              is_new = false;
-              break;
-            }
-          }
-          if (is_new) {
-            new_windows.push_back(leaf_id);
-          }
-        }
-      }
-
-      if (!new_windows.empty()) {
-        // Remove from detected clusters
-        for (auto& upd : redirected_cell_ids) {
-          auto& ids = upd.leaf_ids;
-          ids.erase(std::remove_if(ids.begin(), ids.end(),
-                                   [&new_windows](size_t id) {
-                                     return std::find(new_windows.begin(), new_windows.end(), id) !=
-                                            new_windows.end();
-                                   }),
-                    ids.end());
-        }
-
-        // Add to selected cluster
-        for (auto& upd : redirected_cell_ids) {
-          if (upd.cluster_index == selected_cluster_index) {
-            for (size_t id : new_windows) {
-              upd.leaf_ids.push_back(id);
-            }
-            break;
-          }
-        }
-      }
+      redirect_target = selected_cluster_index;
     }
+  }
+
+  // Redirect new windows to target cluster
+  if (redirect_target.has_value()) {
+    auto new_windows = find_unmanaged_windows(redirected_cell_ids, clusters);
+    redirect_windows_to_cluster(redirected_cell_ids, new_windows, *redirect_target);
   }
 
   // Process each cluster update
