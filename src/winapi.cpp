@@ -301,6 +301,11 @@ WindowInfo get_window_info(HWND_T hwnd) {
     info.title = title;
   }
 
+  char classNameBuf[256];
+  if (GetClassNameA((HWND)hwnd, classNameBuf, sizeof(classNameBuf)) > 0) {
+    info.className = classNameBuf;
+  }
+
   info.pid = get_window_pid(hwnd);
   if (info.pid.has_value()) {
     info.processName = get_process_name_from_pid(info.pid.value());
