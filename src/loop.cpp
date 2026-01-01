@@ -829,11 +829,10 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
           }
         }
       }
+      timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
+        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+      });
     }
-
-    timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-      apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
-    });
 
     // Render cell system overlay
     std::string current_toast =
