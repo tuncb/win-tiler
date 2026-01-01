@@ -793,7 +793,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       update_foreground_selection_from_mouse_position(system, fullscreen_clusters,
                                                       options.zenOptions.percentage);
 
-      // If changes detected, log and apply
+      // If changes detected, log them
       if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
         // One-line summary at info level
         spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
