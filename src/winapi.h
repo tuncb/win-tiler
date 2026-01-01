@@ -44,6 +44,7 @@ struct WindowInfo {
   std::string title;
   std::optional<DWORD_T> pid;
   std::string processName;
+  std::string className;
 };
 
 std::vector<MonitorInfo> get_monitors();
