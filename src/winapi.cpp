@@ -133,6 +133,11 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     info.processName = get_process_name_from_pid(info.pid.value());
   }
 
+  char classNameBuf[256];
+  if (GetClassNameA(hwnd, classNameBuf, sizeof(classNameBuf)) > 0) {
+    info.className = classNameBuf;
+  }
+
   windows->push_back(info);
   return TRUE;
 }
@@ -144,6 +149,10 @@ std::vector<WindowInfo> get_windows_list() {
 }
 
 bool is_ignored(const wintiler::IgnoreOptions& options, const WindowInfo& win) {
+  // Check for system drag image windows (always ignore)
+  if (win.className == "SysDragImage")
+    return true;
+
   // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
     if (win.processName == proc)
