@@ -1095,6 +1095,19 @@ tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t
     Cell& cell1 = pc1.cluster.cells[static_cast<size_t>(idx1)];
     Cell& cell2 = pc2.cluster.cells[static_cast<size_t>(idx2)];
 
+    // Handle zen state for cross-cluster swap
+    bool is_zen1 = pc1.cluster.zen_cell_index.has_value() && *pc1.cluster.zen_cell_index == idx1;
+    bool is_zen2 = pc2.cluster.zen_cell_index.has_value() && *pc2.cluster.zen_cell_index == idx2;
+
+    // If both are zen, they remain zen (exchange zen windows)
+    // If only one is zen, clear it (the zen window left the cluster)
+    if (is_zen1 && !is_zen2) {
+      pc1.cluster.zen_cell_index.reset();
+    }
+    if (is_zen2 && !is_zen1) {
+      pc2.cluster.zen_cell_index.reset();
+    }
+
     std::swap(cell1.leaf_id, cell2.leaf_id);
 
     // Note: Selection doesn't need updating for cross-cluster swap
@@ -1153,6 +1166,11 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
 
   // Store source's leaf_id
   size_t saved_leaf_id = source_leaf_id;
+
+  // Clear zen on source cluster if moving the zen cell
+  if (src_pc.cluster.zen_cell_index.has_value() && *src_pc.cluster.zen_cell_index == *src_idx_opt) {
+    src_pc.cluster.zen_cell_index.reset();
+  }
 
   // Delete source
   auto delete_result = delete_leaf(src_pc.cluster, *src_idx_opt, gap_horizontal, gap_vertical);
