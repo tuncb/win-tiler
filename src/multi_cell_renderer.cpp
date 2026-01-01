@@ -6,7 +6,7 @@ namespace wintiler {
 namespace renderer {
 
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<StoredCell> stored_cell, const std::string& message,
+            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message,
             const std::unordered_set<size_t>& fullscreen_clusters) {
   // Begin frame
   overlay::begin_frame();
@@ -97,14 +97,14 @@ void render(const cells::System& system, const RenderOptions& config,
   }
 
   // Draw message if provided
-  if (!message.empty()) {
+  if (message.has_value()) {
     auto monitors = winapi::get_monitors();
     for (const auto& monitor : monitors) {
       if (monitor.isPrimary) {
         // Position at bottom-right of work area with padding
         // Estimate toast width: ~0.5x font size per character + 16px padding
         float estimated_width =
-            static_cast<float>(message.length()) * config.toast_font_size * 0.5f + 16.0f;
+            static_cast<float>(message->length()) * config.toast_font_size * 0.5f + 16.0f;
         float toast_height = config.toast_font_size * 1.5f; // Approximate height + padding
         float padding = 20.0f;
 
@@ -113,7 +113,7 @@ void render(const cells::System& system, const RenderOptions& config,
         float text_y = static_cast<float>(monitor.workArea.bottom) - padding - toast_height;
 
         overlay::draw_toast({
-            message,
+            *message,
             text_x,
             text_y,
             {40, 40, 40, 220},    // Dark background

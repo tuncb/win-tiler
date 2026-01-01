@@ -43,6 +43,33 @@ void timed_void(const char* name, F&& func) {
                 std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 }
 
+// Toast message display state
+struct ToastState {
+  std::string message;
+  std::chrono::steady_clock::time_point expiry;
+  std::chrono::milliseconds duration;
+
+  explicit ToastState(std::chrono::milliseconds dur)
+      : duration(dur), expiry(std::chrono::steady_clock::now()) {
+  }
+
+  void show(std::string_view msg) {
+    message = msg;
+    expiry = std::chrono::steady_clock::now() + duration;
+  }
+
+  void set_duration(std::chrono::milliseconds dur) {
+    duration = dur;
+  }
+
+  std::optional<std::string> get_visible_message() const {
+    if (std::chrono::steady_clock::now() < expiry) {
+      return message;
+    }
+    return std::nullopt;
+  }
+};
+
 // Convert HotkeyAction to integer ID for Windows hotkey registration
 int hotkey_action_to_id(HotkeyAction action) {
   return static_cast<int>(action) + 1; // Start from 1 to avoid 0
@@ -632,7 +659,7 @@ cells::System create_initial_system(const GlobalOptions& options) {
 
 // Handle config file hot-reload
 void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& system,
-                           std::chrono::milliseconds& toast_duration) {
+                           ToastState& toast) {
   if (!provider.refresh()) {
     return;
   }
@@ -640,7 +667,7 @@ void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& syste
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
   system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
-  toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+  toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
 }
 
@@ -746,9 +773,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   std::optional<StoredCell> stored_cell;
 
   // Toast message state
-  std::string toast_message;
-  auto toast_expiry = std::chrono::steady_clock::now();
-  auto toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+  ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::milliseconds(options.loopOptions.intervalMs));
@@ -764,7 +789,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       }
 
       // Check for config file changes and hot-reload
-      handle_config_refresh(provider, system, toast_duration);
+      handle_config_refresh(provider, system, toast);
 
       // Check for monitor configuration changes
       if (handle_monitor_change(monitors, options, system, fullscreen_clusters, stored_cell)) {
@@ -783,8 +808,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
           break;
         }
         if (!action_message.empty()) {
-          toast_message = action_message;
-          toast_expiry = std::chrono::steady_clock::now() + toast_duration;
+          toast.show(action_message);
         }
       }
 
@@ -816,14 +840,13 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     }
 
     // Render cell system overlay
-    std::string current_toast =
-        (std::chrono::steady_clock::now() < toast_expiry) ? toast_message : "";
     renderer::RenderOptions render_opts{
         options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
         options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
         options.visualizationOptions.toastFontSize, options.zenOptions.percentage,
     };
-    renderer::render(system, render_opts, stored_cell, current_toast, fullscreen_clusters);
+    renderer::render(system, render_opts, stored_cell, toast.get_visible_message(),
+                     fullscreen_clusters);
 
     auto loop_end = std::chrono::high_resolution_clock::now();
     spdlog::trace(
