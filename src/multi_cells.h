@@ -248,8 +248,10 @@ void debug_print_system(const System& system);
 
 // Find the cluster and cell at a global point.
 // Returns nullopt if no cell contains the point.
+// When a cluster has a zen cell active, only that cell is considered for hit testing
+// using its zen display rect (centered at zen_percentage of cluster size).
 [[nodiscard]] std::optional<std::pair<size_t, int>>
-find_cell_at_point(const System& system, float global_x, float global_y);
+find_cell_at_point(const System& system, float global_x, float global_y, float zen_percentage);
 
 // ============================================================================
 // Leaf Utilities

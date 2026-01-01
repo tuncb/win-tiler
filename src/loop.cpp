@@ -305,7 +305,8 @@ ActionResult handle_toggle_zen(cells::System& system) {
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
 bool handle_mouse_drop_move(cells::System& system,
-                            const std::unordered_set<size_t>& fullscreen_clusters) {
+                            const std::unordered_set<size_t>& fullscreen_clusters,
+                            float zen_percentage) {
   auto drag_info = winapi::get_drag_info();
   if (!drag_info.has_value() || !drag_info->move_ended) {
     return false;
@@ -325,7 +326,7 @@ bool handle_mouse_drop_move(cells::System& system,
   float cursor_y = static_cast<float>(cursor_pos->y);
 
   // Find cell at cursor position (target)
-  auto target_cell = cells::find_cell_at_point(system, cursor_x, cursor_y);
+  auto target_cell = cells::find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
   if (!target_cell.has_value()) {
     spdlog::trace("Mouse drop: no cell at cursor position ({}, {})", cursor_x, cursor_y);
     return false;
@@ -452,7 +453,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
 }
 
 void update_foreground_selection_from_mouse_position(
-    cells::System& system, const std::unordered_set<size_t>& fullscreen_clusters) {
+    cells::System& system, const std::unordered_set<size_t>& fullscreen_clusters,
+    float zen_percentage) {
   auto foreground_hwnd = winapi::get_foreground_window();
 
   if (foreground_hwnd == nullptr ||
@@ -469,7 +471,7 @@ void update_foreground_selection_from_mouse_position(
   float cursor_x = static_cast<float>(cursor_pos_opt->x);
   float cursor_y = static_cast<float>(cursor_pos_opt->y);
 
-  auto cell_at_cursor = cells::find_cell_at_point(system, cursor_x, cursor_y);
+  auto cell_at_cursor = cells::find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
 
   if (!cell_at_cursor.has_value()) {
     return;
@@ -477,10 +479,15 @@ void update_foreground_selection_from_mouse_position(
 
   auto [cluster_index, cell_index] = *cell_at_cursor;
 
-  // Skip selection update if this cluster has an active zen cell or a fullscreen app
+  // Skip selection update if this cluster has a fullscreen app
+  if (fullscreen_clusters.contains(cluster_index)) {
+    return;
+  }
+
+  // Skip selection update if this cluster has a zen cell and we're NOT hovering over it
   const auto& zen_check_pc = system.clusters[cluster_index];
-  if (zen_check_pc.cluster.zen_cell_index.has_value() ||
-      fullscreen_clusters.contains(cluster_index)) {
+  if (zen_check_pc.cluster.zen_cell_index.has_value() &&
+      *zen_check_pc.cluster.zen_cell_index != cell_index) {
     return;
   }
 
@@ -714,7 +721,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Skip all processing while user is dragging a window - only render
     if (!winapi::is_any_window_being_moved()) {
       // Check if a drag operation just completed and handle drop
-      if (handle_mouse_drop_move(system, fullscreen_clusters)) {
+      if (handle_mouse_drop_move(system, fullscreen_clusters, options.zenOptions.percentage)) {
         // Move was performed, apply layout immediately
         apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
       }
@@ -789,7 +796,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       // Update fullscreen state before selection (affects mouse selection and rendering)
       update_fullscreen_state(system, fullscreen_clusters);
 
-      update_foreground_selection_from_mouse_position(system, fullscreen_clusters);
+      update_foreground_selection_from_mouse_position(system, fullscreen_clusters,
+                                                      options.zenOptions.percentage);
 
       // If changes detected, log and apply
       if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {

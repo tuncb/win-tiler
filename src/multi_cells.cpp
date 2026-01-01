@@ -1378,9 +1378,22 @@ bool has_leaf_id(const System& system, size_t leaf_id) {
 // ============================================================================
 
 std::optional<std::pair<size_t, int>> find_cell_at_point(const System& system, float global_x,
-                                                         float global_y) {
+                                                         float global_y, float zen_percentage) {
   for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
     const auto& pc = system.clusters[ci];
+
+    // If cluster has zen cell, only check that cell with its zen display rect
+    if (pc.cluster.zen_cell_index.has_value()) {
+      int zen_idx = *pc.cluster.zen_cell_index;
+      Rect zen_rect = get_cell_display_rect(pc, zen_idx, true, zen_percentage);
+      if (global_x >= zen_rect.x && global_x < zen_rect.x + zen_rect.width &&
+          global_y >= zen_rect.y && global_y < zen_rect.y + zen_rect.height) {
+        return std::make_pair(ci, zen_idx);
+      }
+      continue; // Skip normal leaf iteration for zen clusters
+    }
+
+    // Normal hit testing for non-zen clusters
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       if (!is_leaf(pc.cluster, i)) {
         continue;
