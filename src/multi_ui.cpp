@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 
+#include "model.h"
 #include "options.h"
 #include "raylib.h"
 #include "spdlog/spdlog.h"
@@ -287,7 +288,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
   SetTargetFPS(60);
 
   // Store cell for swap/move operations (cluster_index, leaf_id)
-  std::optional<std::pair<size_t, size_t>> stored_cell;
+  std::optional<StoredCell> stored_cell;
 
   while (!WindowShouldClose()) {
     // Check for config changes and hot-reload
@@ -372,7 +373,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
           const auto& cell =
               pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
           if (cell.leaf_id.has_value()) {
-            stored_cell = {app_state.system.selection->cluster_index, *cell.leaf_id};
+            stored_cell = StoredCell{app_state.system.selection->cluster_index, *cell.leaf_id};
           }
         }
         break;
@@ -387,9 +388,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
           const auto& cell =
               pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
           if (cell.leaf_id.has_value()) {
-            auto result =
-                app_state.system.swap_cells(app_state.system.selection->cluster_index,
-                                            *cell.leaf_id, stored_cell->first, stored_cell->second);
+            auto result = app_state.system.swap_cells(app_state.system.selection->cluster_index,
+                                                      *cell.leaf_id, stored_cell->cluster_index,
+                                                      stored_cell->leaf_id);
             if (result.has_value()) {
               stored_cell.reset();
             }
@@ -403,9 +404,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
           const auto& cell =
               pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
           if (cell.leaf_id.has_value()) {
-            auto result = app_state.system.move_cell(stored_cell->first, stored_cell->second,
-                                                     app_state.system.selection->cluster_index,
-                                                     *cell.leaf_id);
+            auto result = app_state.system.move_cell(
+                stored_cell->cluster_index, stored_cell->leaf_id,
+                app_state.system.selection->cluster_index, *cell.leaf_id);
             if (result.has_value()) {
               stored_cell.reset();
             }
@@ -483,8 +484,8 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
         // Check if this cell is the stored cell
         bool is_stored_cell = false;
-        if (stored_cell.has_value() && stored_cell->first == cluster_idx) {
-          auto stored_idx = cells::find_cell_by_leaf_id(pc.cluster, stored_cell->second);
+        if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
+          auto stored_idx = cells::find_cell_by_leaf_id(pc.cluster, stored_cell->leaf_id);
           if (stored_idx.has_value() && *stored_idx == i) {
             is_stored_cell = true;
           }

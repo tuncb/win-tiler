@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "model.h"
 #include "multi_cell_renderer.h"
 #include "multi_cells.h"
 #include "overlay.h"
@@ -76,40 +77,7 @@ void unregister_navigation_hotkeys(const KeyboardOptions& keyboard_options) {
 
 // Convert HotkeyAction to human-readable string
 const char* hotkey_action_to_string(HotkeyAction action) {
-  switch (action) {
-  case HotkeyAction::NavigateLeft:
-    return "Navigate Left";
-  case HotkeyAction::NavigateDown:
-    return "Navigate Down";
-  case HotkeyAction::NavigateUp:
-    return "Navigate Up";
-  case HotkeyAction::NavigateRight:
-    return "Navigate Right";
-  case HotkeyAction::ToggleSplit:
-    return "Toggle Split";
-  case HotkeyAction::Exit:
-    return "Exit";
-  case HotkeyAction::CycleSplitMode:
-    return "Cycle Split Mode";
-  case HotkeyAction::StoreCell:
-    return "Store Cell";
-  case HotkeyAction::ClearStored:
-    return "Clear Stored";
-  case HotkeyAction::Exchange:
-    return "Exchange";
-  case HotkeyAction::Move:
-    return "Move";
-  case HotkeyAction::SplitIncrease:
-    return "Split Increase";
-  case HotkeyAction::SplitDecrease:
-    return "Split Decrease";
-  case HotkeyAction::ExchangeSiblings:
-    return "Exchange Siblings";
-  case HotkeyAction::ToggleZen:
-    return "Toggle Zen";
-  default:
-    return "Unknown";
-  }
+  return magic_enum::enum_name(action).data();
 }
 
 // Convert HotkeyAction to direction (for navigation actions)
@@ -134,9 +102,9 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
   case HotkeyAction::SplitDecrease:
   case HotkeyAction::ExchangeSiblings:
   case HotkeyAction::ToggleZen:
-  default:
     return std::nullopt;
   }
+  return std::nullopt;
 }
 
 // Move mouse cursor to center of currently selected cell
@@ -195,9 +163,6 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   spdlog::trace("Navigated to cell {} in cluster {}", cell_index, cluster_index);
 }
 
-// Type alias for stored cell used in swap/move operations
-using stored_cell_t = std::optional<std::pair<size_t, size_t>>;
-
 ActionResult handle_toggle_split(cells::System& system) {
   if (system.toggle_selected_split_dir()) {
     spdlog::info("Toggled split direction");
@@ -220,12 +185,12 @@ ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_mes
   return ActionResult::Continue;
 }
 
-ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell) {
+ActionResult handle_store_cell(cells::System& system, std::optional<StoredCell>& stored_cell) {
   if (system.selection.has_value()) {
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
-      stored_cell = {system.selection->cluster_index, *cell.leaf_id};
+      stored_cell = StoredCell{system.selection->cluster_index, *cell.leaf_id};
       spdlog::info("Stored cell for operation: cluster={}, leaf_id={}",
                    system.selection->cluster_index, *cell.leaf_id);
     }
@@ -233,19 +198,19 @@ ActionResult handle_store_cell(cells::System& system, stored_cell_t& stored_cell
   return ActionResult::Continue;
 }
 
-ActionResult handle_clear_stored(stored_cell_t& stored_cell) {
+ActionResult handle_clear_stored(std::optional<StoredCell>& stored_cell) {
   stored_cell.reset();
   spdlog::info("Cleared stored cell");
   return ActionResult::Continue;
 }
 
-ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) {
+ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
       auto result = system.swap_cells(system.selection->cluster_index, *cell.leaf_id,
-                                      stored_cell->first, stored_cell->second);
+                                      stored_cell->cluster_index, stored_cell->leaf_id);
       if (result.has_value()) {
         stored_cell.reset();
         spdlog::info("Exchanged cells successfully");
@@ -255,12 +220,12 @@ ActionResult handle_exchange(cells::System& system, stored_cell_t& stored_cell) 
   return ActionResult::Continue;
 }
 
-ActionResult handle_move(cells::System& system, stored_cell_t& stored_cell) {
+ActionResult handle_move(cells::System& system, std::optional<StoredCell>& stored_cell) {
   if (stored_cell.has_value() && system.selection.has_value()) {
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
-      auto result = system.move_cell(stored_cell->first, stored_cell->second,
+      auto result = system.move_cell(stored_cell->cluster_index, stored_cell->leaf_id,
                                      system.selection->cluster_index, *cell.leaf_id);
       if (result.has_value()) {
         stored_cell.reset();
@@ -414,7 +379,8 @@ bool handle_mouse_drop_move(cells::System& system,
 }
 
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
-                                    stored_cell_t& stored_cell, std::string& out_message) {
+                                    std::optional<StoredCell>& stored_cell,
+                                    std::string& out_message) {
   // Handle other actions
   switch (action) {
   case HotkeyAction::ToggleSplit:
@@ -664,6 +630,77 @@ cells::System create_initial_system(const GlobalOptions& options) {
   return create_initial_system_from_monitors(monitors, options);
 }
 
+// Handle config file hot-reload
+void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& system,
+                           std::chrono::milliseconds& toast_duration) {
+  if (!provider.refresh()) {
+    return;
+  }
+  const auto& options = provider.options;
+  unregister_navigation_hotkeys(options.keyboardOptions);
+  register_navigation_hotkeys(options.keyboardOptions);
+  system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
+  toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
+  spdlog::info("Config hot-reloaded");
+}
+
+// Handle monitor configuration changes, returns true if change occurred
+bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const GlobalOptions& options,
+                           cells::System& system, std::unordered_set<size_t>& fullscreen_clusters,
+                           std::optional<StoredCell>& stored_cell) {
+  auto current_monitors = winapi::get_monitors();
+  if (winapi::monitors_equal(monitors, current_monitors)) {
+    return false;
+  }
+  spdlog::info("Monitor configuration changed, reinitializing system...");
+  winapi::log_monitors(current_monitors);
+  monitors = current_monitors;
+  system = create_initial_system_from_monitors(monitors, options);
+  fullscreen_clusters.clear();
+  stored_cell.reset();
+  spdlog::info("=== Reinitialized Tile Layout ===");
+  print_tile_layout(system);
+  apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+  return true;
+}
+
+// Handle logging and cursor positioning for window changes
+void handle_window_changes(const cells::System& system, const cells::UpdateResult& result) {
+  if (result.deleted_leaf_ids.empty() && result.added_leaf_ids.empty()) {
+    return;
+  }
+
+  spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
+               result.deleted_leaf_ids.size());
+
+  if (!result.added_leaf_ids.empty()) {
+    spdlog::debug("Added windows:");
+    for (size_t id : result.added_leaf_ids) {
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+      std::string title = winapi::get_window_info(hwnd).title;
+      spdlog::debug("  + \"{}\"", title);
+    }
+  }
+
+  spdlog::debug("=== Updated Tile Layout ===");
+  print_tile_layout(system);
+
+  if (!result.added_leaf_ids.empty()) {
+    size_t last_added_id = result.added_leaf_ids.back();
+    for (const auto& pc : system.clusters) {
+      auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
+      if (cell_index_opt.has_value()) {
+        cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
+        long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
+        long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
+        winapi::set_cursor_pos(center_x, center_y);
+        spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
+        break;
+      }
+    }
+  }
+}
+
 } // namespace
 
 void run_loop_mode(GlobalOptionsProvider& provider) {
@@ -706,7 +743,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
   // Store cell for swap/move operations
-  stored_cell_t stored_cell;
+  std::optional<StoredCell> stored_cell;
 
   // Toast message state
   std::string toast_message;
@@ -727,33 +764,10 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       }
 
       // Check for config file changes and hot-reload
-      if (provider.refresh()) {
-        // Re-register hotkeys with new bindings (options is ref to provider.options, already
-        // updated)
-        unregister_navigation_hotkeys(options.keyboardOptions);
-        register_navigation_hotkeys(options.keyboardOptions);
-
-        // Update gap settings and recompute cell rects
-        system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
-
-        // Update toast duration
-        toast_duration = std::chrono::milliseconds(options.visualizationOptions.toastDurationMs);
-
-        spdlog::info("Config hot-reloaded");
-      }
+      handle_config_refresh(provider, system, toast_duration);
 
       // Check for monitor configuration changes
-      auto current_monitors = winapi::get_monitors();
-      if (!winapi::monitors_equal(monitors, current_monitors)) {
-        spdlog::info("Monitor configuration changed, reinitializing system...");
-        winapi::log_monitors(current_monitors);
-        monitors = current_monitors;
-        system = create_initial_system_from_monitors(monitors, options);
-        fullscreen_clusters.clear();
-        stored_cell.reset();
-        spdlog::info("=== Reinitialized Tile Layout ===");
-        print_tile_layout(system);
-        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+      if (handle_monitor_change(monitors, options, system, fullscreen_clusters, stored_cell)) {
         continue;
       }
 
@@ -793,42 +807,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       update_foreground_selection_from_mouse_position(system, fullscreen_clusters,
                                                       options.zenOptions.percentage);
 
-      // If changes detected, log them
-      if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
-        // One-line summary at info level
-        spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
-                     result.deleted_leaf_ids.size());
+      // Log window changes and move cursor to new windows
+      handle_window_changes(system, result);
 
-        // Detailed logging at debug level for added windows
-        if (!result.added_leaf_ids.empty()) {
-          spdlog::debug("Added windows:");
-          for (size_t id : result.added_leaf_ids) {
-            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-            std::string title = winapi::get_window_info(hwnd).title;
-            spdlog::debug("  + \"{}\"", title);
-          }
-        }
-
-        spdlog::debug("=== Updated Tile Layout ===");
-        print_tile_layout(system);
-
-        // Move mouse to center of the last added cell
-        if (!result.added_leaf_ids.empty()) {
-          size_t last_added_id = result.added_leaf_ids.back();
-          // Find which cluster contains this leaf
-          for (const auto& pc : system.clusters) {
-            auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
-            if (cell_index_opt.has_value()) {
-              cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
-              long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
-              long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
-              winapi::set_cursor_pos(center_x, center_y);
-              spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
-              break;
-            }
-          }
-        }
-      }
       timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
         apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
       });

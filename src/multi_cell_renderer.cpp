@@ -6,7 +6,7 @@ namespace wintiler {
 namespace renderer {
 
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<std::pair<size_t, size_t>> stored_cell, const std::string& message,
+            std::optional<StoredCell> stored_cell, const std::string& message,
             const std::unordered_set<size_t>& fullscreen_clusters) {
   // Begin frame
   overlay::begin_frame();
@@ -34,8 +34,8 @@ void render(const cells::System& system, const RenderOptions& config,
       overlay::Color color = config.normal_color;
 
       // Check if this is the stored cell (operation) - prioritize over selection
-      if (stored_cell.has_value() && stored_cell->first == cluster_idx) {
-        if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->second) {
+      if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
+        if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->leaf_id) {
           color = config.stored_color;
         }
       }
@@ -78,9 +78,9 @@ void render(const cells::System& system, const RenderOptions& config,
     }
 
     // Check if zen cell is also the stored cell
-    if (stored_cell.has_value() && stored_cell->first == cluster_idx) {
+    if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
-      if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->second) {
+      if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->leaf_id) {
         color = config.stored_color;
       }
     }

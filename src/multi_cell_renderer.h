@@ -3,8 +3,8 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
-#include <utility>
 
+#include "model.h"
 #include "multi_cells.h"
 #include "overlay.h"
 
@@ -28,7 +28,7 @@ struct RenderOptions {
 // - message: Optional text to show at bottom-right of primary monitor
 // - fullscreen_clusters: Set of cluster indices that have fullscreen apps (skip rendering)
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<std::pair<size_t, size_t>> stored_cell, const std::string& message,
+            std::optional<StoredCell> stored_cell, const std::string& message,
             const std::unordered_set<size_t>& fullscreen_clusters);
 
 } // namespace renderer
