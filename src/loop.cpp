@@ -767,6 +767,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         }
       }
 
+      // Apply tile layout FIRST to sync physical positions with system state
+      // This must happen before gather/update to prevent false delete+add detection
+      timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
+        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+      });
+
       // Re-gather window state
       auto current_state = timed("gather_current_window_state", [&options] {
         return gather_current_window_state(options.ignoreOptions);
@@ -821,10 +827,6 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
           }
         }
       }
-
-      timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
-      });
     }
 
     // Render cell system overlay
