@@ -783,66 +783,74 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     auto loop_start = std::chrono::high_resolution_clock::now();
 
     // Skip all processing while user is dragging a window - only render
-    if (!winapi::is_any_window_being_moved()) {
-      // Check if a drag operation just completed and handle drop
-      if (handle_mouse_drop_move(system, fullscreen_clusters,
-                                 options.visualizationOptions.renderOptions.zen_percentage)) {
-        // Move was performed, apply layout immediately
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                          fullscreen_clusters);
-      }
-
-      // Check for config file changes and hot-reload
-      handle_config_refresh(provider, system, toast);
-
-      // Check for monitor configuration changes
-      if (handle_monitor_change(monitors, options, system, fullscreen_clusters, stored_cell)) {
-        continue;
-      }
-
-      // Check for keyboard hotkeys
-      if (auto hotkey_id = winapi::check_keyboard_action()) {
-        auto action_opt = id_to_hotkey_action(*hotkey_id);
-        if (!action_opt.has_value()) {
-          continue; // Unknown hotkey ID
-        }
-        std::string action_message;
-        if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
-            ActionResult::Exit) {
-          break;
-        }
-        if (!action_message.empty()) {
-          toast.show(action_message);
-        }
-      }
-
-      // Re-gather window state
-      auto current_state = timed("gather_current_window_state", [&options] {
-        return gather_current_window_state(options.ignoreOptions);
-      });
-
-      // Use update to sync
-      auto cursor_pos = winapi::get_cursor_pos();
-      float cursor_x = cursor_pos.has_value() ? static_cast<float>(cursor_pos->x) : 0.0f;
-      float cursor_y = cursor_pos.has_value() ? static_cast<float>(cursor_pos->y) : 0.0f;
-      auto result = timed("update", [&system, &current_state, cursor_x, cursor_y] {
-        return system.update(current_state, std::nullopt, {cursor_x, cursor_y});
-      });
-
-      // Update fullscreen state before selection (affects mouse selection and rendering)
-      update_fullscreen_state(system, fullscreen_clusters);
-
-      update_foreground_selection_from_mouse_position(
-          system, fullscreen_clusters, options.visualizationOptions.renderOptions.zen_percentage);
-
-      // Log window changes and move cursor to new windows
-      handle_window_changes(system, result);
-
-      timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                          fullscreen_clusters);
-      });
+    if (winapi::is_any_window_being_moved()) {
+      renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
+                       toast.get_visible_message(), fullscreen_clusters);
+      auto loop_end = std::chrono::high_resolution_clock::now();
+      spdlog::trace(
+          "loop iteration total: {}us",
+          std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
+      continue;
     }
+
+    // Check if a drag operation just completed and handle drop
+    if (handle_mouse_drop_move(system, fullscreen_clusters,
+                               options.visualizationOptions.renderOptions.zen_percentage)) {
+      // Move was performed, apply layout immediately
+      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                        fullscreen_clusters);
+    }
+
+    // Check for config file changes and hot-reload
+    handle_config_refresh(provider, system, toast);
+
+    // Check for monitor configuration changes
+    if (handle_monitor_change(monitors, options, system, fullscreen_clusters, stored_cell)) {
+      continue;
+    }
+
+    // Check for keyboard hotkeys
+    if (auto hotkey_id = winapi::check_keyboard_action()) {
+      auto action_opt = id_to_hotkey_action(*hotkey_id);
+      if (!action_opt.has_value()) {
+        continue; // Unknown hotkey ID
+      }
+      std::string action_message;
+      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
+          ActionResult::Exit) {
+        break;
+      }
+      if (!action_message.empty()) {
+        toast.show(action_message);
+      }
+    }
+
+    // Re-gather window state
+    auto current_state = timed("gather_current_window_state", [&options] {
+      return gather_current_window_state(options.ignoreOptions);
+    });
+
+    // Use update to sync
+    auto cursor_pos = winapi::get_cursor_pos();
+    float cursor_x = cursor_pos.has_value() ? static_cast<float>(cursor_pos->x) : 0.0f;
+    float cursor_y = cursor_pos.has_value() ? static_cast<float>(cursor_pos->y) : 0.0f;
+    auto result = timed("update", [&system, &current_state, cursor_x, cursor_y] {
+      return system.update(current_state, std::nullopt, {cursor_x, cursor_y});
+    });
+
+    // Update fullscreen state before selection (affects mouse selection and rendering)
+    update_fullscreen_state(system, fullscreen_clusters);
+
+    update_foreground_selection_from_mouse_position(
+        system, fullscreen_clusters, options.visualizationOptions.renderOptions.zen_percentage);
+
+    // Log window changes and move cursor to new windows
+    handle_window_changes(system, result);
+
+    timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
+      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                        fullscreen_clusters);
+    });
 
     // Render cell system overlay
     renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
