@@ -665,4 +665,40 @@ bool is_window_fullscreen(HWND_T hwnd) {
          windowRect.right >= mi.rcMonitor.right && windowRect.bottom >= mi.rcMonitor.bottom;
 }
 
+LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_options) {
+  LoopInputState state;
+
+  // Gather monitor and window data
+  state.monitors = get_monitors();
+  state.windows_per_monitor.reserve(state.monitors.size());
+
+  auto all_windows = gather_raw_window_data(ignore_options);
+
+  for (size_t i = 0; i < state.monitors.size(); ++i) {
+    const auto& monitor = state.monitors[i];
+    std::vector<ManagedWindowInfo> monitor_windows;
+
+    for (const auto& win : all_windows) {
+      HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+      if (winMonitor == (HMONITOR)monitor.handle) {
+        ManagedWindowInfo managed_info;
+        managed_info.handle = win.handle;
+        managed_info.is_fullscreen = is_window_fullscreen(win.handle);
+        monitor_windows.push_back(managed_info);
+      }
+    }
+
+    state.windows_per_monitor.push_back(std::move(monitor_windows));
+  }
+
+  // Gather input state
+  state.is_any_window_being_moved = is_any_window_being_moved();
+  state.drag_info = get_drag_info();
+  state.cursor_pos = get_cursor_pos();
+  state.is_ctrl_pressed = is_ctrl_pressed();
+  state.foreground_window = get_foreground_window();
+
+  return state;
+}
+
 } // namespace winapi

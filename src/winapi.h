@@ -121,4 +121,33 @@ bool is_ctrl_pressed();
 // Check if a specific window covers its entire monitor (fullscreen)
 bool is_window_fullscreen(HWND_T hwnd);
 
+// Per-window data for consolidated queries
+struct ManagedWindowInfo {
+  HWND_T handle;
+  bool is_fullscreen;
+};
+
+// Consolidated input state for the main loop
+struct LoopInputState {
+  // Window movement state
+  bool is_any_window_being_moved;
+  std::optional<DragInfo> drag_info;
+
+  // Cursor and keyboard state
+  std::optional<Point> cursor_pos;
+  bool is_ctrl_pressed;
+
+  // Window state
+  HWND_T foreground_window;
+
+  // Monitor data (index in vector = monitor index)
+  std::vector<MonitorInfo> monitors;
+
+  // Per-monitor managed windows (index matches monitors vector)
+  std::vector<std::vector<ManagedWindowInfo>> windows_per_monitor;
+};
+
+// Gather all input state for the main loop in a single call
+LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_options);
+
 } // namespace winapi
