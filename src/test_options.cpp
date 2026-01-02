@@ -640,14 +640,14 @@ TEST_SUITE("Type Coercion") {
 
     {
       std::ofstream file(temp_path);
-      file << "[render]\n";
+      file << "[visualization.render]\n";
       file << "border_width = 5\n"; // Integer
     }
 
     auto result = read_options_toml(temp_path);
     REQUIRE(result.has_value());
 
-    CHECK(result.value().visualizationOptions.borderWidth == 5.0f);
+    CHECK(result.value().visualizationOptions.renderOptions.border_width == 5.0f);
   }
 
   TEST_CASE("integer toast_font_size is accepted") {
@@ -656,14 +656,14 @@ TEST_SUITE("Type Coercion") {
 
     {
       std::ofstream file(temp_path);
-      file << "[render]\n";
+      file << "[visualization.render]\n";
       file << "toast_font_size = 24\n"; // Integer
     }
 
     auto result = read_options_toml(temp_path);
     REQUIRE(result.has_value());
 
-    CHECK(result.value().visualizationOptions.toastFontSize == 24.0f);
+    CHECK(result.value().visualizationOptions.renderOptions.toast_font_size == 24.0f);
   }
 
   TEST_CASE("integer zen percentage is accepted") {
@@ -672,14 +672,14 @@ TEST_SUITE("Type Coercion") {
 
     {
       std::ofstream file(temp_path);
-      file << "[zen]\n";
-      file << "percentage = 1\n"; // Integer (will be clamped to 1.0)
+      file << "[visualization.render]\n";
+      file << "zen_percentage = 1\n"; // Integer (will be clamped to 1.0)
     }
 
     auto result = read_options_toml(temp_path);
     REQUIRE(result.has_value());
 
-    CHECK(result.value().zenOptions.percentage == 1.0f);
+    CHECK(result.value().visualizationOptions.renderOptions.zen_percentage == 1.0f);
   }
 
   TEST_CASE("integer loop interval_ms works (already uses as_integer)") {

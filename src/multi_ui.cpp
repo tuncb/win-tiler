@@ -492,21 +492,21 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
 
         // Determine border color and width from VisualizationOptions
-        const auto& viz_opts = options.visualizationOptions;
+        const auto& ro = options.visualizationOptions.renderOptions;
         Color border_color;
         float border_width;
         if (is_selected && is_stored_cell) {
           border_color = PURPLE;
-          border_width = viz_opts.borderWidth + 1.0f;
+          border_width = ro.border_width + 1.0f;
         } else if (is_stored_cell) {
-          border_color = to_raylib_color(viz_opts.storedColor);
-          border_width = viz_opts.borderWidth;
+          border_color = to_raylib_color(ro.stored_color);
+          border_width = ro.border_width;
         } else if (is_selected) {
-          border_color = to_raylib_color(viz_opts.selectedColor);
-          border_width = viz_opts.borderWidth;
+          border_color = to_raylib_color(ro.selected_color);
+          border_width = ro.border_width;
         } else {
-          border_color = to_raylib_color(viz_opts.normalColor);
-          border_width = viz_opts.borderWidth;
+          border_color = to_raylib_color(ro.normal_color);
+          border_width = ro.border_width;
         }
 
         DrawRectangleLinesEx(screen_rect, border_width, border_color);
@@ -537,8 +537,8 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       int zen_cell_index = *pc.cluster.zen_cell_index;
 
       // Get zen display rect (centered at percentage of cluster)
-      cells::Rect zen_display_rect =
-          cells::get_cell_display_rect(pc, zen_cell_index, true, options.zenOptions.percentage);
+      cells::Rect zen_display_rect = cells::get_cell_display_rect(
+          pc, zen_cell_index, true, options.visualizationOptions.renderOptions.zen_percentage);
       Rectangle zen_screen_rect = to_screen_rect(vt, zen_display_rect);
 
       // Draw semi-transparent fill
@@ -548,11 +548,11 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       // Determine border color based on selection state (same as normal cells)
       bool is_zen_selected = selected_cell.has_value() && selected_cell->first == cluster_idx &&
                              selected_cell->second == zen_cell_index;
-      const auto& viz_opts = options.visualizationOptions;
-      Color border_color = is_zen_selected ? to_raylib_color(viz_opts.selectedColor)
-                                           : to_raylib_color(viz_opts.normalColor);
+      const auto& ro = options.visualizationOptions.renderOptions;
+      Color border_color =
+          is_zen_selected ? to_raylib_color(ro.selected_color) : to_raylib_color(ro.normal_color);
 
-      DrawRectangleLinesEx(zen_screen_rect, viz_opts.borderWidth, border_color);
+      DrawRectangleLinesEx(zen_screen_rect, ro.border_width, border_color);
 
       // Draw label "Z:<id>"
       const auto& zen_cell_data = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];

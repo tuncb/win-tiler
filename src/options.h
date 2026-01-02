@@ -89,19 +89,22 @@ struct LoopOptions {
   int intervalMs = kDefaultLoopIntervalMs;
 };
 
+// Render-specific options used by the renderer
+namespace renderer {
+struct RenderOptions {
+  overlay::Color normal_color{255, 255, 255, 100}; // Semi-transparent white
+  overlay::Color selected_color{0, 120, 255, 200}; // Blue
+  overlay::Color stored_color{255, 180, 0, 200};   // Orange
+  float border_width = kDefaultBorderWidth;
+  float toast_font_size = kDefaultToastFontSize;
+  float zen_percentage = kDefaultZenPercentage; // Zen cell size as percentage of cluster (0.0-1.0)
+};
+} // namespace renderer
+
 // Visualization configuration for cell rendering
 struct VisualizationOptions {
-  overlay::Color normalColor{255, 255, 255, 100}; // Semi-transparent white
-  overlay::Color selectedColor{0, 120, 255, 200}; // Blue
-  overlay::Color storedColor{255, 180, 0, 200};   // Orange
-  float borderWidth = kDefaultBorderWidth;
-  float toastFontSize = kDefaultToastFontSize;
+  renderer::RenderOptions renderOptions;
   int toastDurationMs = kDefaultToastDurationMs;
-};
-
-// Zen mode configuration
-struct ZenOptions {
-  float percentage = kDefaultZenPercentage; // 0.0-1.0 range, centered in cluster
 };
 
 // Global options container
@@ -111,7 +114,6 @@ struct GlobalOptions {
   GapOptions gapOptions;
   LoopOptions loopOptions;
   VisualizationOptions visualizationOptions;
-  ZenOptions zenOptions;
 };
 
 // Get default global options

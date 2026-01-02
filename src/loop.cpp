@@ -686,7 +686,8 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   stored_cell.reset();
   spdlog::info("=== Reinitialized Tile Layout ===");
   print_tile_layout(system);
-  apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                    fullscreen_clusters);
   return true;
 }
 
@@ -747,7 +748,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   print_tile_layout(system);
 
   timed_void("initial apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-    apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                      fullscreen_clusters);
   });
 
   // Register keyboard hotkeys
@@ -783,9 +785,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Skip all processing while user is dragging a window - only render
     if (!winapi::is_any_window_being_moved()) {
       // Check if a drag operation just completed and handle drop
-      if (handle_mouse_drop_move(system, fullscreen_clusters, options.zenOptions.percentage)) {
+      if (handle_mouse_drop_move(system, fullscreen_clusters,
+                                 options.visualizationOptions.renderOptions.zen_percentage)) {
         // Move was performed, apply layout immediately
-        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                          fullscreen_clusters);
       }
 
       // Check for config file changes and hot-reload
@@ -828,25 +832,21 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       // Update fullscreen state before selection (affects mouse selection and rendering)
       update_fullscreen_state(system, fullscreen_clusters);
 
-      update_foreground_selection_from_mouse_position(system, fullscreen_clusters,
-                                                      options.zenOptions.percentage);
+      update_foreground_selection_from_mouse_position(
+          system, fullscreen_clusters, options.visualizationOptions.renderOptions.zen_percentage);
 
       // Log window changes and move cursor to new windows
       handle_window_changes(system, result);
 
       timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-        apply_tile_layout(system, options.zenOptions.percentage, fullscreen_clusters);
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                          fullscreen_clusters);
       });
     }
 
     // Render cell system overlay
-    renderer::RenderOptions render_opts{
-        options.visualizationOptions.normalColor,   options.visualizationOptions.selectedColor,
-        options.visualizationOptions.storedColor,   options.visualizationOptions.borderWidth,
-        options.visualizationOptions.toastFontSize, options.zenOptions.percentage,
-    };
-    renderer::render(system, render_opts, stored_cell, toast.get_visible_message(),
-                     fullscreen_clusters);
+    renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
+                     toast.get_visible_message(), fullscreen_clusters);
 
     auto loop_end = std::chrono::high_resolution_clock::now();
     spdlog::trace(

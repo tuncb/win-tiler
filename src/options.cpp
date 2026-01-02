@@ -230,7 +230,8 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     loop.insert("interval_ms", options.loopOptions.intervalMs);
     root.insert("loop", loop);
 
-    // Build render section
+    // Build visualization section with nested render
+    toml::table visualization;
     toml::table render;
     auto colorToArray = [](const overlay::Color& c) {
       toml::array arr;
@@ -240,18 +241,16 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
       arr.push_back(static_cast<int64_t>(c.a));
       return arr;
     };
-    render.insert("normal_color", colorToArray(options.visualizationOptions.normalColor));
-    render.insert("selected_color", colorToArray(options.visualizationOptions.selectedColor));
-    render.insert("stored_color", colorToArray(options.visualizationOptions.storedColor));
-    render.insert("border_width", options.visualizationOptions.borderWidth);
-    render.insert("toast_font_size", options.visualizationOptions.toastFontSize);
-    render.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
-    root.insert("render", render);
-
-    // Build zen section
-    toml::table zen;
-    zen.insert("percentage", options.zenOptions.percentage);
-    root.insert("zen", zen);
+    const auto& ro = options.visualizationOptions.renderOptions;
+    render.insert("normal_color", colorToArray(ro.normal_color));
+    render.insert("selected_color", colorToArray(ro.selected_color));
+    render.insert("stored_color", colorToArray(ro.stored_color));
+    render.insert("border_width", ro.border_width);
+    render.insert("toast_font_size", ro.toast_font_size);
+    render.insert("zen_percentage", ro.zen_percentage);
+    visualization.insert("render", render);
+    visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
+    root.insert("visualization", visualization);
 
     // Write to file
     std::ofstream file(filepath);
@@ -462,8 +461,8 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       options.loopOptions.intervalMs = kDefaultLoopIntervalMs;
     }
 
-    // Parse render section
-    if (auto render = tbl["render"].as_table()) {
+    // Parse visualization section with nested render
+    if (auto visualization = tbl["visualization"].as_table()) {
       auto parseColor = [](const toml::array* arr) -> std::optional<overlay::Color> {
         if (!arr || arr->size() != 4) {
           return std::nullopt;
@@ -483,28 +482,37 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
                               static_cast<uint8_t>(bv), static_cast<uint8_t>(av)};
       };
 
-      if (auto color = parseColor((*render)["normal_color"].as_array())) {
-        options.visualizationOptions.normalColor = *color;
-      } else if ((*render)["normal_color"]) {
-        spdlog::error("Invalid normal_color: values must be 0-255. Using default.");
+      // Parse nested render section
+      if (auto render = (*visualization)["render"].as_table()) {
+        auto& ro = options.visualizationOptions.renderOptions;
+        if (auto color = parseColor((*render)["normal_color"].as_array())) {
+          ro.normal_color = *color;
+        } else if ((*render)["normal_color"]) {
+          spdlog::error("Invalid normal_color: values must be 0-255. Using default.");
+        }
+        if (auto color = parseColor((*render)["selected_color"].as_array())) {
+          ro.selected_color = *color;
+        } else if ((*render)["selected_color"]) {
+          spdlog::error("Invalid selected_color: values must be 0-255. Using default.");
+        }
+        if (auto color = parseColor((*render)["stored_color"].as_array())) {
+          ro.stored_color = *color;
+        } else if ((*render)["stored_color"]) {
+          spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
+        }
+        if (auto borderWidth = get_number<float>((*render)["border_width"])) {
+          ro.border_width = *borderWidth;
+        }
+        if (auto toastFontSize = get_number<float>((*render)["toast_font_size"])) {
+          ro.toast_font_size = *toastFontSize;
+        }
+        if (auto zenPercentage = get_number<float>((*render)["zen_percentage"])) {
+          ro.zen_percentage = *zenPercentage;
+        }
       }
-      if (auto color = parseColor((*render)["selected_color"].as_array())) {
-        options.visualizationOptions.selectedColor = *color;
-      } else if ((*render)["selected_color"]) {
-        spdlog::error("Invalid selected_color: values must be 0-255. Using default.");
-      }
-      if (auto color = parseColor((*render)["stored_color"].as_array())) {
-        options.visualizationOptions.storedColor = *color;
-      } else if ((*render)["stored_color"]) {
-        spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
-      }
-      if (auto borderWidth = get_number<float>((*render)["border_width"])) {
-        options.visualizationOptions.borderWidth = *borderWidth;
-      }
-      if (auto toastFontSize = get_number<float>((*render)["toast_font_size"])) {
-        options.visualizationOptions.toastFontSize = *toastFontSize;
-      }
-      if (auto toastDurationMs = (*render)["toast_duration_ms"].as_integer()) {
+
+      // Parse toast_duration_ms from visualization level
+      if (auto toastDurationMs = (*visualization)["toast_duration_ms"].as_integer()) {
         options.visualizationOptions.toastDurationMs = static_cast<int>(toastDurationMs->get());
       }
     }
@@ -516,36 +524,31 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       options.visualizationOptions.toastDurationMs = kDefaultToastDurationMs;
     }
 
+    auto& ro = options.visualizationOptions.renderOptions;
+
     // Validate border width - negative values not allowed
-    if (options.visualizationOptions.borderWidth < 0) {
+    if (ro.border_width < 0) {
       spdlog::error("Invalid border_width value ({}): must be non-negative. Using default.",
-                    options.visualizationOptions.borderWidth);
-      options.visualizationOptions.borderWidth = kDefaultBorderWidth;
+                    ro.border_width);
+      ro.border_width = kDefaultBorderWidth;
     }
 
     // Validate toast font size - must be positive
-    if (options.visualizationOptions.toastFontSize < 1.0f) {
+    if (ro.toast_font_size < 1.0f) {
       spdlog::error("Invalid toast_font_size value ({}): must be >= 1.0. Using default.",
-                    options.visualizationOptions.toastFontSize);
-      options.visualizationOptions.toastFontSize = kDefaultToastFontSize;
-    }
-
-    // Parse zen section
-    if (auto zen = tbl["zen"].as_table()) {
-      if (auto percentage = get_number<float>((*zen)["percentage"])) {
-        options.zenOptions.percentage = *percentage;
-      }
+                    ro.toast_font_size);
+      ro.toast_font_size = kDefaultToastFontSize;
     }
 
     // Validate zen percentage - clamp to 0.1-1.0 range
-    if (options.zenOptions.percentage < 0.1f) {
-      spdlog::error("Invalid zen.percentage value ({}): must be >= 0.1. Using 0.1.",
-                    options.zenOptions.percentage);
-      options.zenOptions.percentage = 0.1f;
-    } else if (options.zenOptions.percentage > 1.0f) {
-      spdlog::error("Invalid zen.percentage value ({}): must be <= 1.0. Using 1.0.",
-                    options.zenOptions.percentage);
-      options.zenOptions.percentage = 1.0f;
+    if (ro.zen_percentage < 0.1f) {
+      spdlog::error("Invalid zen_percentage value ({}): must be >= 0.1. Using 0.1.",
+                    ro.zen_percentage);
+      ro.zen_percentage = 0.1f;
+    } else if (ro.zen_percentage > 1.0f) {
+      spdlog::error("Invalid zen_percentage value ({}): must be <= 1.0. Using 1.0.",
+                    ro.zen_percentage);
+      ro.zen_percentage = 1.0f;
     }
 
     return options;
