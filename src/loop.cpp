@@ -850,7 +850,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     });
 
     auto loop_end = std::chrono::high_resolution_clock::now();
-    spdlog::info(
+    spdlog::trace(
         "=======================loop iteration total: {}us",
         std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
   }
