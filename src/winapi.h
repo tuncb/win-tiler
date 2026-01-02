@@ -93,6 +93,10 @@ bool unregister_hotkey(int id);
 // Check for pending hotkey messages, returns the hotkey id if triggered
 std::optional<int> check_keyboard_action();
 
+// Wait for messages or timeout using MsgWaitForMultipleObjectsEx
+// Returns true if messages are available, false on timeout
+bool wait_for_messages_or_timeout(unsigned long timeout_ms);
+
 // Window move/resize detection (for pausing tiling during user drag operations)
 void register_move_size_hook();
 void unregister_move_size_hook();

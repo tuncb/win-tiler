@@ -546,6 +546,14 @@ std::optional<int> check_keyboard_action() {
   return std::nullopt;
 }
 
+bool wait_for_messages_or_timeout(unsigned long timeout_ms) {
+  DWORD result =
+      MsgWaitForMultipleObjectsEx(0,       // No handles to wait on
+                                  nullptr, // No handle array
+                                  timeout_ms, QS_HOTKEY | QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+  return result == WAIT_OBJECT_0; // Messages available
+}
+
 // Window move/resize detection using SetWinEventHook
 namespace {
 std::atomic<bool> g_is_moving{false};

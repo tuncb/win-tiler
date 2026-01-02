@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <chrono>
 #include <magic_enum/magic_enum.hpp>
-#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -776,7 +775,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
 
   while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(options.loopOptions.intervalMs));
+    // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
+    winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
 
     auto loop_start = std::chrono::high_resolution_clock::now();
 
