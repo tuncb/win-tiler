@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <magic_enum/magic_enum.hpp>
 
 namespace wintiler {
 
@@ -476,11 +477,11 @@ static bool validate_state(const CellCluster& state) {
 static SplitDir determine_split_dir(const CellCluster& cluster, int selected_index,
                                     SplitMode mode) {
   switch (mode) {
-  case SplitMode::AlwaysVertical:
+  case SplitMode::Vertical:
     return SplitDir::Vertical;
-  case SplitMode::AlwaysHorizontal:
+  case SplitMode::Horizontal:
     return SplitDir::Horizontal;
-  case SplitMode::AlternateLocally:
+  case SplitMode::Zigzag:
   default: {
     // If splitting an existing cell, use opposite of its parent's direction
     if (selected_index >= 0 && selected_index < static_cast<int>(cluster.cells.size())) {
@@ -493,20 +494,6 @@ static SplitDir determine_split_dir(const CellCluster& cluster, int selected_ind
     // Fall back to Vertical for root-level splits
     return SplitDir::Vertical;
   }
-  }
-}
-
-// Convert split mode to string for debug output
-static const char* split_mode_to_string(SplitMode mode) {
-  switch (mode) {
-  case SplitMode::AlternateLocally:
-    return "alternate-locally";
-  case SplitMode::AlwaysVertical:
-    return "always-vertical";
-  case SplitMode::AlwaysHorizontal:
-    return "always-horizontal";
-  default:
-    return "unknown";
   }
 }
 
@@ -834,14 +821,14 @@ bool System::toggle_selected_split_dir() {
 
 bool System::cycle_split_mode() {
   switch (split_mode) {
-  case SplitMode::AlternateLocally:
-    split_mode = SplitMode::AlwaysVertical;
+  case SplitMode::Zigzag:
+    split_mode = SplitMode::Vertical;
     break;
-  case SplitMode::AlwaysVertical:
-    split_mode = SplitMode::AlwaysHorizontal;
+  case SplitMode::Vertical:
+    split_mode = SplitMode::Horizontal;
     break;
-  case SplitMode::AlwaysHorizontal:
-    split_mode = SplitMode::AlternateLocally;
+  case SplitMode::Horizontal:
+    split_mode = SplitMode::Zigzag;
     break;
   }
   return true;
@@ -1333,7 +1320,7 @@ bool validate_system(const System& system) {
 void debug_print_system(const System& system) {
   spdlog::debug("===== MultiClusterSystem =====");
   spdlog::debug("clusters.size = {}", system.clusters.size());
-  spdlog::debug("split_mode = {}", split_mode_to_string(system.split_mode));
+  spdlog::debug("split_mode = {}", magic_enum::enum_name(system.split_mode));
 
   if (system.selection.has_value()) {
     spdlog::debug("selection = cluster={}, cell_index={}", system.selection->cluster_index,

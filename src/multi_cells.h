@@ -19,9 +19,9 @@ enum class SplitDir {
 };
 
 enum class SplitMode {
-  AlternateLocally, // Opposite of parent's split direction (Vertical for root)
-  AlwaysVertical,   // Always vertical
-  AlwaysHorizontal, // Always horizontal
+  Zigzag,     // Opposite of parent's split direction (Vertical for root)
+  Vertical,   // Always vertical
+  Horizontal, // Always horizontal
 };
 
 struct Rect {
@@ -140,7 +140,7 @@ struct System {
   std::optional<CellIndicatorByIndex> selection; // System-wide selection
   float gap_horizontal = kDefaultCellGapHorizontal;
   float gap_vertical = kDefaultCellGapVertical;
-  SplitMode split_mode = SplitMode::AlternateLocally; // How splits determine direction
+  SplitMode split_mode = SplitMode::Zigzag; // How splits determine direction
 
   // Mutating member functions
   [[nodiscard]] bool move_selection(Direction dir);

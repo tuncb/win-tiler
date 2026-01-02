@@ -377,28 +377,28 @@ TEST_SUITE("cells - navigation") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {}};
     auto system = cells::create_system({info});
 
-    // Default is AlternateLocally
-    CHECK(system.split_mode == cells::SplitMode::AlternateLocally);
+    // Default is Zigzag
+    CHECK(system.split_mode == cells::SplitMode::Zigzag);
 
-    // Cycle to AlwaysVertical
+    // Cycle to Vertical
     CHECK(system.cycle_split_mode());
-    CHECK(system.split_mode == cells::SplitMode::AlwaysVertical);
+    CHECK(system.split_mode == cells::SplitMode::Vertical);
 
-    // Cycle to AlwaysHorizontal
+    // Cycle to Horizontal
     CHECK(system.cycle_split_mode());
-    CHECK(system.split_mode == cells::SplitMode::AlwaysHorizontal);
+    CHECK(system.split_mode == cells::SplitMode::Horizontal);
 
-    // Cycle back to AlternateLocally
+    // Cycle back to Zigzag
     CHECK(system.cycle_split_mode());
-    CHECK(system.split_mode == cells::SplitMode::AlternateLocally);
+    CHECK(system.split_mode == cells::SplitMode::Zigzag);
   }
 
-  TEST_CASE("AlwaysVertical mode creates vertical splits") {
+  TEST_CASE("Vertical mode creates vertical splits") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
-    // Set to AlwaysVertical
-    system.split_mode = cells::SplitMode::AlwaysVertical;
+    // Set to Vertical
+    system.split_mode = cells::SplitMode::Vertical;
 
     // Add second window
     cells::ClusterCellIds updates{0, {1, 2}};
@@ -424,12 +424,12 @@ TEST_SUITE("cells - navigation") {
     }
   }
 
-  TEST_CASE("AlwaysHorizontal mode creates horizontal splits") {
+  TEST_CASE("Horizontal mode creates horizontal splits") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
-    // Set to AlwaysHorizontal
-    system.split_mode = cells::SplitMode::AlwaysHorizontal;
+    // Set to Horizontal
+    system.split_mode = cells::SplitMode::Horizontal;
 
     // Add second window
     cells::ClusterCellIds updates{0, {1, 2}};

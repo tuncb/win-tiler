@@ -53,9 +53,9 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 - **Leaf Cells**: Only leaf cells (no children) can hold windows. Splits create parent-child relationships.
 - **Direction Navigation**: `Direction::Left/Right/Up/Down` for navigation, `SplitDir::Horizontal/Vertical` for splits
 - **Split Mode**: Controls how new splits are oriented:
-  - `SplitMode::AlternateLocally` - Alternate direction based on parent (default)
-  - `SplitMode::AlwaysVertical` - Always split vertically
-  - `SplitMode::AlwaysHorizontal` - Always split horizontally
+  - `SplitMode::Zigzag` - Alternate direction based on parent (default)
+  - `SplitMode::Vertical` - Always split vertically
+  - `SplitMode::Horizontal` - Always split horizontally
 - **Zen Mode**: Allows a single cell to expand to fill the entire cluster area. Toggle with `toggle_selected_zen()`
 
 ## Dependencies
