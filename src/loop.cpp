@@ -3,7 +3,6 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
-#include <chrono>
 #include <magic_enum/magic_enum.hpp>
 #include <unordered_set>
 #include <vector>
@@ -12,6 +11,7 @@
 #include "multi_cell_renderer.h"
 #include "multi_cells.h"
 #include "overlay.h"
+#include "utility.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -20,27 +20,6 @@ namespace {
 
 // Result type for action handlers - signals whether the main loop should continue or exit
 enum class ActionResult { Continue, Exit };
-
-// Helper to time a function and log its duration
-template <typename F>
-auto timed(const char* name, F&& func) {
-  auto start = std::chrono::high_resolution_clock::now();
-  auto result = func();
-  auto end = std::chrono::high_resolution_clock::now();
-  spdlog::trace("{}: {}us", name,
-                std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
-  return result;
-}
-
-// Helper for void functions
-template <typename F>
-void timed_void(const char* name, F&& func) {
-  auto start = std::chrono::high_resolution_clock::now();
-  func();
-  auto end = std::chrono::high_resolution_clock::now();
-  spdlog::trace("{}: {}us", name,
-                std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
-}
 
 // Toast message display state
 struct ToastState {
