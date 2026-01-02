@@ -956,6 +956,57 @@ TEST_SUITE("cells - swap and move") {
     // Cluster 2 should have 2 leaves
     CHECK(cells::count_total_leaves(system) == 2);
   }
+
+  TEST_CASE("moveCell swaps siblings instead of delete+split") {
+    cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
+    auto system = cells::create_system({info});
+
+    REQUIRE(system.clusters.size() >= 1);
+    auto& pc = system.clusters[0];
+
+    // After create_system with 2 leaves: root (index 0) has first_child and second_child
+    // The root is the parent, and both leaves are siblings
+    auto idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
+    auto idx20 = cells::find_cell_by_leaf_id(pc.cluster, 20);
+    REQUIRE(idx10.has_value());
+    REQUIRE(idx20.has_value());
+
+    // Store original rects
+    auto& cell10 = pc.cluster.cells[static_cast<size_t>(*idx10)];
+    auto& cell20 = pc.cluster.cells[static_cast<size_t>(*idx20)];
+    cells::Rect rect10_before = cell10.rect;
+    cells::Rect rect20_before = cell20.rect;
+
+    // Verify they are siblings (same parent)
+    REQUIRE(cell10.parent.has_value());
+    REQUIRE(cell20.parent.has_value());
+    CHECK(*cell10.parent == *cell20.parent);
+
+    // Move 10 to 20 (siblings should swap)
+    auto result = system.move_cell(0, 10, 0, 20);
+
+    CHECK(result.has_value());
+    CHECK(result->new_cluster_index == 0);
+
+    // Should still have exactly 2 leaves (no delete+split)
+    CHECK(cells::count_total_leaves(system) == 2);
+
+    // Both leaves should still exist with same leaf_ids
+    auto idx10_after = cells::find_cell_by_leaf_id(pc.cluster, 10);
+    auto idx20_after = cells::find_cell_by_leaf_id(pc.cluster, 20);
+    CHECK(idx10_after.has_value());
+    CHECK(idx20_after.has_value());
+
+    // Rects should be swapped (positions exchanged)
+    auto& cell10_after = pc.cluster.cells[static_cast<size_t>(*idx10_after)];
+    auto& cell20_after = pc.cluster.cells[static_cast<size_t>(*idx20_after)];
+    CHECK(cell10_after.rect.x == doctest::Approx(rect20_before.x));
+    CHECK(cell10_after.rect.width == doctest::Approx(rect20_before.width));
+    CHECK(cell20_after.rect.x == doctest::Approx(rect10_before.x));
+    CHECK(cell20_after.rect.width == doctest::Approx(rect10_before.width));
+
+    CHECK(cells::validate_system(system));
+  }
 }
 
 // ============================================================================

@@ -1142,6 +1142,25 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
     return tl::unexpected("Target cell is not a leaf");
   }
 
+  // Check if same cluster and siblings (same parent) - perform swap instead of move
+  if (source_cluster_index == target_cluster_index) {
+    Cell& src_cell = src_pc.cluster.cells[static_cast<size_t>(*src_idx_opt)];
+    Cell& tgt_cell = src_pc.cluster.cells[static_cast<size_t>(*tgt_idx_opt)];
+
+    if (src_cell.parent.has_value() && tgt_cell.parent.has_value() &&
+        *src_cell.parent == *tgt_cell.parent) {
+      // Sibling swap: just swap parent's child pointers
+      int parent_index = *src_cell.parent;
+      Cell& parent = src_pc.cluster.cells[static_cast<size_t>(parent_index)];
+
+      std::swap(parent.first_child, parent.second_child);
+      recompute_subtree_rects(src_pc.cluster, parent_index, gap_horizontal, gap_vertical);
+
+      // Selection stays valid (cell indices don't change, only their positions)
+      return MoveSuccess{*src_idx_opt, source_cluster_index};
+    }
+  }
+
   // Remember if source or target was selected
   bool source_was_selected = selection.has_value() &&
                              selection->cluster_index == source_cluster_index &&
