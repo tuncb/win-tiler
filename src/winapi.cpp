@@ -9,8 +9,6 @@
 #include <atomic>
 #include <cctype>
 
-#include "utility.h"
-
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "Dwmapi.lib")
@@ -672,44 +670,37 @@ bool is_window_fullscreen(HWND_T hwnd) {
 }
 
 LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_options) {
-  using wintiler::timed;
-  using wintiler::timed_void;
-
   LoopInputState state;
 
   // Gather monitor and window data
-  state.monitors = timed("get_monitors", [] { return get_monitors(); });
+  state.monitors = get_monitors();
   state.windows_per_monitor.reserve(state.monitors.size());
 
-  auto all_windows =
-      timed("gather_raw_window_data", [&] { return gather_raw_window_data(ignore_options); });
+  auto all_windows = gather_raw_window_data(ignore_options);
 
-  timed_void("build_windows_per_monitor", [&] {
-    for (size_t i = 0; i < state.monitors.size(); ++i) {
-      const auto& monitor = state.monitors[i];
-      std::vector<ManagedWindowInfo> monitor_windows;
+  for (size_t i = 0; i < state.monitors.size(); ++i) {
+    const auto& monitor = state.monitors[i];
+    std::vector<ManagedWindowInfo> monitor_windows;
 
-      for (const auto& win : all_windows) {
-        HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
-        if (winMonitor == (HMONITOR)monitor.handle) {
-          ManagedWindowInfo managed_info;
-          managed_info.handle = win.handle;
-          managed_info.is_fullscreen = is_window_fullscreen(win.handle);
-          monitor_windows.push_back(managed_info);
-        }
+    for (const auto& win : all_windows) {
+      HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+      if (winMonitor == (HMONITOR)monitor.handle) {
+        ManagedWindowInfo managed_info;
+        managed_info.handle = win.handle;
+        managed_info.is_fullscreen = is_window_fullscreen(win.handle);
+        monitor_windows.push_back(managed_info);
       }
-
-      state.windows_per_monitor.push_back(std::move(monitor_windows));
     }
-  });
+
+    state.windows_per_monitor.push_back(std::move(monitor_windows));
+  }
 
   // Gather input state
-  state.is_any_window_being_moved =
-      timed("is_any_window_being_moved", [] { return is_any_window_being_moved(); });
-  state.drag_info = timed("get_drag_info", [] { return get_drag_info(); });
-  state.cursor_pos = timed("get_cursor_pos", [] { return get_cursor_pos(); });
-  state.is_ctrl_pressed = timed("is_ctrl_pressed", [] { return is_ctrl_pressed(); });
-  state.foreground_window = timed("get_foreground_window", [] { return get_foreground_window(); });
+  state.is_any_window_being_moved = is_any_window_being_moved();
+  state.drag_info = get_drag_info();
+  state.cursor_pos = get_cursor_pos();
+  state.is_ctrl_pressed = is_ctrl_pressed();
+  state.foreground_window = get_foreground_window();
 
   return state;
 }
