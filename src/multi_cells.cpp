@@ -1001,6 +1001,108 @@ bool System::toggle_selected_zen() {
   return true;
 }
 
+// ============================================================================
+// Edge-based resize helper functions
+// ============================================================================
+namespace {
+enum class EdgeType { Left, Right, Top, Bottom };
+
+// Calculate new ratio based on edge position change
+float calculate_new_ratio_from_edge(const Rect& parent_global_rect, EdgeType edge,
+                                    const Rect& actual_rect, float gap_h, float gap_v) {
+  if (edge == EdgeType::Left || edge == EdgeType::Right) {
+    // Vertical split controls width
+    float available = parent_global_rect.width - gap_h;
+    if (available <= 0.0f) {
+      return 0.5f;
+    }
+
+    if (edge == EdgeType::Left) {
+      // Left edge moved: ratio = distance from parent's left edge to actual left edge / available
+      float first_width = actual_rect.x - parent_global_rect.x;
+      return first_width / available;
+    } else {
+      // Right edge moved: ratio = 1 - (distance from actual right to parent right / available)
+      float actual_right = actual_rect.x + actual_rect.width;
+      float parent_right = parent_global_rect.x + parent_global_rect.width;
+      float second_width = parent_right - actual_right;
+      return 1.0f - (second_width / available);
+    }
+  } else {
+    // Horizontal split controls height
+    float available = parent_global_rect.height - gap_v;
+    if (available <= 0.0f) {
+      return 0.5f;
+    }
+
+    if (edge == EdgeType::Top) {
+      float first_height = actual_rect.y - parent_global_rect.y;
+      return first_height / available;
+    } else {
+      float actual_bottom = actual_rect.y + actual_rect.height;
+      float parent_bottom = parent_global_rect.y + parent_global_rect.height;
+      float second_height = parent_bottom - actual_bottom;
+      return 1.0f - (second_height / available);
+    }
+  }
+}
+
+// Find ancestor that controls the given edge and update its ratio
+// Returns true if ratio was updated, false if no controlling ancestor found
+bool update_ratio_for_edge(CellCluster& cluster, const PositionedCluster& pc, int start_cell_index,
+                           EdgeType edge, const Rect& actual_rect, float gap_h, float gap_v) {
+  // Determine required split direction and child position for this edge
+  // Left/Right edges are controlled by Vertical splits
+  // Top/Bottom edges are controlled by Horizontal splits
+  SplitDir required_dir = (edge == EdgeType::Left || edge == EdgeType::Right)
+                              ? SplitDir::Vertical
+                              : SplitDir::Horizontal;
+
+  // Left and Top edges are controlled by ancestors where we descended from second_child
+  // Right and Bottom edges are controlled by ancestors where we descended from first_child
+  bool need_from_second = (edge == EdgeType::Left || edge == EdgeType::Top);
+
+  // Traverse up to find controlling ancestor
+  int current_index = start_cell_index;
+  while (true) {
+    const Cell& current = cluster.cells[static_cast<size_t>(current_index)];
+    if (!current.parent.has_value()) {
+      return false; // Reached root without finding controller
+    }
+
+    int parent_index = *current.parent;
+    const Cell& parent = cluster.cells[static_cast<size_t>(parent_index)];
+
+    if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+      return false; // Invalid parent
+    }
+
+    // Check if parent controls this edge
+    bool is_second = *parent.second_child == current_index;
+    bool is_first = *parent.first_child == current_index;
+
+    if (parent.split_dir == required_dir) {
+      if ((need_from_second && is_second) || (!need_from_second && is_first)) {
+        // Found the controlling ancestor - calculate new ratio
+        // Convert parent rect to global coordinates
+        Rect parent_global_rect{parent.rect.x + pc.global_x, parent.rect.y + pc.global_y,
+                                parent.rect.width, parent.rect.height};
+
+        float new_ratio =
+            calculate_new_ratio_from_edge(parent_global_rect, edge, actual_rect, gap_h, gap_v);
+
+        spdlog::debug("update_ratio_for_edge: edge={}, parent_idx={}, new_ratio={}",
+                      static_cast<int>(edge), parent_index, new_ratio);
+
+        return set_split_ratio(cluster, parent_index, new_ratio, gap_h, gap_v);
+      }
+    }
+
+    current_index = parent_index; // Continue up the tree
+  }
+}
+} // anonymous namespace
+
 bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
                                             const Rect& actual_window_rect) {
   // Validate cluster index
@@ -1026,7 +1128,7 @@ bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id
     return false;
   }
 
-  Cell& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
+  const Cell& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
 
   // Root cell has no parent - cannot calculate ratio
   if (!cell.parent.has_value()) {
@@ -1035,47 +1137,47 @@ bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id
     return false;
   }
 
-  int parent_index = *cell.parent;
-  Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
+  // Get expected cell rect in global coordinates for edge comparison
+  Rect expected_rect = get_cell_global_rect(pc, cell_index);
 
-  if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
-    spdlog::trace("update_split_ratio_from_resize: parent {} is invalid", parent_index);
+  // Detect which edges changed (with tolerance for rounding)
+  constexpr float kEdgeTolerance = 2.0f;
+  bool left_changed = std::abs(actual_window_rect.x - expected_rect.x) > kEdgeTolerance;
+  bool right_changed = std::abs((actual_window_rect.x + actual_window_rect.width) -
+                                (expected_rect.x + expected_rect.width)) > kEdgeTolerance;
+  bool top_changed = std::abs(actual_window_rect.y - expected_rect.y) > kEdgeTolerance;
+  bool bottom_changed = std::abs((actual_window_rect.y + actual_window_rect.height) -
+                                 (expected_rect.y + expected_rect.height)) > kEdgeTolerance;
+
+  if (!left_changed && !right_changed && !top_changed && !bottom_changed) {
+    spdlog::trace("update_split_ratio_from_resize: no edge changes detected");
     return false;
   }
 
-  // Determine if this cell is first_child or second_child
-  bool is_first_child = parent.first_child.has_value() && *parent.first_child == cell_index;
+  spdlog::debug("update_split_ratio_from_resize: cell={}, edges changed: L={}, R={}, T={}, B={}",
+                cell_index, left_changed, right_changed, top_changed, bottom_changed);
 
-  // Calculate new ratio based on parent's split direction
-  // The actual_window_rect is in global coordinates, we need to work with sizes
-  float new_ratio = 0.5f;
+  bool any_updated = false;
 
-  if (parent.split_dir == SplitDir::Vertical) {
-    // Vertical split: ratio controls width
-    float available_width = parent.rect.width - gap_horizontal;
-    if (available_width > 0.0f) {
-      if (is_first_child) {
-        new_ratio = actual_window_rect.width / available_width;
-      } else {
-        new_ratio = 1.0f - (actual_window_rect.width / available_width);
-      }
-    }
-  } else {
-    // Horizontal split: ratio controls height
-    float available_height = parent.rect.height - gap_vertical;
-    if (available_height > 0.0f) {
-      if (is_first_child) {
-        new_ratio = actual_window_rect.height / available_height;
-      } else {
-        new_ratio = 1.0f - (actual_window_rect.height / available_height);
-      }
-    }
+  // Process each changed edge - find the ancestor that controls it and update ratio
+  if (left_changed) {
+    any_updated |= update_ratio_for_edge(pc.cluster, pc, cell_index, EdgeType::Left,
+                                         actual_window_rect, gap_horizontal, gap_vertical);
+  }
+  if (right_changed) {
+    any_updated |= update_ratio_for_edge(pc.cluster, pc, cell_index, EdgeType::Right,
+                                         actual_window_rect, gap_horizontal, gap_vertical);
+  }
+  if (top_changed) {
+    any_updated |= update_ratio_for_edge(pc.cluster, pc, cell_index, EdgeType::Top,
+                                         actual_window_rect, gap_horizontal, gap_vertical);
+  }
+  if (bottom_changed) {
+    any_updated |= update_ratio_for_edge(pc.cluster, pc, cell_index, EdgeType::Bottom,
+                                         actual_window_rect, gap_horizontal, gap_vertical);
   }
 
-  spdlog::debug("update_split_ratio_from_resize: cell={}, parent={}, is_first={}, new_ratio={}",
-                cell_index, parent_index, is_first_child, new_ratio);
-
-  return set_split_ratio(pc.cluster, parent_index, new_ratio, gap_horizontal, gap_vertical);
+  return any_updated;
 }
 
 tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
