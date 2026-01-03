@@ -146,7 +146,6 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   if (className == "#32770")
     return true;
 
-
   auto pid = get_window_pid((HWND_T)hwnd);
   std::string processName;
   if (pid.has_value()) {
@@ -159,10 +158,6 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   }
 
   const auto& options = *ctx->ignore_options;
-
-  // Check for standard Windows dialog boxes (always ignore)
-  if (win.className == "#32770")
-    return true;
 
   // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
