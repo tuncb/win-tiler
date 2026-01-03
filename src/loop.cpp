@@ -647,14 +647,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       bool resized = handle_window_resize(system, input_state);
 
       if (resized) {
-        // Resize performed - apply layout and clear drag flag
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
+        // Resize performed - clear drag flag; layout applied by system.update() below
         winapi::clear_drag_ended();
-      } else if (handle_mouse_drop_move(system,
-                                        options.visualizationOptions.renderOptions.zen_percentage,
-                                        input_state)) {
-        // Move/swap performed (clear_drag_ended already called inside)
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
+      } else {
+        // Try move/swap (clear_drag_ended called inside if successful)
+        handle_mouse_drop_move(system, options.visualizationOptions.renderOptions.zen_percentage,
+                               input_state);
       }
     }
 
