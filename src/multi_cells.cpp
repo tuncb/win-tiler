@@ -1864,5 +1864,138 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
   return result;
 }
 
+// ============================================================================
+// Pure Logic Utilities
+// ============================================================================
+
+std::optional<Point> get_selected_cell_center(const System& system) {
+  auto selected = get_selected_cell(system);
+  if (!selected.has_value()) {
+    return std::nullopt;
+  }
+
+  auto [cluster_index, cell_index] = *selected;
+  const auto& pc = system.clusters[cluster_index];
+
+  Rect global_rect = get_cell_global_rect(pc, cell_index);
+  return Point{static_cast<long>(global_rect.x + global_rect.width / 2.0f),
+               static_cast<long>(global_rect.y + global_rect.height / 2.0f)};
+}
+
+std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id) {
+  for (size_t i = 0; i < system.clusters.size(); ++i) {
+    if (find_cell_by_leaf_id(system.clusters[i].cluster, leaf_id).has_value()) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t leaf_id) {
+  for (const auto& pc : system.clusters) {
+    auto cell_index_opt = find_cell_by_leaf_id(pc.cluster, leaf_id);
+    if (cell_index_opt.has_value()) {
+      Rect global_rect = get_cell_global_rect(pc, *cell_index_opt);
+      return Point{static_cast<long>(global_rect.x + global_rect.width / 2.0f),
+                   static_cast<long>(global_rect.y + global_rect.height / 2.0f)};
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage,
+                                              const std::unordered_set<size_t>& skip_clusters) {
+  std::vector<TileUpdate> updates;
+
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    // Skip clusters in skip set (e.g., fullscreen)
+    if (skip_clusters.contains(cluster_idx)) {
+      continue;
+    }
+
+    const auto& pc = system.clusters[cluster_idx];
+
+    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
+      if (cell.is_dead || !cell.leaf_id.has_value()) {
+        continue;
+      }
+
+      // Check if this cell is the zen cell for its cluster
+      bool is_zen = pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index == i;
+
+      // Use zen display rect (centered at percentage) or normal rect
+      Rect global_rect = get_cell_display_rect(pc, i, is_zen, zen_percentage);
+
+      TileUpdate update;
+      update.leaf_id = *cell.leaf_id;
+      update.x = static_cast<int>(global_rect.x);
+      update.y = static_cast<int>(global_rect.y);
+      update.width = static_cast<int>(global_rect.width);
+      update.height = static_cast<int>(global_rect.height);
+
+      updates.push_back(update);
+    }
+  }
+
+  return updates;
+}
+
+SelectionUpdateResult
+compute_selection_update(const System& system, float cursor_x, float cursor_y, float zen_percentage,
+                         const std::unordered_set<size_t>& fullscreen_clusters,
+                         size_t foreground_window_leaf_id) {
+  SelectionUpdateResult result;
+  result.needs_update = false;
+  result.new_selection = std::nullopt;
+  result.window_to_foreground = std::nullopt;
+
+  // Check if foreground window is managed by the system
+  if (!has_leaf_id(system, foreground_window_leaf_id)) {
+    return result;
+  }
+
+  // Find cell at cursor position
+  auto cell_at_cursor = find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
+  if (!cell_at_cursor.has_value()) {
+    return result;
+  }
+
+  auto [cluster_index, cell_index] = *cell_at_cursor;
+
+  // Skip selection update if this cluster has a fullscreen app
+  if (fullscreen_clusters.contains(cluster_index)) {
+    return result;
+  }
+
+  // Skip selection update if this cluster has a zen cell and we're NOT hovering over it
+  const auto& zen_check_pc = system.clusters[cluster_index];
+  if (zen_check_pc.cluster.zen_cell_index.has_value() &&
+      *zen_check_pc.cluster.zen_cell_index != cell_index) {
+    return result;
+  }
+
+  // Check if selection needs updating
+  bool needs_update = !system.selection.has_value() ||
+                      system.selection->cluster_index != cluster_index ||
+                      system.selection->cell_index != cell_index;
+
+  if (!needs_update) {
+    return result;
+  }
+
+  result.needs_update = true;
+  result.new_selection = CellIndicatorByIndex{cluster_index, cell_index};
+
+  // Get the leaf_id for the window to foreground
+  const auto& pc = system.clusters[cluster_index];
+  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
+  if (cell.leaf_id.has_value()) {
+    result.window_to_foreground = *cell.leaf_id;
+  }
+
+  return result;
+}
+
 } // namespace cells
 } // namespace wintiler

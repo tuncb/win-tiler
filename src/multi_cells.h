@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <tl/expected.hpp>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,12 @@ struct Rect {
   float y;
   float width;
   float height;
+};
+
+// Point coordinates (integer) for cursor positioning
+struct Point {
+  long x;
+  long y;
 };
 
 struct Cell {
@@ -129,6 +136,19 @@ struct UpdateResult {
 struct MoveSuccess {
   int new_cell_index;       // Index of source cell in its new position
   size_t new_cluster_index; // Cluster where source ended up
+};
+
+// Window tile position update (for pure layout calculation)
+struct TileUpdate {
+  size_t leaf_id;
+  int x, y, width, height;
+};
+
+// Result of selection update computation
+struct SelectionUpdateResult {
+  bool needs_update;
+  std::optional<CellIndicatorByIndex> new_selection;
+  std::optional<size_t> window_to_foreground; // leaf_id
 };
 
 // ============================================================================
@@ -267,6 +287,38 @@ find_cell_at_point(const System& system, float global_x, float global_y, float z
 
 // Find cell index by leaf ID. Returns nullopt if not found.
 [[nodiscard]] std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_id);
+
+// ============================================================================
+// Pure Logic Utilities (no side effects, suitable for use without Windows API)
+// ============================================================================
+
+// Get the center point of the currently selected cell.
+// Returns nullopt if no selection exists.
+[[nodiscard]] std::optional<Point> get_selected_cell_center(const System& system);
+
+// Find which cluster contains a cell with the given leaf_id.
+// Returns the cluster index or nullopt if not found.
+[[nodiscard]] std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id);
+
+// Find a cell by leaf_id and return its center point.
+// Returns nullopt if not found.
+[[nodiscard]] std::optional<Point> find_cell_center_by_leaf_id(const System& system,
+                                                               size_t leaf_id);
+
+// Calculate tile positions for all cells without applying them.
+// Skips clusters in skip_clusters set (e.g., for fullscreen).
+// Returns a list of updates for the caller to apply.
+[[nodiscard]] std::vector<TileUpdate>
+calculate_tile_layout(const System& system, float zen_percentage,
+                      const std::unordered_set<size_t>& skip_clusters);
+
+// Compute whether selection should change based on cursor position.
+// Returns the new selection and window to foreground (if any).
+// Does not mutate the system - caller applies the changes.
+[[nodiscard]] SelectionUpdateResult
+compute_selection_update(const System& system, float cursor_x, float cursor_y, float zen_percentage,
+                         const std::unordered_set<size_t>& fullscreen_clusters,
+                         size_t foreground_window_leaf_id);
 
 } // namespace cells
 } // namespace wintiler

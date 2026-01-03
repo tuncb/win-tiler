@@ -115,19 +115,9 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
 
 // Move mouse cursor to center of currently selected cell
 void move_cursor_to_selected_cell(const cells::System& system) {
-  auto selected_cell = cells::get_selected_cell(system);
-  if (!selected_cell.has_value()) {
-    return;
+  if (auto center = cells::get_selected_cell_center(system)) {
+    winapi::set_cursor_pos(center->x, center->y);
   }
-
-  auto [cluster_index, cell_index] = *selected_cell;
-  const auto& pc = system.clusters[cluster_index];
-
-  cells::Rect global_rect = cells::get_cell_global_rect(pc, cell_index);
-  long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
-  long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
-
-  winapi::set_cursor_pos(center_x, center_y);
 }
 
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
@@ -335,20 +325,11 @@ bool handle_mouse_drop_move(cells::System& system,
   }
 
   // Find which cluster contains the source
-  size_t source_cluster_index = 0;
-  bool found_source = false;
-  for (size_t i = 0; i < system.clusters.size(); ++i) {
-    auto cell_idx = cells::find_cell_by_leaf_id(system.clusters[i].cluster, source_leaf_id);
-    if (cell_idx.has_value()) {
-      source_cluster_index = i;
-      found_source = true;
-      break;
-    }
-  }
-
-  if (!found_source) {
+  auto source_cluster_opt = cells::find_cluster_by_leaf_id(system, source_leaf_id);
+  if (!source_cluster_opt.has_value()) {
     return false;
   }
+  size_t source_cluster_index = *source_cluster_opt;
 
   // Check if dropping on same cell (source == target)
   if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
@@ -507,11 +488,6 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
 void update_foreground_selection_from_mouse_position(
     cells::System& system, const std::unordered_set<size_t>& fullscreen_clusters,
     float zen_percentage, const winapi::LoopInputState& input_state) {
-  if (input_state.foreground_window == nullptr ||
-      !cells::has_leaf_id(system, reinterpret_cast<size_t>(input_state.foreground_window))) {
-    return;
-  }
-
   if (!input_state.cursor_pos.has_value()) {
     spdlog::error("Failed to get cursor position");
     return;
@@ -519,46 +495,24 @@ void update_foreground_selection_from_mouse_position(
 
   float cursor_x = static_cast<float>(input_state.cursor_pos->x);
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
+  size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
 
-  auto cell_at_cursor = cells::find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
+  auto result = cells::compute_selection_update(system, cursor_x, cursor_y, zen_percentage,
+                                                fullscreen_clusters, fg_leaf_id);
 
-  if (!cell_at_cursor.has_value()) {
+  if (!result.needs_update || !result.new_selection.has_value()) {
     return;
   }
 
-  auto [cluster_index, cell_index] = *cell_at_cursor;
+  system.selection = *result.new_selection;
 
-  // Skip selection update if this cluster has a fullscreen app
-  if (fullscreen_clusters.contains(cluster_index)) {
-    return;
-  }
-
-  // Skip selection update if this cluster has a zen cell and we're NOT hovering over it
-  const auto& zen_check_pc = system.clusters[cluster_index];
-  if (zen_check_pc.cluster.zen_cell_index.has_value() &&
-      *zen_check_pc.cluster.zen_cell_index != cell_index) {
-    return;
-  }
-
-  bool needs_update = !system.selection.has_value() ||
-                      system.selection->cluster_index != cluster_index ||
-                      system.selection->cell_index != cell_index;
-
-  if (!needs_update) {
-    return;
-  }
-
-  system.selection = cells::CellIndicatorByIndex{cluster_index, cell_index};
-
-  const auto& pc = system.clusters[cluster_index];
-  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
-  if (cell.leaf_id.has_value()) {
-    winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
+  if (result.window_to_foreground.has_value()) {
+    winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*result.window_to_foreground);
     if (!winapi::set_foreground_window(cell_hwnd)) {
       spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
     }
-    spdlog::trace("======================Selection updated: cluster={}, cell={}", cluster_index,
-                  cell_index);
+    spdlog::trace("======================Selection updated: cluster={}, cell={}",
+                  result.new_selection->cluster_index, result.new_selection->cell_index);
   }
 }
 
@@ -643,37 +597,12 @@ void update_fullscreen_state(std::unordered_set<size_t>& fullscreen_clusters,
 // Helper: Apply tile layout by updating window positions
 void apply_tile_layout(const cells::System& system, float zen_percentage,
                        const std::unordered_set<size_t>& fullscreen_clusters) {
-  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
-    // Skip tiling if this cluster has a fullscreen app
-    if (fullscreen_clusters.contains(cluster_idx)) {
-      continue;
-    }
-
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cell.is_dead || !cell.leaf_id.has_value()) {
-        continue;
-      }
-
-      size_t hwnd_value = *cell.leaf_id;
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
-
-      // Check if this cell is the zen cell for its cluster
-      bool is_zen = pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index == i;
-
-      // Use zen display rect (centered at percentage) or normal rect
-      cells::Rect global_rect = cells::get_cell_display_rect(pc, i, is_zen, zen_percentage);
-
-      winapi::WindowPosition pos;
-      pos.x = static_cast<int>(global_rect.x);
-      pos.y = static_cast<int>(global_rect.y);
-      pos.width = static_cast<int>(global_rect.width);
-      pos.height = static_cast<int>(global_rect.height);
-
-      winapi::TileInfo tile_info{hwnd, pos};
-      winapi::update_window_position(tile_info);
-    }
+  auto updates = cells::calculate_tile_layout(system, zen_percentage, fullscreen_clusters);
+  for (const auto& upd : updates) {
+    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
+    winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
+    winapi::TileInfo tile_info{hwnd, pos};
+    winapi::update_window_position(tile_info);
   }
 }
 
@@ -769,16 +698,9 @@ void handle_window_changes(const cells::System& system, const cells::UpdateResul
 
   if (!result.added_leaf_ids.empty()) {
     size_t last_added_id = result.added_leaf_ids.back();
-    for (const auto& pc : system.clusters) {
-      auto cell_index_opt = cells::find_cell_by_leaf_id(pc.cluster, last_added_id);
-      if (cell_index_opt.has_value()) {
-        cells::Rect global_rect = cells::get_cell_global_rect(pc, *cell_index_opt);
-        long center_x = static_cast<long>(global_rect.x + global_rect.width / 2.0f);
-        long center_y = static_cast<long>(global_rect.y + global_rect.height / 2.0f);
-        winapi::set_cursor_pos(center_x, center_y);
-        spdlog::debug("Moved cursor to center of new cell at ({}, {})", center_x, center_y);
-        break;
-      }
+    if (auto center = cells::find_cell_center_by_leaf_id(system, last_added_id)) {
+      winapi::set_cursor_pos(center->x, center->y);
+      spdlog::debug("Moved cursor to center of new cell at ({}, {})", center->x, center->y);
     }
   }
 }
