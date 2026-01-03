@@ -271,16 +271,33 @@ void update_window_position(const TileInfo& tile_info) {
     int borderRight = windowRect.right - frameRect.right;
     int borderBottom = windowRect.bottom - frameRect.bottom;
 
-    SetWindowPos(hwnd, NULL, tile_info.window_position.x - borderLeft,
-                 tile_info.window_position.y - borderTop,
-                 tile_info.window_position.width + borderLeft + borderRight,
-                 tile_info.window_position.height + borderTop + borderBottom,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
+    int targetX = tile_info.window_position.x - borderLeft;
+    int targetY = tile_info.window_position.y - borderTop;
+    int targetW = tile_info.window_position.width + borderLeft + borderRight;
+    int targetH = tile_info.window_position.height + borderTop + borderBottom;
+
+    // Skip if window is already at the correct position and size
+    if (windowRect.left == targetX && windowRect.top == targetY &&
+        (windowRect.right - windowRect.left) == targetW &&
+        (windowRect.bottom - windowRect.top) == targetH) {
+      return;
+    }
+
+    SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
   } else {
     // Fallback if DWM query fails
-    SetWindowPos(hwnd, NULL, tile_info.window_position.x, tile_info.window_position.y,
-                 tile_info.window_position.width, tile_info.window_position.height,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
+    int targetX = tile_info.window_position.x;
+    int targetY = tile_info.window_position.y;
+    int targetW = tile_info.window_position.width;
+    int targetH = tile_info.window_position.height;
+
+    if (windowRect.left == targetX && windowRect.top == targetY &&
+        (windowRect.right - windowRect.left) == targetW &&
+        (windowRect.bottom - windowRect.top) == targetH) {
+      return;
+    }
+
+    SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
   }
 }
 
