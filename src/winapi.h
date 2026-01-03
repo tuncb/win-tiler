@@ -50,10 +50,6 @@ struct WindowInfo {
 std::vector<MonitorInfo> get_monitors();
 void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
-std::optional<DWORD_T> get_window_pid(HWND_T hwnd);
-std::string get_process_name_from_pid(DWORD_T pid);
-bool is_window_maximized(HWND_T hwnd);
-std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index = std::nullopt);
 void update_window_position(const TileInfo& tile_info);
@@ -66,8 +62,6 @@ struct Point {
   long y;
 };
 
-HWND_T get_foreground_window();
-std::optional<Point> get_cursor_pos();
 bool set_cursor_pos(long x, long y);
 bool set_foreground_window(HWND_T hwnd);
 
@@ -99,7 +93,6 @@ bool wait_for_messages_or_timeout(unsigned long timeout_ms);
 // Window move/resize detection (for pausing tiling during user drag operations)
 void register_move_size_hook();
 void unregister_move_size_hook();
-bool is_any_window_being_moved();
 
 // Drag operation tracking (for mouse-based window move operations)
 struct DragInfo {
@@ -107,18 +100,8 @@ struct DragInfo {
   bool move_ended; // True when drag just ended (one-shot detection)
 };
 
-// Get current drag state (returns nullopt if no drag has occurred)
-std::optional<DragInfo> get_drag_info();
-
 // Clear the drag ended flag after handling it
 void clear_drag_ended();
-
-// Check if Ctrl key is currently pressed
-bool is_ctrl_pressed();
-
-// Fullscreen detection
-// Check if a specific window covers its entire monitor (fullscreen)
-bool is_window_fullscreen(HWND_T hwnd);
 
 // Per-window data for consolidated queries
 struct ManagedWindowInfo {

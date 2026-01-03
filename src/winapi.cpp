@@ -87,7 +87,7 @@ bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<Monitor
   return true;
 }
 
-std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
+static std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
   DWORD pid = 0;
   GetWindowThreadProcessId((HWND)hwnd, &pid);
   if (pid != 0) {
@@ -96,7 +96,7 @@ std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
   return std::nullopt;
 }
 
-std::string get_process_name_from_pid(DWORD_T pid) {
+static std::string get_process_name_from_pid(DWORD_T pid) {
   std::string processName;
   HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
   if (hProcess) {
@@ -109,7 +109,7 @@ std::string get_process_name_from_pid(DWORD_T pid) {
   return processName;
 }
 
-bool is_window_maximized(HWND_T hwnd) {
+static bool is_window_maximized(HWND_T hwnd) {
   return IsZoomed((HWND)hwnd);
 }
 
@@ -209,7 +209,7 @@ static std::vector<HWND_T> get_windows_list(const wintiler::IgnoreOptions& ignor
   return handles;
 }
 
-std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
+static std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
   auto handles = get_windows_list(ignore_options);
 
   std::sort(handles.begin(), handles.end(),
@@ -350,11 +350,11 @@ WindowInfo get_window_info(HWND_T hwnd) {
   return info;
 }
 
-HWND_T get_foreground_window() {
+static HWND_T get_foreground_window() {
   return reinterpret_cast<HWND_T>(GetForegroundWindow());
 }
 
-std::optional<Point> get_cursor_pos() {
+static std::optional<Point> get_cursor_pos() {
   POINT pt;
   if (GetCursorPos(&pt)) {
     return Point{pt.x, pt.y};
@@ -635,11 +635,11 @@ void unregister_move_size_hook() {
   spdlog::info("Unregistered window move/size hooks");
 }
 
-bool is_any_window_being_moved() {
+static bool is_any_window_being_moved() {
   return g_is_moving.load();
 }
 
-std::optional<DragInfo> get_drag_info() {
+static std::optional<DragInfo> get_drag_info() {
   HWND hwnd = g_moving_hwnd.load();
   if (hwnd == nullptr) {
     return std::nullopt;
@@ -652,11 +652,11 @@ void clear_drag_ended() {
   g_moving_hwnd = nullptr;
 }
 
-bool is_ctrl_pressed() {
+static bool is_ctrl_pressed() {
   return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 }
 
-bool is_window_fullscreen(HWND_T hwnd) {
+static bool is_window_fullscreen(HWND_T hwnd) {
   if (hwnd == nullptr) {
     return false;
   }
