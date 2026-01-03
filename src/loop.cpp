@@ -451,36 +451,6 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
   }
 }
 
-void update_foreground_selection_from_mouse_position(cells::System& system, float zen_percentage,
-                                                     const winapi::LoopInputState& input_state) {
-  if (!input_state.cursor_pos.has_value()) {
-    spdlog::error("Failed to get cursor position");
-    return;
-  }
-
-  float cursor_x = static_cast<float>(input_state.cursor_pos->x);
-  float cursor_y = static_cast<float>(input_state.cursor_pos->y);
-  size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
-
-  auto result =
-      cells::compute_selection_update(system, cursor_x, cursor_y, zen_percentage, fg_leaf_id);
-
-  if (!result.needs_update || !result.new_selection.has_value()) {
-    return;
-  }
-
-  system.selection = *result.new_selection;
-
-  if (result.window_to_foreground.has_value()) {
-    winapi::HWND_T cell_hwnd = reinterpret_cast<winapi::HWND_T>(*result.window_to_foreground);
-    if (!winapi::set_foreground_window(cell_hwnd)) {
-      spdlog::error("Failed to set foreground window for HWND {}", cell_hwnd);
-    }
-    spdlog::trace("======================Selection updated: cluster={}, cell={}",
-                  result.new_selection->cluster_index, result.new_selection->cell_index);
-  }
-}
-
 // Helper: Print tile layout from a multi-cluster system
 void print_tile_layout(const cells::System& system) {
   size_t total_windows = cells::count_total_leaves(system);
@@ -611,36 +581,6 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   return true;
 }
 
-// Handle logging and cursor positioning for window changes
-void handle_window_changes(const cells::System& system, const cells::UpdateResult& result) {
-  if (result.deleted_leaf_ids.empty() && result.added_leaf_ids.empty()) {
-    return;
-  }
-
-  spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
-               result.deleted_leaf_ids.size());
-
-  if (!result.added_leaf_ids.empty()) {
-    spdlog::debug("Added windows:");
-    for (size_t id : result.added_leaf_ids) {
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-      std::string title = winapi::get_window_info(hwnd).title;
-      spdlog::debug("  + \"{}\"", title);
-    }
-  }
-
-  spdlog::debug("=== Updated Tile Layout ===");
-  print_tile_layout(system);
-
-  if (!result.added_leaf_ids.empty()) {
-    size_t last_added_id = result.added_leaf_ids.back();
-    if (auto center = cells::find_cell_center_by_leaf_id(system, last_added_id)) {
-      winapi::set_cursor_pos(center->x, center->y);
-      spdlog::debug("Moved cursor to center of new cell at ({}, {})", center->x, center->y);
-    }
-  }
-}
-
 } // namespace
 
 void run_loop_mode(GlobalOptionsProvider& provider) {
@@ -750,15 +690,50 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->x) : 0.0f;
     float cursor_y =
         input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
-    auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y});
+    float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
+    size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
+    auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
+                                fg_leaf_id);
 
-    update_foreground_selection_from_mouse_position(
-        system, options.visualizationOptions.renderOptions.zen_percentage, input_state);
+    // Apply foreground window change (selection already updated inside update())
+    if (result.selection_update.window_to_foreground.has_value()) {
+      winapi::HWND_T hwnd =
+          reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
+      if (!winapi::set_foreground_window(hwnd)) {
+        spdlog::error("Failed to set foreground window for HWND {}", hwnd);
+      }
+    }
 
-    // Log window changes and move cursor to new windows
-    handle_window_changes(system, result);
+    // Log window changes
+    if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
+      spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
+                   result.deleted_leaf_ids.size());
+      if (!result.added_leaf_ids.empty()) {
+        spdlog::debug("Added windows:");
+        for (size_t id : result.added_leaf_ids) {
+          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+          std::string title = winapi::get_window_info(hwnd).title;
+          spdlog::debug("  + \"{}\"", title);
+        }
+      }
+      spdlog::debug("=== Updated Tile Layout ===");
+      print_tile_layout(system);
+    }
 
-    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
+    // Move cursor to center of new window (if any)
+    if (result.new_window_cursor_pos.has_value()) {
+      winapi::set_cursor_pos(result.new_window_cursor_pos->x, result.new_window_cursor_pos->y);
+      spdlog::debug("Moved cursor to center of new cell at ({}, {})",
+                    result.new_window_cursor_pos->x, result.new_window_cursor_pos->y);
+    }
+
+    // Apply tile updates
+    for (const auto& upd : result.tile_updates) {
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
+      winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
+      winapi::TileInfo tile_info{hwnd, pos};
+      winapi::update_window_position(tile_info);
+    }
 
     // Render cell system overlay
     renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,

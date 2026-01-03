@@ -187,7 +187,7 @@ void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process
 
   // Update system and select the newly added cell
   app_state.system.update(state, std::make_pair(selected_cluster_index, new_leaf_id),
-                          {global_x, global_y});
+                          {global_x, global_y}, 0.9f, 0);
 }
 
 void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTransform& vt) {
@@ -225,7 +225,7 @@ void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTr
   to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
 
   // Update system (selection will auto-update)
-  app_state.system.update(state, std::nullopt, {global_x, global_y});
+  app_state.system.update(state, std::nullopt, {global_x, global_y}, 0.9f, 0);
 }
 
 Color get_cluster_color(size_t cluster_index) {

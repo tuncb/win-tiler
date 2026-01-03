@@ -402,7 +402,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add second window
     cells::ClusterCellUpdateInfo updates{0, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
@@ -413,7 +413,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add third window - should still be vertical
     updates = cells::ClusterCellUpdateInfo{0, {1, 2, 3}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     // Check that we have at least 3 cells and they all split vertically
     REQUIRE(pc.cluster.cells.size() >= 3);
@@ -433,7 +433,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add second window
     cells::ClusterCellUpdateInfo updates{0, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f});
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
@@ -483,7 +483,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {100, 200}}};
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -501,7 +501,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 20, 30}} // Keep 10, add 20 and 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -520,7 +520,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10}} // Keep only 10, delete 20 and 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 2);
@@ -536,7 +536,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 30}} // Keep 10, delete 20, add 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
@@ -554,7 +554,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 20}} // No changes, just update selection
     };
 
-    auto result = system.update(updates, {{0, 20}}, {0.0f, 0.0f});
+    auto result = system.update(updates, {{0, 20}}, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.selection_updated);
@@ -577,7 +577,7 @@ TEST_SUITE("cells - updateSystem") {
         {999, {10, 20}} // Cluster 999 doesn't exist
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::ClusterNotFound);
@@ -590,7 +590,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
-    auto result = system.update(updates, {{999, 10}}, {0.0f, 0.0f});
+    auto result = system.update(updates, {{999, 10}}, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -603,7 +603,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
-    auto result = system.update(updates, {{0, 999}}, {0.0f, 0.0f});
+    auto result = system.update(updates, {{0, 999}}, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -621,7 +621,7 @@ TEST_SUITE("cells - updateSystem") {
         {1, {20, 21}}  // Add 21 to cluster 1
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -636,7 +636,7 @@ TEST_SUITE("cells - updateSystem") {
     // Only update cluster 2, leave cluster 1 alone
     std::vector<cells::ClusterCellUpdateInfo> updates = {{1, {20, 21}}};
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
 
@@ -660,7 +660,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {}} // Empty - delete all leaves
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
+    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);

@@ -1711,7 +1711,8 @@ static void redirect_windows_to_cluster(std::vector<ClusterCellUpdateInfo>& cell
 
 UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                             std::optional<std::pair<size_t, size_t>> new_selection,
-                            std::pair<float, float> pointer_coords) {
+                            std::pair<float, float> pointer_coords, float zen_percentage,
+                            size_t foreground_leaf_id) {
   UpdateResult result;
   result.selection_updated = false;
 
@@ -1884,6 +1885,33 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
         }
       }
     }
+  }
+
+  // Compute tile layout for all windows
+  result.tile_updates = calculate_tile_layout(*this, zen_percentage);
+
+  // Compute selection update based on cursor position and apply to system.selection
+  float cursor_x = pointer_coords.first;
+  float cursor_y = pointer_coords.second;
+  result.selection_update =
+      compute_selection_update(*this, cursor_x, cursor_y, zen_percentage, foreground_leaf_id);
+
+  if (result.selection_update.needs_update && result.selection_update.new_selection.has_value()) {
+    selection = *result.selection_update.new_selection;
+
+    // Clear zen if selecting non-zen cell in a cluster with zen
+    size_t sel_cluster_idx = selection->cluster_index;
+    int sel_cell_idx = selection->cell_index;
+    if (clusters[sel_cluster_idx].cluster.zen_cell_index.has_value() &&
+        *clusters[sel_cluster_idx].cluster.zen_cell_index != sel_cell_idx) {
+      clusters[sel_cluster_idx].cluster.zen_cell_index.reset();
+    }
+  }
+
+  // Compute cursor position for newly added windows
+  if (!result.added_leaf_ids.empty()) {
+    size_t last_added_id = result.added_leaf_ids.back();
+    result.new_window_cursor_pos = find_cell_center_by_leaf_id(*this, last_added_id);
   }
 
   return result;

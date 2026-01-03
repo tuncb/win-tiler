@@ -129,11 +129,33 @@ struct UpdateError {
   size_t leaf_id; // relevant leaf ID (if applicable)
 };
 
+// Window tile position update (for pure layout calculation)
+struct TileUpdate {
+  size_t leaf_id;
+  int x, y, width, height;
+};
+
+// Result of selection update computation
+struct SelectionUpdateResult {
+  bool needs_update;
+  std::optional<CellIndicatorByIndex> new_selection;
+  std::optional<size_t> window_to_foreground; // leaf_id
+};
+
 struct UpdateResult {
   std::vector<size_t> deleted_leaf_ids;
   std::vector<size_t> added_leaf_ids;
   std::vector<UpdateError> errors;
   bool selection_updated;
+
+  // All window position updates to apply
+  std::vector<TileUpdate> tile_updates;
+
+  // Selection/foreground update info (selection already mutated inside update())
+  SelectionUpdateResult selection_update;
+
+  // Cursor position for newly added windows (if any)
+  std::optional<Point> new_window_cursor_pos;
 };
 
 struct MoveSuccess {
@@ -146,19 +168,6 @@ struct MoveSuccess {
 struct MoveSelectionResult {
   size_t leaf_id; // Window handle for setting foreground
   Point center;   // Cursor position for mouse movement
-};
-
-// Window tile position update (for pure layout calculation)
-struct TileUpdate {
-  size_t leaf_id;
-  int x, y, width, height;
-};
-
-// Result of selection update computation
-struct SelectionUpdateResult {
-  bool needs_update;
-  std::optional<CellIndicatorByIndex> new_selection;
-  std::optional<size_t> window_to_foreground; // leaf_id
 };
 
 // ============================================================================
@@ -189,7 +198,8 @@ struct System {
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                       std::optional<std::pair<size_t, size_t>> new_selection,
-                      std::pair<float, float> pointer_coords);
+                      std::pair<float, float> pointer_coords, float zen_percentage,
+                      size_t foreground_leaf_id);
 
   // Zen cell operations (per-cluster)
   [[nodiscard]] bool set_zen(size_t cluster_index, size_t leaf_id);
