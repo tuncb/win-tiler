@@ -10,7 +10,6 @@
 #include "multi_cell_renderer.h"
 #include "multi_cells.h"
 #include "overlay.h"
-#include "utility.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -650,17 +649,13 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Get initial monitor configuration and create system
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
-  auto system = timed("create_initial_system", [&monitors, &options] {
-    return create_initial_system_from_monitors(monitors, options);
-  });
+  auto system = create_initial_system_from_monitors(monitors, options);
 
   // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
   print_tile_layout(system);
 
-  timed_void("initial apply_tile_layout", [&system, &options] {
-    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
-  });
+  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -693,9 +688,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     auto loop_start = std::chrono::high_resolution_clock::now();
 
     // Gather all Windows API input state in a single call
-    auto input_state = timed("gather_loop_input_state", [&options] {
-      return winapi::gather_loop_input_state(options.ignoreOptions);
-    });
+    auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
 
     // Skip all processing while user is dragging a window - only render
     if (input_state.is_any_window_being_moved) {
@@ -729,8 +722,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     handle_config_refresh(provider, system, toast);
 
     // Check for monitor configuration changes
-    if (timed("handle_monitor_change",
-              [&] { return handle_monitor_change(monitors, options, system, stored_cell); })) {
+    if (handle_monitor_change(monitors, options, system, stored_cell)) {
       continue;
     }
 
@@ -751,9 +743,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     }
 
     // Extract window state from consolidated input
-    auto current_state = timed("extract_window_state", [&input_state] {
-      return extract_window_state_from_input(input_state);
-    });
+    auto current_state = extract_window_state_from_input(input_state);
 
     // Use update to sync - cursor position from consolidated state
     float cursor_x =
@@ -768,15 +758,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Log window changes and move cursor to new windows
     handle_window_changes(system, result);
 
-    timed_void("apply_tile_layout", [&system, &options] {
-      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
-    });
+    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
 
     // Render cell system overlay
-    timed_void("render", [&] {
-      renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
-                       toast.get_visible_message());
-    });
+    renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
+                     toast.get_visible_message());
 
     auto loop_end = std::chrono::high_resolution_clock::now();
     spdlog::trace(
