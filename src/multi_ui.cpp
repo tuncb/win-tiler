@@ -152,11 +152,12 @@ void center_mouse_on_selection(const MultiClusterAppState& app_state, const View
   }
 }
 
-std::vector<cells::ClusterCellIds> build_current_state(const cells::System& system) {
-  std::vector<cells::ClusterCellIds> state;
+std::vector<cells::ClusterCellUpdateInfo> build_current_state(const cells::System& system) {
+  std::vector<cells::ClusterCellUpdateInfo> state;
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& pc = system.clusters[cluster_idx];
     state.push_back(
-        {cluster_idx, cells::get_cluster_leaf_ids(system.clusters[cluster_idx].cluster)});
+        {cluster_idx, cells::get_cluster_leaf_ids(pc.cluster), pc.cluster.has_fullscreen_cell});
   }
   return state;
 }

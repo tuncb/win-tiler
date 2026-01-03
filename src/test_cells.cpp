@@ -401,7 +401,7 @@ TEST_SUITE("cells - navigation") {
     system.split_mode = cells::SplitMode::Vertical;
 
     // Add second window
-    cells::ClusterCellIds updates{0, {1, 2}};
+    cells::ClusterCellUpdateInfo updates{0, {1, 2}};
     system.update({updates}, std::nullopt, {0.0f, 0.0f});
 
     REQUIRE(system.clusters.size() >= 1);
@@ -412,7 +412,7 @@ TEST_SUITE("cells - navigation") {
     CHECK(pc.cluster.cells[0].split_dir == cells::SplitDir::Vertical);
 
     // Add third window - should still be vertical
-    updates = cells::ClusterCellIds{0, {1, 2, 3}};
+    updates = cells::ClusterCellUpdateInfo{0, {1, 2, 3}};
     system.update({updates}, std::nullopt, {0.0f, 0.0f});
 
     // Check that we have at least 3 cells and they all split vertically
@@ -432,7 +432,7 @@ TEST_SUITE("cells - navigation") {
     system.split_mode = cells::SplitMode::Horizontal;
 
     // Add second window
-    cells::ClusterCellIds updates{0, {1, 2}};
+    cells::ClusterCellUpdateInfo updates{0, {1, 2}};
     system.update({updates}, std::nullopt, {0.0f, 0.0f});
 
     REQUIRE(system.clusters.size() >= 1);
@@ -481,7 +481,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(cells::count_total_leaves(system) == 0);
 
-    std::vector<cells::ClusterCellIds> updates = {{0, {100, 200}}};
+    std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {100, 200}}};
 
     auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
 
@@ -497,7 +497,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(cells::count_total_leaves(system) == 1);
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10, 20, 30}} // Keep 10, add 20 and 30
     };
 
@@ -516,7 +516,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(cells::count_total_leaves(system) == 3);
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10}} // Keep only 10, delete 20 and 30
     };
 
@@ -532,7 +532,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10, 30}} // Keep 10, delete 20, add 30
     };
 
@@ -550,7 +550,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10, 20}} // No changes, just update selection
     };
 
@@ -573,7 +573,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {999, {10, 20}} // Cluster 999 doesn't exist
     };
 
@@ -588,7 +588,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {{0, {10}}};
+    std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
     auto result = system.update(updates, {{999, 10}}, {0.0f, 0.0f});
 
@@ -601,7 +601,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {{0, {10}}};
+    std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
     auto result = system.update(updates, {{0, 999}}, {0.0f, 0.0f});
 
@@ -616,7 +616,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info2{400.0f, 0.0f, 400.0f, 600.0f, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
     auto system = cells::create_system({info1, info2});
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10, 11}}, // Add 11 to cluster 0
         {1, {20, 21}}  // Add 21 to cluster 1
     };
@@ -634,7 +634,7 @@ TEST_SUITE("cells - updateSystem") {
     auto system = cells::create_system({info1, info2});
 
     // Only update cluster 2, leave cluster 1 alone
-    std::vector<cells::ClusterCellIds> updates = {{1, {20, 21}}};
+    std::vector<cells::ClusterCellUpdateInfo> updates = {{1, {20, 21}}};
 
     auto result = system.update(updates, std::nullopt, {0.0f, 0.0f});
 
@@ -656,7 +656,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    std::vector<cells::ClusterCellIds> updates = {
+    std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {}} // Empty - delete all leaves
     };
 

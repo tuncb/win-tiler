@@ -6,8 +6,7 @@ namespace wintiler {
 namespace renderer {
 
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message,
-            const std::unordered_set<size_t>& fullscreen_clusters) {
+            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message) {
   // Begin frame
   overlay::begin_frame();
 
@@ -15,7 +14,7 @@ void render(const cells::System& system, const RenderOptions& config,
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
     const auto& pc = system.clusters[cluster_idx];
     // Skip this cluster if it has a zen cell (will be rendered in zen loop) or fullscreen app
-    if (pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(cluster_idx)) {
+    if (pc.cluster.zen_cell_index.has_value() || pc.cluster.has_fullscreen_cell) {
       continue;
     }
 
@@ -60,7 +59,7 @@ void render(const cells::System& system, const RenderOptions& config,
   // Draw zen cell overlays for each cluster (skip fullscreen clusters)
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
     const auto& pc = system.clusters[cluster_idx];
-    if (!pc.cluster.zen_cell_index.has_value() || fullscreen_clusters.contains(cluster_idx)) {
+    if (!pc.cluster.zen_cell_index.has_value() || pc.cluster.has_fullscreen_cell) {
       continue;
     }
 

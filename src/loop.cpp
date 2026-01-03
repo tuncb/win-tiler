@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <magic_enum/magic_enum.hpp>
-#include <unordered_set>
 #include <vector>
 
 #include "model.h"
@@ -244,9 +243,8 @@ ActionResult handle_reset_split_ratio(cells::System& system) {
 
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
-bool handle_mouse_drop_move(cells::System& system,
-                            const std::unordered_set<size_t>& fullscreen_clusters,
-                            float zen_percentage, const winapi::LoopInputState& input_state) {
+bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
+                            const winapi::LoopInputState& input_state) {
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
   }
@@ -273,7 +271,7 @@ bool handle_mouse_drop_move(cells::System& system,
   auto [target_cluster_index, target_cell_index] = *target_cell;
 
   // Skip if target cluster has fullscreen app
-  if (fullscreen_clusters.contains(target_cluster_index)) {
+  if (system.clusters[target_cluster_index].cluster.has_fullscreen_cell) {
     spdlog::trace("Mouse drop: target cluster has fullscreen app");
     return false;
   }
@@ -344,9 +342,7 @@ bool handle_mouse_drop_move(cells::System& system,
 
 // Handle window resize operation to update split ratios
 // Returns true if a resize was performed, false otherwise
-bool handle_window_resize(cells::System& system,
-                          const std::unordered_set<size_t>& fullscreen_clusters,
-                          const winapi::LoopInputState& input_state) {
+bool handle_window_resize(cells::System& system, const winapi::LoopInputState& input_state) {
   // Check if drag/resize just ended
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
@@ -377,7 +373,7 @@ bool handle_window_resize(cells::System& system,
   }
 
   // Skip if fullscreen or zen mode active
-  if (fullscreen_clusters.contains(cluster_index)) {
+  if (system.clusters[cluster_index].cluster.has_fullscreen_cell) {
     return false;
   }
   if (system.clusters[cluster_index].cluster.zen_cell_index.has_value()) {
@@ -456,9 +452,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
   }
 }
 
-void update_foreground_selection_from_mouse_position(
-    cells::System& system, const std::unordered_set<size_t>& fullscreen_clusters,
-    float zen_percentage, const winapi::LoopInputState& input_state) {
+void update_foreground_selection_from_mouse_position(cells::System& system, float zen_percentage,
+                                                     const winapi::LoopInputState& input_state) {
   if (!input_state.cursor_pos.has_value()) {
     spdlog::error("Failed to get cursor position");
     return;
@@ -468,8 +463,8 @@ void update_foreground_selection_from_mouse_position(
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
   size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
 
-  auto result = cells::compute_selection_update(system, cursor_x, cursor_y, zen_percentage,
-                                                fullscreen_clusters, fg_leaf_id);
+  auto result =
+      cells::compute_selection_update(system, cursor_x, cursor_y, zen_percentage, fg_leaf_id);
 
   if (!result.needs_update || !result.new_selection.has_value()) {
     return;
@@ -517,58 +512,32 @@ void print_tile_layout(const cells::System& system) {
   }
 }
 
-// Helper: Extract ClusterCellIds from consolidated input state
-std::vector<cells::ClusterCellIds>
+// Helper: Extract ClusterCellUpdateInfo from consolidated input state
+std::vector<cells::ClusterCellUpdateInfo>
 extract_window_state_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<cells::ClusterCellIds> result;
+  std::vector<cells::ClusterCellUpdateInfo> result;
 
   for (size_t monitor_index = 0; monitor_index < input_state.windows_per_monitor.size();
        ++monitor_index) {
     const auto& windows = input_state.windows_per_monitor[monitor_index];
     std::vector<size_t> cell_ids;
     cell_ids.reserve(windows.size());
+    bool has_fullscreen = false;
     for (const auto& win : windows) {
       cell_ids.push_back(reinterpret_cast<size_t>(win.handle));
+      if (win.is_fullscreen) {
+        has_fullscreen = true;
+      }
     }
-    result.push_back({monitor_index, cell_ids});
+    result.push_back({monitor_index, cell_ids, has_fullscreen});
   }
 
   return result;
 }
 
-// Helper: Update fullscreen state for all clusters using pre-gathered data
-void update_fullscreen_state(std::unordered_set<size_t>& fullscreen_clusters,
-                             const winapi::LoopInputState& input_state) {
-  std::unordered_set<size_t> new_fullscreen;
-
-  for (size_t cluster_idx = 0; cluster_idx < input_state.windows_per_monitor.size();
-       ++cluster_idx) {
-    const auto& windows = input_state.windows_per_monitor[cluster_idx];
-    // Check if any window in this cluster is fullscreen
-    for (const auto& win : windows) {
-      if (win.is_fullscreen) {
-        new_fullscreen.insert(cluster_idx);
-        break;
-      }
-    }
-
-    // Log state changes
-    bool was_fullscreen = fullscreen_clusters.contains(cluster_idx);
-    bool is_fullscreen = new_fullscreen.contains(cluster_idx);
-    if (is_fullscreen && !was_fullscreen) {
-      spdlog::debug("Fullscreen app detected on monitor {}", cluster_idx);
-    } else if (!is_fullscreen && was_fullscreen) {
-      spdlog::debug("Fullscreen app exited on monitor {}", cluster_idx);
-    }
-  }
-
-  fullscreen_clusters = std::move(new_fullscreen);
-}
-
 // Helper: Apply tile layout by updating window positions
-void apply_tile_layout(const cells::System& system, float zen_percentage,
-                       const std::unordered_set<size_t>& fullscreen_clusters) {
-  auto updates = cells::calculate_tile_layout(system, zen_percentage, fullscreen_clusters);
+void apply_tile_layout(const cells::System& system, float zen_percentage) {
+  auto updates = cells::calculate_tile_layout(system, zen_percentage);
   for (const auto& upd : updates) {
     winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
     winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
@@ -627,8 +596,7 @@ void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& syste
 
 // Handle monitor configuration changes, returns true if change occurred
 bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const GlobalOptions& options,
-                           cells::System& system, std::unordered_set<size_t>& fullscreen_clusters,
-                           std::optional<StoredCell>& stored_cell) {
+                           cells::System& system, std::optional<StoredCell>& stored_cell) {
   auto current_monitors = winapi::get_monitors();
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
@@ -637,12 +605,10 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   winapi::log_monitors(current_monitors);
   monitors = current_monitors;
   system = create_initial_system_from_monitors(monitors, options);
-  fullscreen_clusters.clear();
   stored_cell.reset();
   spdlog::info("=== Reinitialized Tile Layout ===");
   print_tile_layout(system);
-  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                    fullscreen_clusters);
+  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
   return true;
 }
 
@@ -688,16 +654,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     return create_initial_system_from_monitors(monitors, options);
   });
 
-  // Track which clusters have fullscreen apps
-  std::unordered_set<size_t> fullscreen_clusters;
-
   // Print initial layout and apply
   spdlog::info("=== Initial Tile Layout ===");
   print_tile_layout(system);
 
-  timed_void("initial apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                      fullscreen_clusters);
+  timed_void("initial apply_tile_layout", [&system, &options] {
+    apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
   });
 
   // Register keyboard hotkeys
@@ -738,7 +700,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Skip all processing while user is dragging a window - only render
     if (input_state.is_any_window_being_moved) {
       renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
-                       toast.get_visible_message(), fullscreen_clusters);
+                       toast.get_visible_message());
       auto loop_end = std::chrono::high_resolution_clock::now();
       spdlog::trace(
           "loop iteration total: {}us",
@@ -749,19 +711,17 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Check if a drag operation just completed
     if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
       // Try resize first (size changed = ratio update)
-      bool resized = handle_window_resize(system, fullscreen_clusters, input_state);
+      bool resized = handle_window_resize(system, input_state);
 
       if (resized) {
         // Resize performed - apply layout and clear drag flag
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                          fullscreen_clusters);
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
         winapi::clear_drag_ended();
-      } else if (handle_mouse_drop_move(system, fullscreen_clusters,
+      } else if (handle_mouse_drop_move(system,
                                         options.visualizationOptions.renderOptions.zen_percentage,
                                         input_state)) {
         // Move/swap performed (clear_drag_ended already called inside)
-        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                          fullscreen_clusters);
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
       }
     }
 
@@ -769,9 +729,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     handle_config_refresh(provider, system, toast);
 
     // Check for monitor configuration changes
-    if (timed("handle_monitor_change", [&] {
-          return handle_monitor_change(monitors, options, system, fullscreen_clusters, stored_cell);
-        })) {
+    if (timed("handle_monitor_change",
+              [&] { return handle_monitor_change(monitors, options, system, stored_cell); })) {
       continue;
     }
 
@@ -803,25 +762,20 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
     auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y});
 
-    // Update fullscreen state before selection (affects mouse selection and rendering)
-    update_fullscreen_state(fullscreen_clusters, input_state);
-
     update_foreground_selection_from_mouse_position(
-        system, fullscreen_clusters, options.visualizationOptions.renderOptions.zen_percentage,
-        input_state);
+        system, options.visualizationOptions.renderOptions.zen_percentage, input_state);
 
     // Log window changes and move cursor to new windows
     handle_window_changes(system, result);
 
-    timed_void("apply_tile_layout", [&system, &options, &fullscreen_clusters] {
-      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                        fullscreen_clusters);
+    timed_void("apply_tile_layout", [&system, &options] {
+      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
     });
 
     // Render cell system overlay
     timed_void("render", [&] {
       renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
-                       toast.get_visible_message(), fullscreen_clusters);
+                       toast.get_visible_message());
     });
 
     auto loop_end = std::chrono::high_resolution_clock::now();

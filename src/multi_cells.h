@@ -3,7 +3,6 @@
 #include <optional>
 #include <string>
 #include <tl/expected.hpp>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -63,6 +62,9 @@ struct CellCluster {
 
   // Zen cell index for this cluster (full-cluster display mode)
   std::optional<int> zen_cell_index;
+
+  // True if any window in this cluster is fullscreen
+  bool has_fullscreen_cell = false;
 };
 
 enum class Direction {
@@ -110,9 +112,10 @@ constexpr float kDefaultCellGapVertical = 10.0f;
 // Forward declarations for System member function return types
 // ============================================================================
 
-struct ClusterCellIds {
+struct ClusterCellUpdateInfo {
   size_t cluster_index;
-  std::vector<size_t> leaf_ids; // Desired leaf IDs for this cluster
+  std::vector<size_t> leaf_ids;     // Desired leaf IDs for this cluster
+  bool has_fullscreen_cell = false; // True if any window in this cluster is fullscreen
 };
 
 struct UpdateError {
@@ -184,7 +187,7 @@ struct System {
                                                    size_t target_leaf_id);
   void update_gaps(float horizontal, float vertical);
   void recompute_rects();
-  UpdateResult update(const std::vector<ClusterCellIds>& cluster_cell_ids,
+  UpdateResult update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                       std::optional<std::pair<size_t, size_t>> new_selection,
                       std::pair<float, float> pointer_coords);
 
@@ -313,19 +316,18 @@ find_cell_at_point(const System& system, float global_x, float global_y, float z
                                                                size_t leaf_id);
 
 // Calculate tile positions for all cells without applying them.
-// Skips clusters in skip_clusters set (e.g., for fullscreen).
+// Skips clusters with has_fullscreen_cell set.
 // Returns a list of updates for the caller to apply.
-[[nodiscard]] std::vector<TileUpdate>
-calculate_tile_layout(const System& system, float zen_percentage,
-                      const std::unordered_set<size_t>& skip_clusters);
+[[nodiscard]] std::vector<TileUpdate> calculate_tile_layout(const System& system,
+                                                            float zen_percentage);
 
 // Compute whether selection should change based on cursor position.
 // Returns the new selection and window to foreground (if any).
 // Does not mutate the system - caller applies the changes.
-[[nodiscard]] SelectionUpdateResult
-compute_selection_update(const System& system, float cursor_x, float cursor_y, float zen_percentage,
-                         const std::unordered_set<size_t>& fullscreen_clusters,
-                         size_t foreground_window_leaf_id);
+// Skips clusters with has_fullscreen_cell set.
+[[nodiscard]] SelectionUpdateResult compute_selection_update(const System& system, float cursor_x,
+                                                             float cursor_y, float zen_percentage,
+                                                             size_t foreground_window_leaf_id);
 
 } // namespace cells
 } // namespace wintiler

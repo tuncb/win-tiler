@@ -2,7 +2,6 @@
 
 #include <optional>
 #include <string>
-#include <unordered_set>
 
 #include "model.h"
 #include "multi_cells.h"
@@ -16,10 +15,9 @@ namespace renderer {
 // - config: Colors and styling
 // - stored_cell: Optional stored cell (cluster_index, leafId) to highlight
 // - message: Optional text to show at bottom-right of primary monitor
-// - fullscreen_clusters: Set of cluster indices that have fullscreen apps (skip rendering)
+// Skips clusters with has_fullscreen_cell set
 void render(const cells::System& system, const RenderOptions& config,
-            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message,
-            const std::unordered_set<size_t>& fullscreen_clusters);
+            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message);
 
 } // namespace renderer
 } // namespace wintiler

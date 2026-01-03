@@ -1657,8 +1657,9 @@ static bool is_point_in_cluster(const PositionedCluster& pc, float x, float y) {
 }
 
 // Helper: Find windows in cell_ids that don't exist in any cluster
-static std::vector<size_t> find_unmanaged_windows(const std::vector<ClusterCellIds>& cell_ids,
-                                                  const std::vector<PositionedCluster>& clusters) {
+static std::vector<size_t>
+find_unmanaged_windows(const std::vector<ClusterCellUpdateInfo>& cell_ids,
+                       const std::vector<PositionedCluster>& clusters) {
   std::vector<size_t> new_windows;
   for (const auto& upd : cell_ids) {
     for (size_t leaf_id : upd.leaf_ids) {
@@ -1678,7 +1679,7 @@ static std::vector<size_t> find_unmanaged_windows(const std::vector<ClusterCellI
 }
 
 // Helper: Move windows from their detected clusters to target cluster
-static void redirect_windows_to_cluster(std::vector<ClusterCellIds>& cell_ids,
+static void redirect_windows_to_cluster(std::vector<ClusterCellUpdateInfo>& cell_ids,
                                         const std::vector<size_t>& windows_to_redirect,
                                         size_t target_cluster_index) {
   if (windows_to_redirect.empty()) {
@@ -1708,14 +1709,14 @@ static void redirect_windows_to_cluster(std::vector<ClusterCellIds>& cell_ids,
   }
 }
 
-UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
+UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                             std::optional<std::pair<size_t, size_t>> new_selection,
                             std::pair<float, float> pointer_coords) {
   UpdateResult result;
   result.selection_updated = false;
 
   // Make a mutable copy for redirection
-  std::vector<ClusterCellIds> redirected_cell_ids = cluster_cell_ids;
+  std::vector<ClusterCellUpdateInfo> redirected_cell_ids = cluster_cell_ids;
 
   // Find empty cluster under pointer for redirection
   std::optional<size_t> pointer_cluster_index;
@@ -1768,6 +1769,9 @@ UpdateResult System::update(const std::vector<ClusterCellIds>& cluster_cell_ids,
     }
 
     PositionedCluster& pc = clusters[cluster_update.cluster_index];
+
+    // Update fullscreen state for this cluster
+    pc.cluster.has_fullscreen_cell = cluster_update.has_fullscreen_cell;
 
     // Get current leaf IDs
     std::vector<size_t> current_leaf_ids = get_cluster_leaf_ids(pc.cluster);
@@ -1924,17 +1928,16 @@ std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t le
   return std::nullopt;
 }
 
-std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage,
-                                              const std::unordered_set<size_t>& skip_clusters) {
+std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage) {
   std::vector<TileUpdate> updates;
 
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    // Skip clusters in skip set (e.g., fullscreen)
-    if (skip_clusters.contains(cluster_idx)) {
+    const auto& pc = system.clusters[cluster_idx];
+
+    // Skip clusters with fullscreen windows
+    if (pc.cluster.has_fullscreen_cell) {
       continue;
     }
-
-    const auto& pc = system.clusters[cluster_idx];
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
@@ -1962,10 +1965,9 @@ std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_pe
   return updates;
 }
 
-SelectionUpdateResult
-compute_selection_update(const System& system, float cursor_x, float cursor_y, float zen_percentage,
-                         const std::unordered_set<size_t>& fullscreen_clusters,
-                         size_t foreground_window_leaf_id) {
+SelectionUpdateResult compute_selection_update(const System& system, float cursor_x, float cursor_y,
+                                               float zen_percentage,
+                                               size_t foreground_window_leaf_id) {
   SelectionUpdateResult result;
   result.needs_update = false;
   result.new_selection = std::nullopt;
@@ -1985,7 +1987,7 @@ compute_selection_update(const System& system, float cursor_x, float cursor_y, f
   auto [cluster_index, cell_index] = *cell_at_cursor;
 
   // Skip selection update if this cluster has a fullscreen app
-  if (fullscreen_clusters.contains(cluster_index)) {
+  if (system.clusters[cluster_index].cluster.has_fullscreen_cell) {
     return result;
   }
 
