@@ -166,6 +166,11 @@ struct System {
   void clear_zen(size_t cluster_index);
   [[nodiscard]] bool is_cell_zen(size_t cluster_index, int cell_index) const;
   [[nodiscard]] bool toggle_selected_zen();
+
+  // Update split ratio based on window resize
+  // Returns true if ratio was updated, false otherwise
+  [[nodiscard]] bool update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
+                                                    const Rect& actual_window_rect);
 };
 
 struct ClusterInitInfo {

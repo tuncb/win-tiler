@@ -1001,6 +1001,83 @@ bool System::toggle_selected_zen() {
   return true;
 }
 
+bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
+                                            const Rect& actual_window_rect) {
+  // Validate cluster index
+  if (cluster_index >= clusters.size()) {
+    spdlog::trace("update_split_ratio_from_resize: invalid cluster index {}", cluster_index);
+    return false;
+  }
+
+  PositionedCluster& pc = clusters[cluster_index];
+
+  // Find cell by leaf_id
+  auto cell_index_opt = find_cell_by_leaf_id(pc.cluster, leaf_id);
+  if (!cell_index_opt.has_value()) {
+    spdlog::trace("update_split_ratio_from_resize: leaf_id {} not found", leaf_id);
+    return false;
+  }
+
+  int cell_index = *cell_index_opt;
+
+  // Must be a leaf
+  if (!is_leaf(pc.cluster, cell_index)) {
+    spdlog::trace("update_split_ratio_from_resize: cell {} is not a leaf", cell_index);
+    return false;
+  }
+
+  Cell& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
+
+  // Root cell has no parent - cannot calculate ratio
+  if (!cell.parent.has_value()) {
+    spdlog::trace("update_split_ratio_from_resize: cell {} is root, no parent to adjust",
+                  cell_index);
+    return false;
+  }
+
+  int parent_index = *cell.parent;
+  Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
+
+  if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+    spdlog::trace("update_split_ratio_from_resize: parent {} is invalid", parent_index);
+    return false;
+  }
+
+  // Determine if this cell is first_child or second_child
+  bool is_first_child = parent.first_child.has_value() && *parent.first_child == cell_index;
+
+  // Calculate new ratio based on parent's split direction
+  // The actual_window_rect is in global coordinates, we need to work with sizes
+  float new_ratio = 0.5f;
+
+  if (parent.split_dir == SplitDir::Vertical) {
+    // Vertical split: ratio controls width
+    float available_width = parent.rect.width - gap_horizontal;
+    if (available_width > 0.0f) {
+      if (is_first_child) {
+        new_ratio = actual_window_rect.width / available_width;
+      } else {
+        new_ratio = 1.0f - (actual_window_rect.width / available_width);
+      }
+    }
+  } else {
+    // Horizontal split: ratio controls height
+    float available_height = parent.rect.height - gap_vertical;
+    if (available_height > 0.0f) {
+      if (is_first_child) {
+        new_ratio = actual_window_rect.height / available_height;
+      } else {
+        new_ratio = 1.0f - (actual_window_rect.height / available_height);
+      }
+    }
+  }
+
+  spdlog::debug("update_split_ratio_from_resize: cell={}, parent={}, is_first={}, new_ratio={}",
+                cell_index, parent_index, is_first_child, new_ratio);
+
+  return set_split_ratio(pc.cluster, parent_index, new_ratio, gap_horizontal, gap_vertical);
+}
+
 tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
                                                    size_t cluster_index2, size_t leaf_id2) {
   // Validate cluster indices

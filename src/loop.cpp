@@ -390,6 +390,78 @@ bool handle_mouse_drop_move(cells::System& system,
   }
 }
 
+// Handle window resize operation to update split ratios
+// Returns true if a resize was performed, false otherwise
+bool handle_window_resize(cells::System& system,
+                          const std::unordered_set<size_t>& fullscreen_clusters,
+                          const winapi::LoopInputState& input_state) {
+  // Check if drag/resize just ended
+  if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
+    return false;
+  }
+
+  // Get the HWND and find corresponding cell
+  size_t leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
+  if (!cells::has_leaf_id(system, leaf_id)) {
+    return false; // Not a managed window
+  }
+
+  // Find cluster and cell index
+  size_t cluster_index = 0;
+  int cell_index = -1;
+  bool found = false;
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    auto idx_opt = cells::find_cell_by_leaf_id(system.clusters[ci].cluster, leaf_id);
+    if (idx_opt.has_value()) {
+      cluster_index = ci;
+      cell_index = *idx_opt;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found || cell_index < 0) {
+    return false;
+  }
+
+  // Skip if fullscreen or zen mode active
+  if (fullscreen_clusters.contains(cluster_index)) {
+    return false;
+  }
+  if (system.clusters[cluster_index].cluster.zen_cell_index.has_value()) {
+    return false;
+  }
+
+  // Get actual window rect from Windows
+  auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
+  if (!actual_rect_opt.has_value()) {
+    return false;
+  }
+
+  // Convert winapi::WindowPosition to cells::Rect
+  cells::Rect actual_rect{
+      static_cast<float>(actual_rect_opt->x), static_cast<float>(actual_rect_opt->y),
+      static_cast<float>(actual_rect_opt->width), static_cast<float>(actual_rect_opt->height)};
+
+  // Get expected cell rect
+  auto expected_rect = cells::get_cell_global_rect(system.clusters[cluster_index], cell_index);
+
+  // Position-only check: skip if size unchanged (with small tolerance for rounding)
+  bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
+                       std::abs(actual_rect.height - expected_rect.height) > 2.0f);
+  if (!size_changed) {
+    return false; // Only moved, not resized
+  }
+
+  // Update split ratio
+  bool result = system.update_split_ratio_from_resize(cluster_index, leaf_id, actual_rect);
+  if (result) {
+    spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
+                 leaf_id);
+  }
+  return result;
+}
+
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
                                     std::optional<StoredCell>& stored_cell,
                                     std::string& out_message) {
@@ -781,13 +853,23 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       continue;
     }
 
-    // Check if a drag operation just completed and handle drop
-    if (handle_mouse_drop_move(system, fullscreen_clusters,
-                               options.visualizationOptions.renderOptions.zen_percentage,
-                               input_state)) {
-      // Move was performed, apply layout immediately
-      apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
-                        fullscreen_clusters);
+    // Check if a drag operation just completed
+    if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
+      // Try resize first (size changed = ratio update)
+      bool resized = handle_window_resize(system, fullscreen_clusters, input_state);
+
+      if (resized) {
+        // Resize performed - apply layout and clear drag flag
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                          fullscreen_clusters);
+        winapi::clear_drag_ended();
+      } else if (handle_mouse_drop_move(system, fullscreen_clusters,
+                                        options.visualizationOptions.renderOptions.zen_percentage,
+                                        input_state)) {
+        // Move/swap performed (clear_drag_ended already called inside)
+        apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage,
+                          fullscreen_clusters);
+      }
     }
 
     // Check for config file changes and hot-reload

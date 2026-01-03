@@ -57,6 +57,9 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
                                           const wintiler::IgnoreOptions& ignore_options);
 WindowInfo get_window_info(HWND_T hwnd);
 
+// Get window position and size (returns nullopt if window is invalid)
+std::optional<WindowPosition> get_window_rect(HWND_T hwnd);
+
 struct Point {
   long x;
   long y;

@@ -345,6 +345,34 @@ WindowInfo get_window_info(HWND_T hwnd) {
   return info;
 }
 
+std::optional<WindowPosition> get_window_rect(HWND_T hwnd) {
+  if (hwnd == nullptr) {
+    return std::nullopt;
+  }
+
+  HWND win = reinterpret_cast<HWND>(hwnd);
+  if (!IsWindow(win)) {
+    return std::nullopt;
+  }
+
+  // Use DWM frame bounds for accurate visible rect (excludes invisible borders)
+  RECT frameRect;
+  if (SUCCEEDED(
+          DwmGetWindowAttribute(win, DWMWA_EXTENDED_FRAME_BOUNDS, &frameRect, sizeof(frameRect)))) {
+    return WindowPosition{frameRect.left, frameRect.top, frameRect.right - frameRect.left,
+                          frameRect.bottom - frameRect.top};
+  }
+
+  // Fallback to regular window rect
+  RECT windowRect;
+  if (!GetWindowRect(win, &windowRect)) {
+    return std::nullopt;
+  }
+
+  return WindowPosition{windowRect.left, windowRect.top, windowRect.right - windowRect.left,
+                        windowRect.bottom - windowRect.top};
+}
+
 static HWND_T get_foreground_window() {
   return reinterpret_cast<HWND_T>(GetForegroundWindow());
 }
