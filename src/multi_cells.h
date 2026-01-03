@@ -138,6 +138,12 @@ struct MoveSuccess {
   size_t new_cluster_index; // Cluster where source ended up
 };
 
+// Result of a successful selection move operation
+struct MoveSelectionResult {
+  size_t leaf_id; // Window handle for setting foreground
+  Point center;   // Cursor position for mouse movement
+};
+
 // Window tile position update (for pure layout calculation)
 struct TileUpdate {
   size_t leaf_id;
@@ -163,7 +169,7 @@ struct System {
   SplitMode split_mode = SplitMode::Zigzag; // How splits determine direction
 
   // Mutating member functions
-  [[nodiscard]] bool move_selection(Direction dir);
+  [[nodiscard]] std::optional<MoveSelectionResult> move_selection(Direction dir);
   [[nodiscard]] bool toggle_selected_split_dir();
   [[nodiscard]] bool cycle_split_mode();
   [[nodiscard]] bool set_selected_split_ratio(float new_ratio);

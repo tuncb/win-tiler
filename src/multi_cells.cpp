@@ -731,15 +731,15 @@ find_next_leaf_in_direction(const System& system, size_t current_cluster_index,
   return best_candidate;
 }
 
-bool System::move_selection(Direction dir) {
+std::optional<MoveSelectionResult> System::move_selection(Direction dir) {
   if (!selection.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   auto next_opt =
       find_next_leaf_in_direction(*this, selection->cluster_index, selection->cell_index, dir);
   if (!next_opt.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   auto [next_cluster_index, next_cell_index] = *next_opt;
@@ -752,7 +752,17 @@ bool System::move_selection(Direction dir) {
     pc.cluster.zen_cell_index.reset();
   }
 
-  return true;
+  // Get the cell's leaf_id and compute center point
+  const Cell& cell = pc.cluster.cells[static_cast<size_t>(next_cell_index)];
+  if (!cell.leaf_id.has_value()) {
+    return std::nullopt; // Should not happen for valid leaves
+  }
+
+  Rect global_rect = get_cell_global_rect(pc, next_cell_index);
+  Point center{static_cast<long>(global_rect.x + global_rect.width / 2.0f),
+               static_cast<long>(global_rect.y + global_rect.height / 2.0f)};
+
+  return MoveSelectionResult{*cell.leaf_id, center};
 }
 
 // ============================================================================

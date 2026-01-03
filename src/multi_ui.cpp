@@ -132,6 +132,13 @@ std::optional<std::pair<size_t, int>> find_cell_at_global_point(const cells::Sys
   return std::nullopt;
 }
 
+void center_mouse_on_point(const ViewTransform& vt, const cells::Point& center) {
+  float screen_x, screen_y;
+  to_screen_point(vt, static_cast<float>(center.x), static_cast<float>(center.y), screen_x,
+                  screen_y);
+  SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
+}
+
 void center_mouse_on_selection(const MultiClusterAppState& app_state, const ViewTransform& vt) {
   auto selected_rect = cells::get_selected_cell_global_rect(app_state.system);
   if (selected_rect.has_value()) {
@@ -340,26 +347,26 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       switch (*action) {
       case HotkeyAction::NavigateLeft:
         spdlog::info("NavigateLeft: moving selection to the left");
-        if (app_state.system.move_selection(cells::Direction::Left)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto result = app_state.system.move_selection(cells::Direction::Left)) {
+          center_mouse_on_point(vt, result->center);
         }
         break;
       case HotkeyAction::NavigateDown:
         spdlog::info("NavigateDown: moving selection downward");
-        if (app_state.system.move_selection(cells::Direction::Down)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto result = app_state.system.move_selection(cells::Direction::Down)) {
+          center_mouse_on_point(vt, result->center);
         }
         break;
       case HotkeyAction::NavigateUp:
         spdlog::info("NavigateUp: moving selection upward");
-        if (app_state.system.move_selection(cells::Direction::Up)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto result = app_state.system.move_selection(cells::Direction::Up)) {
+          center_mouse_on_point(vt, result->center);
         }
         break;
       case HotkeyAction::NavigateRight:
         spdlog::info("NavigateRight: moving selection to the right");
-        if (app_state.system.move_selection(cells::Direction::Right)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto result = app_state.system.move_selection(cells::Direction::Right)) {
+          center_mouse_on_point(vt, result->center);
         }
         break;
       case HotkeyAction::ToggleSplit:

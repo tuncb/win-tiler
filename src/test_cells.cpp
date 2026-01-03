@@ -309,8 +309,8 @@ TEST_SUITE("cells - navigation") {
     REQUIRE(selected.has_value());
 
     // Move right should go to sibling
-    bool result = system.move_selection(cells::Direction::Right);
-    CHECK(result);
+    auto result = system.move_selection(cells::Direction::Right);
+    CHECK(result.has_value());
 
     auto newSelected = cells::get_selected_cell(system);
     REQUIRE(newSelected.has_value());
@@ -318,20 +318,20 @@ TEST_SUITE("cells - navigation") {
     CHECK(newSelected->second != selected->second); // Different cell
   }
 
-  TEST_CASE("moveSelection returns false when no selection") {
+  TEST_CASE("moveSelection returns nullopt when no selection") {
     auto system = cells::create_system({});
 
-    bool result = system.move_selection(cells::Direction::Right);
-    CHECK(!result);
+    auto result = system.move_selection(cells::Direction::Right);
+    CHECK_FALSE(result.has_value());
   }
 
-  TEST_CASE("moveSelection returns false when no cell in direction") {
+  TEST_CASE("moveSelection returns nullopt when no cell in direction") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info});
 
     // Only one cell, can't move anywhere
-    bool result = system.move_selection(cells::Direction::Left);
-    CHECK(!result);
+    auto result = system.move_selection(cells::Direction::Left);
+    CHECK_FALSE(result.has_value());
   }
 
   TEST_CASE("moveSelection moves across clusters") {
@@ -346,13 +346,13 @@ TEST_SUITE("cells - navigation") {
     CHECK(system.selection->cluster_index == 0);
 
     // Move right should go to second cluster
-    bool result = system.move_selection(cells::Direction::Right);
-    CHECK(result);
+    auto result = system.move_selection(cells::Direction::Right);
+    CHECK(result.has_value());
     CHECK(system.selection->cluster_index == 1);
 
     // Move left should go back to first cluster
-    result = system.move_selection(cells::Direction::Left);
-    CHECK(result);
+    auto result2 = system.move_selection(cells::Direction::Left);
+    CHECK(result2.has_value());
     CHECK(system.selection->cluster_index == 0);
   }
 

@@ -122,41 +122,19 @@ void move_cursor_to_selected_cell(const cells::System& system) {
 
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
-  // Try to move selection in the given direction
-  if (!system.move_selection(dir)) {
+  auto result = system.move_selection(dir);
+  if (!result) {
     spdlog::trace("Cannot move selection in direction");
     return;
   }
 
-  // Get the newly selected cell
-  auto selected_cell = cells::get_selected_cell(system);
-  if (!selected_cell.has_value()) {
-    spdlog::error("No cell selected after move_selection");
-    return;
-  }
-
-  auto [cluster_index, cell_index] = *selected_cell;
-  const auto& pc = system.clusters[cluster_index];
-
-  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
-  if (!cell.leaf_id.has_value()) {
-    spdlog::error("Selected cell has no leaf_id");
-    return;
-  }
-
-  // Get the window handle
-  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell.leaf_id);
-
-  // Set it as the foreground window
+  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(result->leaf_id);
   if (!winapi::set_foreground_window(hwnd)) {
     spdlog::error("Failed to set foreground window");
     return;
   }
 
-  // Move mouse to center of selected cell
-  move_cursor_to_selected_cell(system);
-
-  spdlog::trace("Navigated to cell {} in cluster {}", cell_index, cluster_index);
+  winapi::set_cursor_pos(result->center.x, result->center.y);
 }
 
 ActionResult handle_toggle_split(cells::System& system) {
