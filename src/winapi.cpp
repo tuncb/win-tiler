@@ -113,8 +113,14 @@ bool is_window_maximized(HWND_T hwnd) {
   return IsZoomed((HWND)hwnd);
 }
 
+// Context struct for passing data to WindowEnumProc callback
+struct WindowEnumContext {
+  std::vector<HWND_T>* handles;
+  const wintiler::IgnoreOptions* ignore_options;
+};
+
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
-  std::vector<WindowInfo>* windows = reinterpret_cast<std::vector<WindowInfo>*>(lParam);
+  auto* ctx = reinterpret_cast<WindowEnumContext*>(lParam);
 
   if (!IsWindowVisible(hwnd)) {
     return TRUE;
@@ -125,33 +131,29 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  WindowInfo info;
-  info.handle = (HWND_T)hwnd;
-  info.title = title;
-  info.pid = get_window_pid((HWND_T)hwnd);
-  if (info.pid.has_value()) {
-    info.processName = get_process_name_from_pid(info.pid.value());
-  }
-
   char classNameBuf[256];
+  std::string className;
   if (GetClassNameA(hwnd, classNameBuf, sizeof(classNameBuf)) > 0) {
-    info.className = classNameBuf;
+    className = classNameBuf;
   }
 
-  windows->push_back(info);
-  return TRUE;
-}
-
-std::vector<WindowInfo> get_windows_list() {
-  std::vector<WindowInfo> windows;
-  EnumWindows(WindowEnumProc, (LPARAM)&windows);
-  return windows;
-}
-
-bool is_ignored(const wintiler::IgnoreOptions& options, const WindowInfo& win) {
   // Check for system drag image windows (always ignore)
-  if (win.className == "SysDragImage")
-    return true;
+  if (className == "SysDragImage") {
+    return TRUE;
+  }
+
+  auto pid = get_window_pid((HWND_T)hwnd);
+  std::string processName;
+  if (pid.has_value()) {
+    processName = get_process_name_from_pid(pid.value());
+  }
+
+  // Skip windows with empty process name
+  if (processName.empty()) {
+    return TRUE;
+  }
+
+  const auto& options = *ctx->ignore_options;
 
   // Check for standard Windows dialog boxes (always ignore)
   if (win.className == "#32770")
@@ -159,64 +161,62 @@ bool is_ignored(const wintiler::IgnoreOptions& options, const WindowInfo& win) {
 
   // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
-    if (win.processName == proc)
-      return true;
+    if (processName == proc) {
+      return TRUE;
+    }
   }
 
   // Check ignored titles
-  for (const auto& title : options.ignored_window_titles) {
-    if (win.title == title)
-      return true;
+  for (const auto& ignored_title : options.ignored_window_titles) {
+    if (title == ignored_title) {
+      return TRUE;
+    }
   }
 
   // Check ignored process/title pairs
   for (const auto& pair : options.ignored_process_title_pairs) {
-    if (iequals(win.processName, pair.first) && iequals(win.title, pair.second))
-      return true;
+    if (iequals(processName, pair.first) && iequals(title, pair.second)) {
+      return TRUE;
+    }
   }
 
   // Check small window barrier
   if (options.small_window_barrier.has_value()) {
     RECT rect;
-    if (GetWindowRect((HWND)win.handle, &rect)) {
+    if (GetWindowRect(hwnd, &rect)) {
       int width = rect.right - rect.left;
       int height = rect.bottom - rect.top;
       if (width < options.small_window_barrier->width ||
           height < options.small_window_barrier->height) {
-        return true;
+        return TRUE;
       }
     }
   }
 
-  return false;
+  ctx->handles->push_back((HWND_T)hwnd);
+  return TRUE;
 }
 
-std::vector<WindowInfo> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
-  auto windows = get_windows_list();
-  std::vector<WindowInfo> filtered_windows;
+static std::vector<HWND_T> get_windows_list(const wintiler::IgnoreOptions& ignore_options) {
+  std::vector<HWND_T> handles;
+  WindowEnumContext ctx{&handles, &ignore_options};
+  EnumWindows(WindowEnumProc, (LPARAM)&ctx);
+  return handles;
+}
 
-  for (const auto& win : windows) {
-    if (win.processName.empty())
-      continue;
-    if (win.title.empty())
-      continue;
-    if (is_ignored(ignore_options, win))
-      continue;
-    filtered_windows.push_back(win);
-  }
+std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
+  auto handles = get_windows_list(ignore_options);
 
-  std::sort(filtered_windows.begin(), filtered_windows.end(),
-            [](const WindowInfo& a, const WindowInfo& b) {
-              return (uintptr_t)a.handle < (uintptr_t)b.handle;
-            });
+  std::sort(handles.begin(), handles.end(),
+            [](HWND_T a, HWND_T b) { return (uintptr_t)a < (uintptr_t)b; });
 
-  return filtered_windows;
+  return handles;
 }
 
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index) {
   auto monitors = get_monitors();
-  auto windows = gather_raw_window_data(ignore_options);
+  auto handles = gather_raw_window_data(ignore_options);
 
   if (monitor_index.has_value() && *monitor_index >= monitors.size()) {
     spdlog::error("Monitor index {} is out of bounds. Available monitors: 0-{}", *monitor_index,
@@ -235,14 +235,15 @@ void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                   monitor.rect.right, monitor.rect.bottom);
 
     spdlog::debug("  Windows:");
-    for (const auto& win : windows) {
-      HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+    for (const auto& hwnd : handles) {
+      HMONITOR winMonitor = MonitorFromWindow((HWND)hwnd, MONITOR_DEFAULTTONULL);
       if (winMonitor == (HMONITOR)monitor.handle) {
+        auto win = get_window_info(hwnd);
         RECT rect;
-        GetWindowRect((HWND)win.handle, &rect);
+        GetWindowRect((HWND)hwnd, &rect);
         int width = rect.right - rect.left;
         int height = rect.bottom - rect.top;
-        spdlog::debug("    Handle: {}, PID: {}, Process: {}, Title: {}", win.handle,
+        spdlog::debug("    Handle: {}, PID: {}, Process: {}, Title: {}", hwnd,
                       win.pid.has_value() ? std::to_string(win.pid.value()) : "N/A",
                       win.processName, win.title);
         spdlog::debug("      Position: ({}, {}), Size: {}x{}", rect.left, rect.top, width, height);
@@ -292,13 +293,13 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
     return hwnds;
   }
 
-  auto windows = gather_raw_window_data(ignore_options);
+  auto handles = gather_raw_window_data(ignore_options);
   const auto& monitor = monitors[monitor_index];
 
-  for (const auto& win : windows) {
-    HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+  for (const auto& hwnd : handles) {
+    HMONITOR winMonitor = MonitorFromWindow((HWND)hwnd, MONITOR_DEFAULTTONULL);
     if (winMonitor == (HMONITOR)monitor.handle) {
-      hwnds.push_back(win.handle);
+      hwnds.push_back(hwnd);
     }
   }
 
@@ -676,18 +677,18 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
   state.monitors = get_monitors();
   state.windows_per_monitor.reserve(state.monitors.size());
 
-  auto all_windows = gather_raw_window_data(ignore_options);
+  auto all_handles = gather_raw_window_data(ignore_options);
 
   for (size_t i = 0; i < state.monitors.size(); ++i) {
     const auto& monitor = state.monitors[i];
     std::vector<ManagedWindowInfo> monitor_windows;
 
-    for (const auto& win : all_windows) {
-      HMONITOR winMonitor = MonitorFromWindow((HWND)win.handle, MONITOR_DEFAULTTONULL);
+    for (const auto& hwnd : all_handles) {
+      HMONITOR winMonitor = MonitorFromWindow((HWND)hwnd, MONITOR_DEFAULTTONULL);
       if (winMonitor == (HMONITOR)monitor.handle) {
         ManagedWindowInfo managed_info;
-        managed_info.handle = win.handle;
-        managed_info.is_fullscreen = is_window_fullscreen(win.handle);
+        managed_info.handle = hwnd;
+        managed_info.is_fullscreen = is_window_fullscreen(hwnd);
         monitor_windows.push_back(managed_info);
       }
     }

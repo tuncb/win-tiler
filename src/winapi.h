@@ -53,8 +53,7 @@ bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<Monitor
 std::optional<DWORD_T> get_window_pid(HWND_T hwnd);
 std::string get_process_name_from_pid(DWORD_T pid);
 bool is_window_maximized(HWND_T hwnd);
-std::vector<WindowInfo> get_windows_list();
-std::vector<WindowInfo> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options);
+std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index = std::nullopt);
 void update_window_position(const TileInfo& tile_info);
