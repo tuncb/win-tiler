@@ -113,13 +113,6 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
   return std::nullopt;
 }
 
-// Move mouse cursor to center of currently selected cell
-void move_cursor_to_selected_cell(const cells::System& system) {
-  if (auto center = cells::get_selected_cell_center(system)) {
-    winapi::set_cursor_pos(center->x, center->y);
-  }
-}
-
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   auto result = system.move_selection(dir);
@@ -211,25 +204,25 @@ ActionResult handle_move(cells::System& system, std::optional<StoredCell>& store
 }
 
 ActionResult handle_split_increase(cells::System& system) {
-  if (system.adjust_selected_split_ratio(0.05f)) {
+  if (auto center = system.adjust_selected_split_ratio(0.05f)) {
     spdlog::info("Increased split ratio");
-    move_cursor_to_selected_cell(system);
+    winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
 
 ActionResult handle_split_decrease(cells::System& system) {
-  if (system.adjust_selected_split_ratio(-0.05f)) {
+  if (auto center = system.adjust_selected_split_ratio(-0.05f)) {
     spdlog::info("Decreased split ratio");
-    move_cursor_to_selected_cell(system);
+    winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
 
 ActionResult handle_exchange_siblings(cells::System& system) {
-  if (system.exchange_selected_with_sibling()) {
+  if (auto center = system.exchange_selected_with_sibling()) {
     spdlog::info("Exchanged selected cell with sibling");
-    move_cursor_to_selected_cell(system);
+    winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
@@ -242,9 +235,9 @@ ActionResult handle_toggle_zen(cells::System& system) {
 }
 
 ActionResult handle_reset_split_ratio(cells::System& system) {
-  if (system.set_selected_split_ratio(0.5f)) {
+  if (auto center = system.set_selected_split_ratio(0.5f)) {
     spdlog::info("Reset split ratio to 50%%");
-    move_cursor_to_selected_cell(system);
+    winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
@@ -326,7 +319,7 @@ bool handle_mouse_drop_move(cells::System& system,
     if (result.has_value()) {
       spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
                    source_cluster_index, target_cluster_index);
-      move_cursor_to_selected_cell(system);
+      winapi::set_cursor_pos(result->x, result->y);
       return true;
     } else {
       spdlog::warn("Mouse drop: exchange failed - {}", result.error());
@@ -340,7 +333,7 @@ bool handle_mouse_drop_move(cells::System& system,
     if (result.has_value()) {
       spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_index,
                    target_cluster_index);
-      move_cursor_to_selected_cell(system);
+      winapi::set_cursor_pos(result->center.x, result->center.y);
       return true;
     } else {
       spdlog::warn("Mouse drop: move failed - {}", result.error());

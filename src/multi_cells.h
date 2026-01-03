@@ -136,6 +136,7 @@ struct UpdateResult {
 struct MoveSuccess {
   int new_cell_index;       // Index of source cell in its new position
   size_t new_cluster_index; // Cluster where source ended up
+  Point center;             // Cursor position for mouse movement
 };
 
 // Result of a successful selection move operation
@@ -172,11 +173,11 @@ struct System {
   [[nodiscard]] std::optional<MoveSelectionResult> move_selection(Direction dir);
   [[nodiscard]] bool toggle_selected_split_dir();
   [[nodiscard]] bool cycle_split_mode();
-  [[nodiscard]] bool set_selected_split_ratio(float new_ratio);
-  [[nodiscard]] bool adjust_selected_split_ratio(float delta);
-  [[nodiscard]] bool exchange_selected_with_sibling();
-  tl::expected<void, std::string> swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                             size_t cluster_index2, size_t leaf_id2);
+  [[nodiscard]] std::optional<Point> set_selected_split_ratio(float new_ratio);
+  [[nodiscard]] std::optional<Point> adjust_selected_split_ratio(float delta);
+  [[nodiscard]] std::optional<Point> exchange_selected_with_sibling();
+  tl::expected<Point, std::string> swap_cells(size_t cluster_index1, size_t leaf_id1,
+                                              size_t cluster_index2, size_t leaf_id2);
   tl::expected<MoveSuccess, std::string> move_cell(size_t source_cluster_index,
                                                    size_t source_leaf_id,
                                                    size_t target_cluster_index,

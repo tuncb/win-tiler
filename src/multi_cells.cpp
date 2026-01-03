@@ -870,9 +870,9 @@ bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float 
   return true;
 }
 
-bool System::set_selected_split_ratio(float new_ratio) {
+std::optional<Point> System::set_selected_split_ratio(float new_ratio) {
   if (!selection.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   assert(selection->cluster_index < clusters.size());
@@ -884,17 +884,21 @@ bool System::set_selected_split_ratio(float new_ratio) {
   if (is_leaf(pc.cluster, selected_index)) {
     Cell& leaf = pc.cluster.cells[static_cast<size_t>(selected_index)];
     if (!leaf.parent.has_value()) {
-      return false; // Root leaf has no parent to adjust
+      return std::nullopt; // Root leaf has no parent to adjust
     }
     selected_index = *leaf.parent;
   }
 
-  return set_split_ratio(pc.cluster, selected_index, new_ratio, gap_horizontal, gap_vertical);
+  if (!set_split_ratio(pc.cluster, selected_index, new_ratio, gap_horizontal, gap_vertical)) {
+    return std::nullopt;
+  }
+
+  return get_selected_cell_center(*this);
 }
 
-bool System::adjust_selected_split_ratio(float delta) {
+std::optional<Point> System::adjust_selected_split_ratio(float delta) {
   if (!selection.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   assert(selection->cluster_index < clusters.size());
@@ -907,14 +911,14 @@ bool System::adjust_selected_split_ratio(float delta) {
   if (is_leaf(pc.cluster, parent_index)) {
     Cell& leaf = pc.cluster.cells[static_cast<size_t>(parent_index)];
     if (!leaf.parent.has_value()) {
-      return false; // Root leaf has no parent to adjust
+      return std::nullopt; // Root leaf has no parent to adjust
     }
     parent_index = *leaf.parent;
   }
 
   Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
   if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   // Determine if selected cell is the second child - if so, negate delta
@@ -925,12 +929,16 @@ bool System::adjust_selected_split_ratio(float delta) {
   }
 
   float new_ratio = parent.split_ratio + adjusted_delta;
-  return set_split_ratio(pc.cluster, parent_index, new_ratio, gap_horizontal, gap_vertical);
+  if (!set_split_ratio(pc.cluster, parent_index, new_ratio, gap_horizontal, gap_vertical)) {
+    return std::nullopt;
+  }
+
+  return get_selected_cell_center(*this);
 }
 
-bool System::exchange_selected_with_sibling() {
+std::optional<Point> System::exchange_selected_with_sibling() {
   if (!selection.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   assert(selection->cluster_index < clusters.size());
@@ -938,19 +946,19 @@ bool System::exchange_selected_with_sibling() {
 
   int selected_index = selection->cell_index;
   if (!is_leaf(pc.cluster, selected_index)) {
-    return false;
+    return std::nullopt;
   }
 
   Cell& leaf = pc.cluster.cells[static_cast<size_t>(selected_index)];
   if (!leaf.parent.has_value()) {
-    return false; // Root has no sibling
+    return std::nullopt; // Root has no sibling
   }
 
   int parent_index = *leaf.parent;
   Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
 
   if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   // Swap first_child and second_child
@@ -959,7 +967,7 @@ bool System::exchange_selected_with_sibling() {
   // Recompute rects
   recompute_subtree_rects(pc.cluster, parent_index, gap_horizontal, gap_vertical);
 
-  return true;
+  return get_selected_cell_center(*this);
 }
 
 bool System::set_zen(size_t cluster_index, size_t leaf_id) {
@@ -1190,8 +1198,8 @@ bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id
   return any_updated;
 }
 
-tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                                   size_t cluster_index2, size_t leaf_id2) {
+tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
+                                                    size_t cluster_index2, size_t leaf_id2) {
   // Validate cluster indices
   if (cluster_index1 >= clusters.size()) {
     return tl::unexpected("Cluster 1 not found");
@@ -1218,7 +1226,7 @@ tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t
 
   // Check if same cell (no-op)
   if (cluster_index1 == cluster_index2 && leaf_id1 == leaf_id2) {
-    return {};
+    return get_selected_cell_center(*this).value_or(Point{0, 0});
   }
 
   // Validate both are leaves
@@ -1290,7 +1298,7 @@ tl::expected<void, std::string> System::swap_cells(size_t cluster_index1, size_t
     // because the selection tracks cell index, not leaf_id
   }
 
-  return {};
+  return get_selected_cell_center(*this).value_or(Point{0, 0});
 }
 
 tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_index,
@@ -1320,7 +1328,8 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
 
   // Check if same cell (no-op)
   if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
-    return MoveSuccess{*src_idx_opt, source_cluster_index};
+    Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+    return MoveSuccess{*src_idx_opt, source_cluster_index, center};
   }
 
   // Validate both are leaves
@@ -1346,7 +1355,8 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
       recompute_subtree_rects(src_pc.cluster, parent_index, gap_horizontal, gap_vertical);
 
       // Selection stays valid (cell indices don't change, only their positions)
-      return MoveSuccess{*src_idx_opt, source_cluster_index};
+      Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+      return MoveSuccess{*src_idx_opt, source_cluster_index, center};
     }
   }
 
@@ -1427,7 +1437,8 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
     }
   }
 
-  return MoveSuccess{new_cell_idx, target_cluster_index};
+  Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+  return MoveSuccess{new_cell_idx, target_cluster_index, center};
 }
 
 // ============================================================================

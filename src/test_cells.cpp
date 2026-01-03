@@ -1185,8 +1185,8 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set ratio via selected leaf
-    bool result = system.set_selected_split_ratio(0.3f);
-    CHECK(result);
+    auto result = system.set_selected_split_ratio(0.3f);
+    CHECK(result.has_value());
 
     // Parent's ratio should have changed
     auto& parent = pc.cluster.cells[0];
@@ -1198,8 +1198,8 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("setSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = system.set_selected_split_ratio(0.3f);
-    CHECK(!result);
+    auto result = system.set_selected_split_ratio(0.3f);
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("setSelectedSplitRatio returns false for root leaf") {
@@ -1207,8 +1207,8 @@ TEST_SUITE("cells - split ratio") {
     auto system = cells::create_system({info});
 
     // Single leaf has no parent
-    bool result = system.set_selected_split_ratio(0.3f);
-    CHECK(!result);
+    auto result = system.set_selected_split_ratio(0.3f);
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("setSelectedSplitRatio updates rect sizes correctly") {
@@ -1218,8 +1218,8 @@ TEST_SUITE("cells - split ratio") {
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
 
-    bool result = system.set_selected_split_ratio(0.25f);
-    CHECK(result);
+    auto result = system.set_selected_split_ratio(0.25f);
+    CHECK(result.has_value());
 
     auto& parent = pc.cluster.cells[0];
     auto& firstChild = pc.cluster.cells[static_cast<size_t>(*parent.first_child)];
@@ -1247,8 +1247,8 @@ TEST_SUITE("cells - split ratio") {
     CHECK(parent.split_ratio == doctest::Approx(0.5f));
 
     // Increase by 0.1
-    bool result = system.adjust_selected_split_ratio(0.1f);
-    CHECK(result);
+    auto result = system.adjust_selected_split_ratio(0.1f);
+    CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.6f));
 
     CHECK(cells::validate_system(system));
@@ -1264,8 +1264,8 @@ TEST_SUITE("cells - split ratio") {
     auto& parent = pc.cluster.cells[0];
 
     // Decrease by 0.2
-    bool result = system.adjust_selected_split_ratio(-0.2f);
-    CHECK(result);
+    auto result = system.adjust_selected_split_ratio(-0.2f);
+    CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.3f));
 
     CHECK(cells::validate_system(system));
@@ -1274,16 +1274,16 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("adjustSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = system.adjust_selected_split_ratio(0.1f);
-    CHECK(!result);
+    auto result = system.adjust_selected_split_ratio(0.1f);
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("adjustSelectedSplitRatio returns false for root leaf") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    bool result = system.adjust_selected_split_ratio(0.1f);
-    CHECK(!result);
+    auto result = system.adjust_selected_split_ratio(0.1f);
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("adjustSelectedSplitRatio clamps ratio at maximum") {
@@ -1294,13 +1294,13 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set to 0.9 first (the maximum)
-    REQUIRE(system.set_selected_split_ratio(0.9f));
+    REQUIRE(system.set_selected_split_ratio(0.9f).has_value());
 
     auto& parent = pc.cluster.cells[0];
 
     // Increase by 0.2 - should stay clamped at 0.9
-    bool result = system.adjust_selected_split_ratio(0.2f);
-    CHECK(result);
+    auto result = system.adjust_selected_split_ratio(0.2f);
+    CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.9f));
   }
 
@@ -1312,13 +1312,13 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set to 0.1 first (the minimum)
-    REQUIRE(system.set_selected_split_ratio(0.1f));
+    REQUIRE(system.set_selected_split_ratio(0.1f).has_value());
 
     auto& parent = pc.cluster.cells[0];
 
     // Decrease by 0.2 - should stay clamped at 0.1
-    bool result = system.adjust_selected_split_ratio(-0.2f);
-    CHECK(result);
+    auto result = system.adjust_selected_split_ratio(-0.2f);
+    CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.1f));
   }
 
@@ -1336,8 +1336,8 @@ TEST_SUITE("cells - split ratio") {
     CHECK(firstChild.rect.width == doctest::Approx(385.0f));
 
     // Adjust by -0.25 (new ratio = 0.25)
-    bool result = system.adjust_selected_split_ratio(-0.25f);
-    CHECK(result);
+    auto result = system.adjust_selected_split_ratio(-0.25f);
+    CHECK(result.has_value());
 
     // New width: 770 * 0.25 = 192.5
     CHECK(firstChild.rect.width == doctest::Approx(192.5f));
@@ -1368,8 +1368,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
     auto rect20Before = pc.cluster.cells[static_cast<size_t>(*idx20)].rect;
 
     // Exchange siblings
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(result.has_value());
 
     // Re-find cells
     idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
@@ -1392,8 +1392,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
   TEST_CASE("exchange_selected_with_sibling returns false with no selection") {
     auto system = cells::create_system({});
 
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(!result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("exchange_selected_with_sibling returns false for root leaf") {
@@ -1401,8 +1401,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
     auto system = cells::create_system({info});
 
     // Single leaf has no sibling
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(!result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(!result.has_value());
   }
 
   TEST_CASE("exchange_selected_with_sibling updates cell positions correctly") {
@@ -1425,8 +1425,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
     CHECK(rect10Before.x < rect20Before.x);
 
     // Exchange
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(result.has_value());
 
     // After exchange: leaf 10 should now be on the right
     idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
@@ -1462,8 +1462,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
     CHECK(rect10Before.y < rect20Before.y);
 
     // Exchange
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(result.has_value());
 
     // After exchange: leaf 10 should now be on the bottom
     idx10 = cells::find_cell_by_leaf_id(pc.cluster, 10);
@@ -1492,8 +1492,8 @@ TEST_SUITE("cells - exchange selected with sibling") {
     system.selection = cells::CellIndicatorByIndex{0, *idx10};
 
     // Exchange
-    bool result = system.exchange_selected_with_sibling();
-    CHECK(result);
+    auto result = system.exchange_selected_with_sibling();
+    CHECK(result.has_value());
 
     // Selection should still point to same cell index (which now has different position)
     REQUIRE(system.selection.has_value());

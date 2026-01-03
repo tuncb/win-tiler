@@ -424,20 +424,20 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::SplitIncrease:
         spdlog::info("SplitIncrease: increasing split ratio by 5%%");
-        if (app_state.system.adjust_selected_split_ratio(0.05f)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto center = app_state.system.adjust_selected_split_ratio(0.05f)) {
+          center_mouse_on_point(vt, *center);
         }
         break;
       case HotkeyAction::SplitDecrease:
         spdlog::info("SplitDecrease: decreasing split ratio by 5%%");
-        if (app_state.system.adjust_selected_split_ratio(-0.05f)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto center = app_state.system.adjust_selected_split_ratio(-0.05f)) {
+          center_mouse_on_point(vt, *center);
         }
         break;
       case HotkeyAction::ExchangeSiblings:
         spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
-        if (app_state.system.exchange_selected_with_sibling()) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto center = app_state.system.exchange_selected_with_sibling()) {
+          center_mouse_on_point(vt, *center);
         }
         break;
       case HotkeyAction::ToggleZen:
@@ -455,8 +455,8 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::ResetSplitRatio:
         spdlog::info("ResetSplitRatio: resetting split ratio of parent to 50%%");
-        if (app_state.system.set_selected_split_ratio(0.5f)) {
-          center_mouse_on_selection(app_state, vt);
+        if (auto center = app_state.system.set_selected_split_ratio(0.5f)) {
+          center_mouse_on_point(vt, *center);
         }
         break;
       case HotkeyAction::Exit:
