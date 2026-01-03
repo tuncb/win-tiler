@@ -76,8 +76,8 @@ constexpr float kDefaultToastFontSize = 60.0f;
 constexpr int kDefaultToastDurationMs = 2000;
 
 // Default small window barrier dimensions
-constexpr int kDefaultSmallWindowBarrierWidth = 50;
-constexpr int kDefaultSmallWindowBarrierHeight = 50;
+constexpr int kDefaultSmallWindowBarrierWidth = 200;
+constexpr int kDefaultSmallWindowBarrierHeight = 150;
 
 // Gap configuration for window spacing
 struct GapOptions {

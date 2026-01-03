@@ -153,6 +153,10 @@ bool is_ignored(const wintiler::IgnoreOptions& options, const WindowInfo& win) {
   if (win.className == "SysDragImage")
     return true;
 
+  // Check for standard Windows dialog boxes (always ignore)
+  if (win.className == "#32770")
+    return true;
+
   // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
     if (win.processName == proc)
