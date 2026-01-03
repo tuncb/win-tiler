@@ -142,6 +142,11 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
+  // Check for standard Windows dialog boxes (always ignore)
+  if (className == "#32770")
+    return true;
+
+
   auto pid = get_window_pid((HWND_T)hwnd);
   std::string processName;
   if (pid.has_value()) {
