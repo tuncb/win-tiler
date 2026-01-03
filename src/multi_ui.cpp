@@ -253,6 +253,8 @@ std::optional<HotkeyAction> get_key_action() {
     return HotkeyAction::ToggleZen;
   if (IsKeyPressed(KEY_SEMICOLON))
     return HotkeyAction::CycleSplitMode;
+  if (IsKeyPressed(KEY_HOME))
+    return HotkeyAction::ResetSplitRatio;
   return std::nullopt;
 }
 
@@ -443,6 +445,12 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         }
         spdlog::info("CycleSplitMode: switched to {}",
                      magic_enum::enum_name(app_state.system.split_mode));
+        break;
+      case HotkeyAction::ResetSplitRatio:
+        spdlog::info("ResetSplitRatio: resetting split ratio of parent to 50%%");
+        if (app_state.system.set_selected_split_ratio(0.5f)) {
+          center_mouse_on_selection(app_state, vt);
+        }
         break;
       case HotkeyAction::Exit:
         spdlog::info("Exit: exit action (not implemented in multi_ui)");

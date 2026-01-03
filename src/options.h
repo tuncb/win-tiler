@@ -46,7 +46,8 @@ enum class HotkeyAction {
   SplitIncrease,
   SplitDecrease,
   ExchangeSiblings,
-  ToggleZen
+  ToggleZen,
+  ResetSplitRatio
 };
 
 // Maps a hotkey action to its keyboard shortcut string

@@ -107,6 +107,7 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
   case HotkeyAction::SplitDecrease:
   case HotkeyAction::ExchangeSiblings:
   case HotkeyAction::ToggleZen:
+  case HotkeyAction::ResetSplitRatio:
     return std::nullopt;
   }
   return std::nullopt;
@@ -272,6 +273,14 @@ ActionResult handle_toggle_zen(cells::System& system) {
   return ActionResult::Continue;
 }
 
+ActionResult handle_reset_split_ratio(cells::System& system) {
+  if (system.set_selected_split_ratio(0.5f)) {
+    spdlog::info("Reset split ratio to 50%%");
+    move_cursor_to_selected_cell(system);
+  }
+  return ActionResult::Continue;
+}
+
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
 bool handle_mouse_drop_move(cells::System& system,
@@ -408,6 +417,8 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
     return handle_exchange_siblings(system);
   case HotkeyAction::ToggleZen:
     return handle_toggle_zen(system);
+  case HotkeyAction::ResetSplitRatio:
+    return handle_reset_split_ratio(system);
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:

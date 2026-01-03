@@ -43,6 +43,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "ExchangeSiblings";
   case HotkeyAction::ToggleZen:
     return "ToggleZen";
+  case HotkeyAction::ResetSplitRatio:
+    return "ResetSplitRatio";
   }
   return "Unknown";
 }
@@ -78,6 +80,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::ExchangeSiblings;
   if (str == "ToggleZen")
     return HotkeyAction::ToggleZen;
+  if (str == "ResetSplitRatio")
+    return HotkeyAction::ResetSplitRatio;
   return std::nullopt;
 }
 
@@ -113,6 +117,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+e";
   case HotkeyAction::ToggleZen:
     return "super+shift+'";
+  case HotkeyAction::ResetSplitRatio:
+    return "super+shift+home";
   }
   return "";
 }
