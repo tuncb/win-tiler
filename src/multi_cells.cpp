@@ -8,6 +8,8 @@
 #include <iterator>
 #include <limits>
 #include <magic_enum/magic_enum.hpp>
+#include <map>
+#include <set>
 
 namespace wintiler {
 
@@ -24,6 +26,25 @@ static std::vector<TileUpdate> calculate_tile_layout(const System& system, float
 static SelectionUpdateResult compute_selection_update(const System& system, float cursor_x,
                                                       float cursor_y, float zen_percentage,
                                                       size_t foreground_window_leaf_id);
+
+// Result of deleting a leaf cell
+struct DeleteResult {
+  std::optional<int> new_selection_index; // New selection after deletion
+  std::vector<int> deleted_indices;       // Indices to remove during compaction
+};
+
+// Helper to check if a cell is an orphan (logically deleted but not yet compacted)
+// Orphan = no parent AND not the root (index 0)
+static bool is_orphan(const CellCluster& cluster, int cell_index) {
+  if (cell_index < 0 || static_cast<size_t>(cell_index) >= cluster.cells.size()) {
+    return false;
+  }
+  if (cluster.cells.empty()) {
+    return false;
+  }
+  const Cell& cell = cluster.cells[static_cast<size_t>(cell_index)];
+  return !cell.parent.has_value() && cell_index != 0;
+}
 
 static CellCluster create_initial_state(float width, float height) {
   CellCluster state{};
@@ -42,7 +63,8 @@ bool is_leaf(const CellCluster& state, int cell_index) {
   }
 
   const Cell& cell = state.cells[static_cast<std::size_t>(cell_index)];
-  if (cell.is_dead) {
+  // Orphan cells (no parent, not root) are considered deleted
+  if (!cell.parent.has_value() && cell_index != 0 && !state.cells.empty()) {
     return false;
   }
 
@@ -58,7 +80,7 @@ static void recompute_children_rects(CellCluster& state, int node_index, float g
                                      float gap_vertical) {
   Cell& node = state.cells[static_cast<std::size_t>(node_index)];
 
-  if (node.is_dead) {
+  if (is_orphan(state, node_index)) {
     return;
   }
 
@@ -104,7 +126,7 @@ static void recompute_subtree_rects(CellCluster& state, int node_index, float ga
 
   Cell& node = state.cells[static_cast<std::size_t>(node_index)];
 
-  if (node.is_dead) {
+  if (is_orphan(state, node_index)) {
     return;
   }
 
@@ -115,8 +137,8 @@ static void recompute_subtree_rects(CellCluster& state, int node_index, float ga
   }
 }
 
-static std::optional<int> delete_leaf(CellCluster& state, int selected_index, float gap_horizontal,
-                                      float gap_vertical) {
+static std::optional<DeleteResult> delete_leaf(CellCluster& state, int selected_index,
+                                               float gap_horizontal, float gap_vertical) {
   if (!is_leaf(state, selected_index)) {
     return std::nullopt;
   }
@@ -125,13 +147,13 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
   }
 
   Cell& selected_cell = state.cells[static_cast<std::size_t>(selected_index)];
-  if (selected_cell.is_dead) {
+  if (is_orphan(state, selected_index)) {
     return std::nullopt;
   }
 
   if (selected_index == 0) {
     state.cells.clear();
-    return std::nullopt; // Cluster is now empty
+    return DeleteResult{std::nullopt, {}}; // Cluster is now empty
   }
 
   if (!selected_cell.parent.has_value()) {
@@ -141,7 +163,7 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
   int parent_index = *selected_cell.parent;
   Cell& parent = state.cells[static_cast<std::size_t>(parent_index)];
 
-  if (parent.is_dead) {
+  if (is_orphan(state, parent_index)) {
     return std::nullopt;
   }
 
@@ -154,7 +176,7 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
   int sibling_index = (selected_index == first_idx) ? second_idx : first_idx;
 
   Cell& sibling = state.cells[static_cast<std::size_t>(sibling_index)];
-  if (sibling.is_dead) {
+  if (is_orphan(state, sibling_index)) {
     return std::nullopt;
   }
 
@@ -177,8 +199,8 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
 
   recompute_subtree_rects(state, parent_index, gap_horizontal, gap_vertical);
 
-  selected_cell.is_dead = true;
-  sibling.is_dead = true;
+  // Mark cells as orphans by resetting their parent pointers
+  // (is_orphan() will return true for non-root cells with no parent)
   selected_cell.parent.reset();
   sibling.parent.reset();
 
@@ -194,7 +216,59 @@ static std::optional<int> delete_leaf(CellCluster& state, int selected_index, fl
     }
   }
 
-  return current; // New selection index
+  return DeleteResult{current, {selected_index, sibling_index}};
+}
+
+// Compact cluster by removing cells at given indices
+// Returns remap vector (old_index -> new_index, -1 for deleted)
+static std::vector<int> compact_cluster(CellCluster& cluster,
+                                        const std::set<int>& deleted_indices) {
+  if (deleted_indices.empty()) {
+    return {};
+  }
+
+  // Build index remap: old_index -> new_index
+  std::vector<int> remap(cluster.cells.size(), -1);
+  int new_index = 0;
+  for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
+    if (deleted_indices.count(i) == 0) {
+      remap[static_cast<size_t>(i)] = new_index++;
+    }
+  }
+
+  // Create new cells vector with remapped indices
+  std::vector<Cell> new_cells;
+  new_cells.reserve(static_cast<size_t>(new_index));
+  for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
+    if (deleted_indices.count(i) > 0) {
+      continue;
+    }
+
+    Cell cell = cluster.cells[static_cast<size_t>(i)];
+    if (cell.parent.has_value()) {
+      cell.parent = remap[static_cast<size_t>(*cell.parent)];
+    }
+    if (cell.first_child.has_value()) {
+      cell.first_child = remap[static_cast<size_t>(*cell.first_child)];
+    }
+    if (cell.second_child.has_value()) {
+      cell.second_child = remap[static_cast<size_t>(*cell.second_child)];
+    }
+    new_cells.push_back(std::move(cell));
+  }
+
+  // Update zen_cell_index if set
+  if (cluster.zen_cell_index.has_value()) {
+    int old_zen = *cluster.zen_cell_index;
+    if (deleted_indices.count(old_zen) > 0) {
+      cluster.zen_cell_index.reset();
+    } else {
+      cluster.zen_cell_index = remap[static_cast<size_t>(old_zen)];
+    }
+  }
+
+  cluster.cells = std::move(new_cells);
+  return remap;
 }
 
 static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_index,
@@ -205,7 +279,6 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
   if (state.cells.empty() && selected_index == -1) {
     Cell root{};
     root.split_dir = split_dir;
-    root.is_dead = false;
     root.parent = std::nullopt;
     root.first_child = std::nullopt;
     root.second_child = std::nullopt;
@@ -228,7 +301,7 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
   }
 
   Cell& leaf = state.cells[static_cast<std::size_t>(selected_index)];
-  if (leaf.is_dead) {
+  if (is_orphan(state, selected_index)) {
     return std::nullopt;
   }
   Rect r = leaf.rect;
@@ -258,7 +331,6 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
 
   Cell first_child{};
   first_child.split_dir = split_dir;
-  first_child.is_dead = false;
   first_child.parent = selected_index;
   first_child.first_child = std::nullopt;
   first_child.second_child = std::nullopt;
@@ -267,7 +339,6 @@ static std::optional<SplitResult> split_leaf(CellCluster& state, int selected_in
 
   Cell second_child{};
   second_child.split_dir = split_dir;
-  second_child.is_dead = false;
   second_child.parent = selected_index;
   second_child.first_child = std::nullopt;
   second_child.second_child = std::nullopt;
@@ -293,7 +364,7 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
   }
 
   Cell& leaf = state.cells[static_cast<std::size_t>(selected_index)];
-  if (leaf.is_dead) {
+  if (is_orphan(state, selected_index)) {
     return false;
   }
 
@@ -304,7 +375,7 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
   int parent_index = *leaf.parent;
   Cell& parent = state.cells[static_cast<std::size_t>(parent_index)];
 
-  if (parent.is_dead) {
+  if (is_orphan(state, parent_index)) {
     return false;
   }
 
@@ -320,7 +391,7 @@ static bool toggle_split_dir(CellCluster& state, int selected_index, float gap_h
     return false;
   }
 
-  if (state.cells[static_cast<std::size_t>(sibling_index)].is_dead) {
+  if (is_orphan(state, sibling_index)) {
     return false;
   }
 
@@ -338,7 +409,7 @@ static void debug_print_state(const CellCluster& state) {
 
   for (std::size_t i = 0; i < state.cells.size(); ++i) {
     const Cell& c = state.cells[i];
-    if (c.is_dead) {
+    if (is_orphan(state, static_cast<int>(i))) {
       continue;
     }
     spdlog::debug("-- Cell {} --", i);
@@ -376,7 +447,7 @@ static bool validate_state(const CellCluster& state) {
   for (int i = 0; i < static_cast<int>(state.cells.size()); ++i) {
     const Cell& c = state.cells[static_cast<std::size_t>(i)];
 
-    if (c.is_dead) {
+    if (is_orphan(state, i)) {
       continue;
     }
 
@@ -415,8 +486,8 @@ static bool validate_state(const CellCluster& state) {
       }
 
       const Cell& cc = state.cells[static_cast<std::size_t>(child)];
-      if (cc.is_dead) {
-        spdlog::warn("[validate] WARNING: cell {}'s {} ({}) is dead", i, label, child);
+      if (is_orphan(state, child)) {
+        spdlog::warn("[validate] WARNING: cell {}'s {} ({}) is orphan", i, label, child);
         ok = false;
       }
       if (!cc.parent.has_value() || *cc.parent != i) {
@@ -449,7 +520,7 @@ static bool validate_state(const CellCluster& state) {
   std::vector<size_t> leaf_ids;
   for (int i = 0; i < static_cast<int>(state.cells.size()); ++i) {
     const Cell& c = state.cells[static_cast<std::size_t>(i)];
-    if (c.is_dead) {
+    if (is_orphan(state, i)) {
       continue;
     }
     if (c.leaf_id.has_value()) {
@@ -858,7 +929,7 @@ bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float 
   }
 
   Cell& cell = state.cells[static_cast<size_t>(cell_index)];
-  if (cell.is_dead) {
+  if (is_orphan(state, cell_index)) {
     return false;
   }
 
@@ -926,7 +997,8 @@ std::optional<Point> adjust_selected_split_ratio(System& system, float delta, fl
   }
 
   Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
-  if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+  if (is_orphan(pc.cluster, parent_index) || !parent.first_child.has_value() ||
+      !parent.second_child.has_value()) {
     return std::nullopt;
   }
 
@@ -967,7 +1039,8 @@ std::optional<Point> exchange_selected_with_sibling(System& system, float gap_ho
   int parent_index = *leaf.parent;
   Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
 
-  if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+  if (is_orphan(pc.cluster, parent_index) || !parent.first_child.has_value() ||
+      !parent.second_child.has_value()) {
     return std::nullopt;
   }
 
@@ -1101,7 +1174,8 @@ bool update_ratio_for_edge(CellCluster& cluster, const PositionedCluster& pc, in
     int parent_index = *current.parent;
     const Cell& parent = cluster.cells[static_cast<size_t>(parent_index)];
 
-    if (parent.is_dead || !parent.first_child.has_value() || !parent.second_child.has_value()) {
+    if (is_orphan(cluster, parent_index) || !parent.first_child.has_value() ||
+        !parent.second_child.has_value()) {
       return false; // Invalid parent
     }
 
@@ -1586,8 +1660,9 @@ bool validate_system(const System& system) {
   // Check for duplicate leaf_ids across all clusters
   std::vector<size_t> all_leaf_ids;
   for (const auto& pc : system.clusters) {
-    for (const auto& cell : pc.cluster.cells) {
-      if (!cell.is_dead && cell.leaf_id.has_value()) {
+    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
+      if (!is_orphan(pc.cluster, i) && cell.leaf_id.has_value()) {
         all_leaf_ids.push_back(*cell.leaf_id);
       }
     }
@@ -1685,7 +1760,7 @@ std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster) {
   std::vector<size_t> leaf_ids;
   for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
     const auto& cell = cluster.cells[static_cast<size_t>(i)];
-    if (!cell.is_dead && cell.leaf_id.has_value()) {
+    if (!is_orphan(cluster, i) && cell.leaf_id.has_value()) {
       leaf_ids.push_back(*cell.leaf_id);
     }
   }
@@ -1695,7 +1770,7 @@ std::vector<size_t> get_cluster_leaf_ids(const CellCluster& cluster) {
 std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_id) {
   for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
     const auto& cell = cluster.cells[static_cast<size_t>(i)];
-    if (!cell.is_dead && cell.leaf_id.has_value() && *cell.leaf_id == leaf_id) {
+    if (!is_orphan(cluster, i) && cell.leaf_id.has_value() && *cell.leaf_id == leaf_id) {
       return i;
     }
   }
@@ -1706,8 +1781,8 @@ static bool is_cluster_empty(const CellCluster& cluster) {
   if (cluster.cells.empty()) {
     return true;
   }
-  for (const auto& cell : cluster.cells) {
-    if (!cell.is_dead) {
+  for (int i = 0; i < static_cast<int>(cluster.cells.size()); ++i) {
+    if (!is_orphan(cluster, i)) {
       return false;
     }
   }
@@ -1778,6 +1853,9 @@ UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cl
                     size_t foreground_leaf_id, float gap_horizontal, float gap_vertical) {
   UpdateResult result;
   result.selection_updated = false;
+
+  // Track deleted cell indices per cluster for compaction at end
+  std::map<size_t, std::set<int>> cluster_deletions;
 
   // Make a mutable copy for redirection
   std::vector<ClusterCellUpdateInfo> redirected_cell_ids = cluster_cell_ids;
@@ -1865,18 +1943,24 @@ UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cl
         continue;
       }
 
-      auto new_selection_opt =
-          delete_leaf(pc.cluster, *cell_index_opt, gap_horizontal, gap_vertical);
+      auto delete_result = delete_leaf(pc.cluster, *cell_index_opt, gap_horizontal, gap_vertical);
       result.deleted_leaf_ids.push_back(leaf_id);
 
-      // If deletion succeeded and returned a new selection, update it if this was selected
-      if (system.selection.has_value() &&
-          system.selection->cluster_index == cluster_update.cluster_index &&
-          system.selection->cell_index == *cell_index_opt) {
-        if (new_selection_opt.has_value()) {
-          system.selection->cell_index = *new_selection_opt;
-        } else {
-          system.selection.reset();
+      if (delete_result.has_value()) {
+        // Accumulate deleted indices for compaction at end
+        for (int idx : delete_result->deleted_indices) {
+          cluster_deletions[cluster_update.cluster_index].insert(idx);
+        }
+
+        // If deletion succeeded and returned a new selection, update it if this was selected
+        if (system.selection.has_value() &&
+            system.selection->cluster_index == cluster_update.cluster_index &&
+            system.selection->cell_index == *cell_index_opt) {
+          if (delete_result->new_selection_index.has_value()) {
+            system.selection->cell_index = *delete_result->new_selection_index;
+          } else {
+            system.selection.reset();
+          }
         }
       }
     }
@@ -1979,6 +2063,24 @@ UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cl
     result.new_window_cursor_pos = find_cell_center_by_leaf_id(system, last_added_id);
   }
 
+  // Compact all clusters with deletions and remap indices
+  for (auto& [ci, deleted_indices] : cluster_deletions) {
+    auto& pc = system.clusters[ci];
+    auto remap = compact_cluster(pc.cluster, deleted_indices);
+
+    // Update selection if in this cluster
+    if (!remap.empty() && system.selection.has_value() && system.selection->cluster_index == ci) {
+      int old_idx = system.selection->cell_index;
+      if (static_cast<size_t>(old_idx) < remap.size()) {
+        if (remap[static_cast<size_t>(old_idx)] == -1) {
+          system.selection.reset(); // Was deleted
+        } else {
+          system.selection->cell_index = remap[static_cast<size_t>(old_idx)];
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -2034,7 +2136,7 @@ static std::vector<TileUpdate> calculate_tile_layout(const System& system, float
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cell.is_dead || !cell.leaf_id.has_value()) {
+      if (is_orphan(pc.cluster, i) || !cell.leaf_id.has_value()) {
         continue;
       }
 

@@ -407,7 +407,7 @@ void print_tile_layout(const cells::System& system) {
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
       const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cell.is_dead || !cell.leaf_id.has_value()) {
+      if (!cells::is_leaf(pc.cluster, i) || !cell.leaf_id.has_value()) {
         continue;
       }
 

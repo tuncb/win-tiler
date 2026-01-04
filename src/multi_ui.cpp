@@ -281,8 +281,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
   // Set next_process_id to avoid collisions with any pre-existing leaf IDs
   size_t next_process_id = CELL_ID_START;
   for (const auto& pc : app_state.system.clusters) {
-    for (const auto& cell : pc.cluster.cells) {
-      if (!cell.is_dead && cell.leaf_id.has_value()) {
+    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
+      if (cells::is_leaf(pc.cluster, i) && cell.leaf_id.has_value()) {
         next_process_id = std::max(next_process_id, *cell.leaf_id + 1);
       }
     }

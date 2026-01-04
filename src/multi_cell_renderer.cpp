@@ -19,12 +19,12 @@ void render(const cells::System& system, const RenderOptions& config,
     }
 
     for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      const auto& cell = pc.cluster.cells[i];
-
-      // Skip non-leaf and dead cells
-      if (cell.is_dead || cell.first_child.has_value() || cell.second_child.has_value()) {
+      // Skip non-leaf cells
+      if (!cells::is_leaf(pc.cluster, i)) {
         continue;
       }
+
+      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
 
       // Get global rect for this cell
       cells::Rect global_rect = cells::get_cell_global_rect(pc, i);

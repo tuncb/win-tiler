@@ -41,8 +41,6 @@ struct Cell {
   SplitDir split_dir;
   float split_ratio = 0.5f; // Ratio for first child (0.0-1.0), default 50/50
 
-  bool is_dead = false;
-
   std::optional<int> parent;       // empty for root
   std::optional<int> first_child;  // empty if none (leaf)
   std::optional<int> second_child; // empty if none (leaf)
