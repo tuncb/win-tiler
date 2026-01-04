@@ -11,6 +11,19 @@
 
 using namespace wintiler;
 
+// Local test helper - counts leaves across all clusters
+size_t count_total_leaves(const cells::System& system) {
+  size_t count = 0;
+  for (const auto& pc : system.clusters) {
+    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+      if (cells::is_leaf(pc.cluster, i)) {
+        ++count;
+      }
+    }
+  }
+  return count;
+}
+
 // Default gap values for tests
 constexpr float TEST_GAP_H = 10.0f;
 constexpr float TEST_GAP_V = 10.0f;
@@ -100,7 +113,7 @@ TEST_SUITE("cells - multi-cluster") {
     CHECK(system.selection->cluster_index == 0);
 
     // Count leaves
-    size_t leafCount = cells::count_total_leaves(system);
+    size_t leafCount = count_total_leaves(system);
     CHECK(leafCount == 2);
   }
 
@@ -157,7 +170,7 @@ TEST_SUITE("cells - multi-cluster") {
 
     auto system = cells::create_system({info1, info2});
 
-    size_t count = cells::count_total_leaves(system);
+    size_t count = count_total_leaves(system);
     CHECK(count == 5);
   }
 
@@ -479,7 +492,7 @@ TEST_SUITE("cells - updateSystem") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {}};
     auto system = cells::create_system({info});
 
-    CHECK(cells::count_total_leaves(system) == 0);
+    CHECK(count_total_leaves(system) == 0);
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {100, 200}}};
 
@@ -489,14 +502,14 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
     CHECK(result.deleted_leaf_ids.empty());
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
   }
 
   TEST_CASE("updateSystem adds leaves to existing cluster") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    CHECK(cells::count_total_leaves(system) == 1);
+    CHECK(count_total_leaves(system) == 1);
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10, 20, 30}} // Keep 10, add 20 and 30
@@ -508,7 +521,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
     CHECK(result.deleted_leaf_ids.empty());
-    CHECK(cells::count_total_leaves(system) == 3);
+    CHECK(count_total_leaves(system) == 3);
   }
 
   TEST_CASE("updateSystem deletes leaves") {
@@ -516,7 +529,7 @@ TEST_SUITE("cells - updateSystem") {
                                 0.0f, 800.0f, 600.0f, {10, 20, 30}};
     auto system = cells::create_system({info});
 
-    CHECK(cells::count_total_leaves(system) == 3);
+    CHECK(count_total_leaves(system) == 3);
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {
         {0, {10}} // Keep only 10, delete 20 and 30
@@ -528,7 +541,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 2);
     CHECK(result.added_leaf_ids.empty());
-    CHECK(cells::count_total_leaves(system) == 1);
+    CHECK(count_total_leaves(system) == 1);
   }
 
   TEST_CASE("updateSystem handles mixed add and delete") {
@@ -547,7 +560,7 @@ TEST_SUITE("cells - updateSystem") {
     CHECK(result.added_leaf_ids.size() == 1);
     CHECK(result.deleted_leaf_ids[0] == 20);
     CHECK(result.added_leaf_ids[0] == 30);
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
   }
 
   TEST_CASE("updateSystem updates selection") {
@@ -634,7 +647,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
-    CHECK(cells::count_total_leaves(system) == 4);
+    CHECK(count_total_leaves(system) == 4);
   }
 
   TEST_CASE("updateSystem leaves unchanged cluster alone") {
@@ -675,7 +688,7 @@ TEST_SUITE("cells - updateSystem") {
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
-    CHECK(cells::count_total_leaves(system) == 0);
+    CHECK(count_total_leaves(system) == 0);
   }
 }
 
@@ -804,7 +817,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
 
     // Move 10 to 20
     auto result = cells::move_cell(system, 0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
@@ -813,7 +826,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(result->new_cluster_index == 0);
 
     // Should now have 2 leaves (20 was split, creating a new leaf for 10)
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
 
     // Verify both leaves still exist
     REQUIRE(system.clusters.size() >= 1);
@@ -833,7 +846,7 @@ TEST_SUITE("cells - swap and move") {
     auto result = cells::move_cell(system, 0, 10, 0, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
-    CHECK(cells::count_total_leaves(system) == 1);
+    CHECK(count_total_leaves(system) == 1);
   }
 
   TEST_CASE("moveCell moves cell across clusters") {
@@ -841,7 +854,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info2{400.0f, 0.0f, 400.0f, 600.0f, 400.0f, 0.0f, 400.0f, 600.0f, {20}};
     auto system = cells::create_system({info1, info2});
 
-    CHECK(cells::count_total_leaves(system) == 3);
+    CHECK(count_total_leaves(system) == 3);
 
     // Move 10 from cluster 1 to cluster 2 (split from 20)
     auto result = cells::move_cell(system, 0, 10, 1, 20, TEST_GAP_H, TEST_GAP_V);
@@ -965,7 +978,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(pc1.cluster.cells.empty());
 
     // Cluster 2 should have 2 leaves
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
   }
 
   TEST_CASE("moveCell swaps siblings instead of delete+split") {
@@ -1000,7 +1013,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(result->new_cluster_index == 0);
 
     // Should still have exactly 2 leaves (no delete+split)
-    CHECK(cells::count_total_leaves(system) == 2);
+    CHECK(count_total_leaves(system) == 2);
 
     // Both leaves should still exist with same leaf_ids
     auto idx10_after = cells::find_cell_by_leaf_id(pc.cluster, 10);
@@ -1167,7 +1180,7 @@ TEST_SUITE("cells - split ratio") {
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
-    CHECK(cells::count_total_leaves(system) == 3);
+    CHECK(count_total_leaves(system) == 3);
 
     // Change root ratio - should update all descendants
     bool result = cells::set_split_ratio(pc.cluster, 0, 0.25f, TEST_GAP_H, TEST_GAP_V);

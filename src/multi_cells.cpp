@@ -1633,18 +1633,6 @@ void debug_print_system(const System& system) {
   spdlog::debug("===== End MultiClusterSystem =====");
 }
 
-size_t count_total_leaves(const System& system) {
-  size_t count = 0;
-  for (const auto& pc : system.clusters) {
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      if (is_leaf(pc.cluster, i)) {
-        ++count;
-      }
-    }
-  }
-  return count;
-}
-
 bool has_leaf_id(const System& system, size_t leaf_id) {
   for (const auto& pc : system.clusters) {
     if (find_cell_by_leaf_id(pc.cluster, leaf_id).has_value()) {

@@ -331,9 +331,6 @@ bool validate_system(const System& system);
 // Debug: print the entire multi-cluster system to stdout.
 void debug_print_system(const System& system);
 
-// Count total leaves across all clusters.
-[[nodiscard]] size_t count_total_leaves(const System& system);
-
 // Check if a leaf_id exists in the system (in any non-dead cell).
 [[nodiscard]] bool has_leaf_id(const System& system, size_t leaf_id);
 

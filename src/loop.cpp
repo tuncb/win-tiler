@@ -401,9 +401,6 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
 
 // Helper: Print tile layout from a multi-cluster system
 void print_tile_layout(const cells::System& system) {
-  size_t total_windows = cells::count_total_leaves(system);
-  spdlog::debug("Total windows: {}", total_windows);
-
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
     const auto& pc = system.clusters[cluster_idx];
     spdlog::debug("--- Monitor {} ---", cluster_idx);
