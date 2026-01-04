@@ -1002,40 +1002,42 @@ std::optional<Point> adjust_selected_split_ratio(System& system, float delta, fl
   return get_selected_cell_center(system);
 }
 
-std::optional<Point> exchange_selected_with_sibling(System& system, float gap_horizontal,
-                                                    float gap_vertical) {
+std::optional<size_t> get_selected_sibling_leaf_id(const System& system) {
   if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
   assert(system.selection->cluster_index < system.clusters.size());
-  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
+  const PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
   int selected_index = system.selection->cell_index;
   if (!is_leaf(pc.cluster, selected_index)) {
     return std::nullopt;
   }
 
-  Cell& leaf = pc.cluster.cells[static_cast<size_t>(selected_index)];
+  const Cell& leaf = pc.cluster.cells[static_cast<size_t>(selected_index)];
   if (!leaf.parent.has_value()) {
     return std::nullopt; // Root has no sibling
   }
 
   int parent_index = *leaf.parent;
-  Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
+  const Cell& parent = pc.cluster.cells[static_cast<size_t>(parent_index)];
 
   if (is_orphan(pc.cluster, parent_index) || !parent.first_child.has_value() ||
       !parent.second_child.has_value()) {
     return std::nullopt;
   }
 
-  // Swap first_child and second_child
-  std::swap(parent.first_child, parent.second_child);
+  // Find sibling (the other child of the parent)
+  int sibling_index =
+      (*parent.first_child == selected_index) ? *parent.second_child : *parent.first_child;
 
-  // Recompute rects
-  recompute_subtree_rects(pc.cluster, parent_index, gap_horizontal, gap_vertical);
+  if (!is_leaf(pc.cluster, sibling_index)) {
+    return std::nullopt; // Sibling is not a leaf
+  }
 
-  return get_selected_cell_center(system);
+  const Cell& sibling = pc.cluster.cells[static_cast<size_t>(sibling_index)];
+  return sibling.leaf_id;
 }
 
 bool set_zen(System& system, size_t cluster_index, size_t leaf_id) {
@@ -1318,30 +1320,35 @@ tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index
     auto parent1 = cell1.parent;
     auto parent2 = cell2.parent;
 
-    // Swap parent pointers
-    cell1.parent = parent2;
-    cell2.parent = parent1;
+    if (parent1 == parent2 && parent1.has_value()) {
+      // Siblings: swap first_child and second_child atomically
+      Cell& parent = cluster.cells[static_cast<size_t>(*parent1)];
+      std::swap(parent.first_child, parent.second_child);
+      std::swap(cell1.rect, cell2.rect);
+    } else {
+      // Non-siblings: swap parent pointers and update child pointers
+      cell1.parent = parent2;
+      cell2.parent = parent1;
 
-    // Update parent's child pointers
-    if (parent1.has_value()) {
-      Cell& p1 = cluster.cells[static_cast<size_t>(*parent1)];
-      if (p1.first_child.has_value() && *p1.first_child == idx1) {
-        p1.first_child = idx2;
-      } else if (p1.second_child.has_value() && *p1.second_child == idx1) {
-        p1.second_child = idx2;
+      if (parent1.has_value()) {
+        Cell& p1 = cluster.cells[static_cast<size_t>(*parent1)];
+        if (p1.first_child.has_value() && *p1.first_child == idx1) {
+          p1.first_child = idx2;
+        } else if (p1.second_child.has_value() && *p1.second_child == idx1) {
+          p1.second_child = idx2;
+        }
       }
-    }
-    if (parent2.has_value()) {
-      Cell& p2 = cluster.cells[static_cast<size_t>(*parent2)];
-      if (p2.first_child.has_value() && *p2.first_child == idx2) {
-        p2.first_child = idx1;
-      } else if (p2.second_child.has_value() && *p2.second_child == idx2) {
-        p2.second_child = idx1;
+      if (parent2.has_value()) {
+        Cell& p2 = cluster.cells[static_cast<size_t>(*parent2)];
+        if (p2.first_child.has_value() && *p2.first_child == idx2) {
+          p2.first_child = idx1;
+        } else if (p2.second_child.has_value() && *p2.second_child == idx2) {
+          p2.second_child = idx1;
+        }
       }
-    }
 
-    // Swap rects
-    std::swap(cell1.rect, cell2.rect);
+      std::swap(cell1.rect, cell2.rect);
+    }
 
     // Note: Selection stays at the same cell index because the cells
     // still have the same leaf_ids - only their tree positions changed.

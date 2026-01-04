@@ -449,8 +449,20 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::ExchangeSiblings:
         spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
-        if (auto center = cells::exchange_selected_with_sibling(app_state.system, gap_h, gap_v)) {
-          center_mouse_on_point(vt, *center);
+        if (app_state.system.selection.has_value()) {
+          if (auto sibling_leaf_id = cells::get_selected_sibling_leaf_id(app_state.system)) {
+            const auto& sel = *app_state.system.selection;
+            const auto& cluster = app_state.system.clusters[sel.cluster_index].cluster;
+            if (auto selected_leaf_id =
+                    cluster.cells[static_cast<size_t>(sel.cell_index)].leaf_id) {
+              auto result =
+                  cells::swap_cells(app_state.system, sel.cluster_index, *selected_leaf_id,
+                                    sel.cluster_index, *sibling_leaf_id, gap_h, gap_v);
+              if (result.has_value()) {
+                center_mouse_on_point(vt, *result);
+              }
+            }
+          }
         }
         break;
       case HotkeyAction::ToggleZen:

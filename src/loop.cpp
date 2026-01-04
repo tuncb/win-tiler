@@ -227,9 +227,27 @@ ActionResult handle_split_decrease(cells::System& system, float gap_horizontal,
 
 ActionResult handle_exchange_siblings(cells::System& system, float gap_horizontal,
                                       float gap_vertical) {
-  if (auto center = cells::exchange_selected_with_sibling(system, gap_horizontal, gap_vertical)) {
+  if (!system.selection.has_value()) {
+    return ActionResult::Continue;
+  }
+
+  auto sibling_leaf_id = cells::get_selected_sibling_leaf_id(system);
+  if (!sibling_leaf_id.has_value()) {
+    return ActionResult::Continue;
+  }
+
+  const auto& sel = *system.selection;
+  const auto& cluster = system.clusters[sel.cluster_index].cluster;
+  auto selected_leaf_id = cluster.cells[static_cast<size_t>(sel.cell_index)].leaf_id;
+  if (!selected_leaf_id.has_value()) {
+    return ActionResult::Continue;
+  }
+
+  auto result = cells::swap_cells(system, sel.cluster_index, *selected_leaf_id, sel.cluster_index,
+                                  *sibling_leaf_id, gap_horizontal, gap_vertical);
+  if (result.has_value()) {
     spdlog::info("Exchanged selected cell with sibling");
-    winapi::set_cursor_pos(center->x, center->y);
+    winapi::set_cursor_pos(result->x, result->y);
   }
   return ActionResult::Continue;
 }

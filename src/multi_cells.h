@@ -256,9 +256,8 @@ adjust_selected_split_ratio(System& system, float delta, float gap_horizontal, f
 // Cell Movement & Exchange
 // ============================================================================
 
-// Exchange selected cell with its sibling
-[[nodiscard]] std::optional<Point>
-exchange_selected_with_sibling(System& system, float gap_horizontal, float gap_vertical);
+// Get the leaf_id of the selected cell's sibling (for use with swap_cells)
+[[nodiscard]] std::optional<size_t> get_selected_sibling_leaf_id(const System& system);
 
 // Swap two cells (exchange leaf IDs)
 tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
