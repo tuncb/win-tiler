@@ -140,16 +140,19 @@ void center_mouse_on_point(const ViewTransform& vt, const cells::Point& center) 
 }
 
 void center_mouse_on_selection(const MultiClusterAppState& app_state, const ViewTransform& vt) {
-  auto selected_rect = cells::get_selected_cell_global_rect(app_state.system);
-  if (selected_rect.has_value()) {
-    float center_x = selected_rect->x + selected_rect->width / 2.0f;
-    float center_y = selected_rect->y + selected_rect->height / 2.0f;
-
-    float screen_x, screen_y;
-    to_screen_point(vt, center_x, center_y, screen_x, screen_y);
-
-    SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
+  if (!app_state.system.selection.has_value()) {
+    return;
   }
+  const auto& sel = *app_state.system.selection;
+  const auto& pc = app_state.system.clusters[sel.cluster_index];
+  auto selected_rect = cells::get_cell_global_rect(pc, sel.cell_index);
+  float center_x = selected_rect.x + selected_rect.width / 2.0f;
+  float center_y = selected_rect.y + selected_rect.height / 2.0f;
+
+  float screen_x, screen_y;
+  to_screen_point(vt, center_x, center_y, screen_x, screen_y);
+
+  SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
 }
 
 std::vector<cells::ClusterCellUpdateInfo> build_current_state(const cells::System& system) {
@@ -192,12 +195,11 @@ void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process
 
 void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTransform& vt,
                                    float gap_horizontal, float gap_vertical) {
-  auto selected = cells::get_selected_cell(app_state.system);
-  if (!selected.has_value()) {
+  if (!app_state.system.selection.has_value()) {
     return;
   }
 
-  auto [cluster_index, cell_index] = *selected;
+  auto [cluster_index, cell_index] = *app_state.system.selection;
   const auto& pc = app_state.system.clusters[cluster_index];
   if (cell_index < 0 || static_cast<size_t>(cell_index) >= pc.cluster.cells.size()) {
     return;
@@ -324,9 +326,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       auto [cluster_index, cell_index] = *cell_at_mouse;
 
       // Update selection if different
-      auto current_sel = cells::get_selected_cell(app_state.system);
-      if (!current_sel.has_value() || current_sel->first != cluster_index ||
-          current_sel->second != cell_index) {
+      const auto& current_sel = app_state.system.selection;
+      if (!current_sel.has_value() || current_sel->cluster_index != cluster_index ||
+          current_sel->cell_index != cell_index) {
         // Set new selection
         app_state.system.selection = cells::CellIndicatorByIndex{cluster_index, cell_index};
       }
@@ -492,7 +494,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
     }
 
     // Draw cells
-    auto selected_cell = cells::get_selected_cell(app_state.system);
+    const auto& selected_cell = app_state.system.selection;
 
     for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
       const auto& pc = app_state.system.clusters[cluster_idx];
@@ -505,8 +507,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
         Rectangle screen_rect = to_screen_rect(vt, global_rect);
 
-        bool is_selected = selected_cell.has_value() && selected_cell->first == cluster_idx &&
-                           selected_cell->second == i;
+        bool is_selected = selected_cell.has_value() &&
+                           selected_cell->cluster_index == cluster_idx &&
+                           selected_cell->cell_index == i;
 
         // Check if this cell is the stored cell
         bool is_stored_cell = false;
@@ -572,8 +575,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       DrawRectangleRec(zen_screen_rect, zen_fill);
 
       // Determine border color based on selection state (same as normal cells)
-      bool is_zen_selected = selected_cell.has_value() && selected_cell->first == cluster_idx &&
-                             selected_cell->second == zen_cell_index;
+      bool is_zen_selected = selected_cell.has_value() &&
+                             selected_cell->cluster_index == cluster_idx &&
+                             selected_cell->cell_index == zen_cell_index;
       const auto& ro = options.visualizationOptions.renderOptions;
       Color border_color =
           is_zen_selected ? to_raylib_color(ro.selected_color) : to_raylib_color(ro.normal_color);

@@ -210,12 +210,6 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 // Query Operations
 // ============================================================================
 
-// Get the currently selected cell across the entire system.
-[[nodiscard]] std::optional<std::pair<size_t, int>> get_selected_cell(const System& system);
-
-// Get the global rect of the currently selected cell.
-[[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
-
 // Get the global rect of a cell, considering zen state.
 // If is_zen is true, returns centered rect at zen_percentage of cluster size.
 // Otherwise returns the cell's normal tree position.

@@ -149,18 +149,17 @@ TEST_SUITE("cells - multi-cluster") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
-    auto selected = cells::get_selected_cell(system);
+    const auto& selected = system.selection;
 
     CHECK(selected.has_value());
-    CHECK(selected->first == 0);  // Cluster index
-    CHECK(selected->second == 0); // Cell index
+    CHECK(selected->cluster_index == 0); // Cluster index
+    CHECK(selected->cell_index == 0);    // Cell index
   }
 
-  TEST_CASE("getSelectedCell returns nullopt with no selection") {
+  TEST_CASE("selection returns nullopt with no clusters") {
     auto system = cells::create_system({}, TEST_GAP_H, TEST_GAP_V);
 
-    auto selected = cells::get_selected_cell(system);
-    CHECK(!selected.has_value());
+    CHECK(!system.selection.has_value());
   }
 
   TEST_CASE("countTotalLeaves counts correctly across clusters") {
@@ -318,17 +317,16 @@ TEST_SUITE("cells - navigation") {
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     // After split, first child is selected
-    auto selected = cells::get_selected_cell(system);
-    REQUIRE(selected.has_value());
+    REQUIRE(system.selection.has_value());
+    int initial_cell_index = system.selection->cell_index;
 
     // Move right should go to sibling
     auto result = cells::move_selection(system, cells::Direction::Right);
     CHECK(result.has_value());
 
-    auto newSelected = cells::get_selected_cell(system);
-    REQUIRE(newSelected.has_value());
-    CHECK(newSelected->first == 0);                 // Same cluster
-    CHECK(newSelected->second != selected->second); // Different cell
+    REQUIRE(system.selection.has_value());
+    CHECK(system.selection->cluster_index == 0);               // Same cluster
+    CHECK(system.selection->cell_index != initial_cell_index); // Different cell
   }
 
   TEST_CASE("moveSelection returns nullopt when no selection") {

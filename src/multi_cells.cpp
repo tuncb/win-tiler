@@ -853,27 +853,6 @@ std::optional<MoveSelectionResult> move_selection(System& system, Direction dir)
 // Operations
 // ============================================================================
 
-std::optional<std::pair<size_t, int>> get_selected_cell(const System& system) {
-  if (!system.selection.has_value()) {
-    return std::nullopt;
-  }
-
-  return std::make_pair(system.selection->cluster_index, system.selection->cell_index);
-}
-
-std::optional<Rect> get_selected_cell_global_rect(const System& system) {
-  auto selected_opt = get_selected_cell(system);
-  if (!selected_opt.has_value()) {
-    return std::nullopt;
-  }
-
-  auto [cluster_index, cell_index] = *selected_opt;
-  assert(cluster_index < system.clusters.size());
-  const PositionedCluster& pc = system.clusters[cluster_index];
-
-  return get_cell_global_rect(pc, cell_index);
-}
-
 static std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
   return cluster.zen_cell_index;
 }
@@ -2095,12 +2074,11 @@ UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cl
 // ============================================================================
 
 static std::optional<Point> get_selected_cell_center(const System& system) {
-  auto selected = get_selected_cell(system);
-  if (!selected.has_value()) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  auto [cluster_index, cell_index] = *selected;
+  auto [cluster_index, cell_index] = *system.selection;
   const auto& pc = system.clusters[cluster_index];
 
   Rect global_rect = get_cell_global_rect(pc, cell_index);
