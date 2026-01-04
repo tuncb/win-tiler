@@ -196,10 +196,8 @@ struct ClusterInitInfo {
 // ============================================================================
 
 // Create a multi-cluster system from cluster initialization info.
-// Optional gap values default to kDefaultCellGapHorizontal/kDefaultCellGapVertical.
-System create_system(const std::vector<ClusterInitInfo>& infos,
-                     float gap_horizontal = kDefaultCellGapHorizontal,
-                     float gap_vertical = kDefaultCellGapVertical);
+System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizontal,
+                     float gap_vertical);
 
 // ============================================================================
 // Coordinate Conversion
