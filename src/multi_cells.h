@@ -48,6 +48,7 @@ struct Cell {
   Rect rect; // logical rectangle in window coordinates
 
   std::optional<size_t> leaf_id; // unique ID for leaf cells only
+  bool is_dead = false;          // true if cell is logically deleted but not yet compacted
 };
 
 struct CellCluster {
