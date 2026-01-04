@@ -109,7 +109,7 @@ constexpr float kDefaultCellGapHorizontal = 10.0f;
 constexpr float kDefaultCellGapVertical = 10.0f;
 
 // ============================================================================
-// Forward declarations for System member function return types
+// Forward declarations for System function return types
 // ============================================================================
 
 struct ClusterCellUpdateInfo {
@@ -184,43 +184,6 @@ struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<CellIndicatorByIndex> selection; // System-wide selection
   SplitMode split_mode = SplitMode::Zigzag;      // How splits determine direction
-
-  // Mutating member functions
-  [[nodiscard]] std::optional<MoveSelectionResult> move_selection(Direction dir);
-  [[nodiscard]] bool toggle_selected_split_dir(float gap_horizontal, float gap_vertical);
-  [[nodiscard]] bool cycle_split_mode();
-  [[nodiscard]] std::optional<Point> set_selected_split_ratio(float new_ratio, float gap_horizontal,
-                                                              float gap_vertical);
-  [[nodiscard]] std::optional<Point> adjust_selected_split_ratio(float delta, float gap_horizontal,
-                                                                 float gap_vertical);
-  [[nodiscard]] std::optional<Point> exchange_selected_with_sibling(float gap_horizontal,
-                                                                    float gap_vertical);
-  tl::expected<Point, std::string> swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                              size_t cluster_index2, size_t leaf_id2,
-                                              float gap_horizontal, float gap_vertical);
-  tl::expected<MoveSuccess, std::string>
-  move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t target_cluster_index,
-            size_t target_leaf_id, float gap_horizontal, float gap_vertical);
-  tl::expected<DropMoveResult, std::string>
-  perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y, float zen_percentage,
-                    bool do_exchange, float gap_horizontal, float gap_vertical);
-  void recompute_rects(float gap_horizontal, float gap_vertical);
-  UpdateResult update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
-                      std::optional<std::pair<size_t, size_t>> new_selection,
-                      std::pair<float, float> pointer_coords, float zen_percentage,
-                      size_t foreground_leaf_id, float gap_horizontal, float gap_vertical);
-
-  // Zen cell operations (per-cluster)
-  [[nodiscard]] bool set_zen(size_t cluster_index, size_t leaf_id);
-  void clear_zen(size_t cluster_index);
-  [[nodiscard]] bool is_cell_zen(size_t cluster_index, int cell_index) const;
-  [[nodiscard]] bool toggle_selected_zen();
-
-  // Update split ratio based on window resize
-  // Returns true if ratio was updated, false otherwise
-  [[nodiscard]] bool update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
-                                                    const Rect& actual_window_rect,
-                                                    float gap_horizontal, float gap_vertical);
 };
 
 struct ClusterInitInfo {
@@ -273,6 +236,74 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 // Returns false if the cell is not a valid non-leaf cell.
 bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float gap_horizontal,
                      float gap_vertical);
+
+// ============================================================================
+// System Operations (formerly member functions)
+// ============================================================================
+
+// Move selection to adjacent cell in given direction
+[[nodiscard]] std::optional<MoveSelectionResult> move_selection(System& system, Direction dir);
+
+// Toggle split direction of selected cell's parent
+[[nodiscard]] bool toggle_selected_split_dir(System& system, float gap_horizontal,
+                                             float gap_vertical);
+
+// Cycle through split modes (Zigzag -> Vertical -> Horizontal -> Zigzag)
+[[nodiscard]] bool cycle_split_mode(System& system);
+
+// Set split ratio of selected cell's parent
+[[nodiscard]] std::optional<Point>
+set_selected_split_ratio(System& system, float new_ratio, float gap_horizontal, float gap_vertical);
+
+// Adjust split ratio of selected cell's parent by delta
+[[nodiscard]] std::optional<Point>
+adjust_selected_split_ratio(System& system, float delta, float gap_horizontal, float gap_vertical);
+
+// Exchange selected cell with its sibling
+[[nodiscard]] std::optional<Point>
+exchange_selected_with_sibling(System& system, float gap_horizontal, float gap_vertical);
+
+// Swap two cells (exchange leaf IDs)
+tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
+                                            size_t cluster_index2, size_t leaf_id2,
+                                            float gap_horizontal, float gap_vertical);
+
+// Move a cell from source to target (delete + split)
+tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_cluster_index,
+                                                 size_t source_leaf_id, size_t target_cluster_index,
+                                                 size_t target_leaf_id, float gap_horizontal,
+                                                 float gap_vertical);
+
+// Perform drop move (drag-and-drop operation)
+tl::expected<DropMoveResult, std::string>
+perform_drop_move(System& system, size_t source_leaf_id, float cursor_x, float cursor_y,
+                  float zen_percentage, bool do_exchange, float gap_horizontal, float gap_vertical);
+
+// Recompute all cell rectangles
+void recompute_rects(System& system, float gap_horizontal, float gap_vertical);
+
+// Update system state with new window configuration
+UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
+                    std::optional<std::pair<size_t, size_t>> new_selection,
+                    std::pair<float, float> pointer_coords, float zen_percentage,
+                    size_t foreground_leaf_id, float gap_horizontal, float gap_vertical);
+
+// Set zen mode for a cell
+[[nodiscard]] bool set_zen(System& system, size_t cluster_index, size_t leaf_id);
+
+// Clear zen mode for a cluster
+void clear_zen(System& system, size_t cluster_index);
+
+// Check if a cell is in zen mode
+[[nodiscard]] bool is_cell_zen(const System& system, size_t cluster_index, int cell_index);
+
+// Toggle zen mode for selected cell
+[[nodiscard]] bool toggle_selected_zen(System& system);
+
+// Update split ratio based on window resize
+[[nodiscard]] bool update_split_ratio_from_resize(System& system, size_t cluster_index,
+                                                  size_t leaf_id, const Rect& actual_window_rect,
+                                                  float gap_horizontal, float gap_vertical);
 
 // ============================================================================
 // Utilities

@@ -113,7 +113,7 @@ std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) 
 
 // Handle keyboard navigation: move selection, set foreground, move mouse to center
 void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
-  auto result = system.move_selection(dir);
+  auto result = cells::move_selection(system, dir);
   if (!result) {
     spdlog::trace("Cannot move selection in direction");
     return;
@@ -129,7 +129,7 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
 }
 
 ActionResult handle_toggle_split(cells::System& system, float gap_horizontal, float gap_vertical) {
-  if (system.toggle_selected_split_dir(gap_horizontal, gap_vertical)) {
+  if (cells::toggle_selected_split_dir(system, gap_horizontal, gap_vertical)) {
     spdlog::info("Toggled split direction");
   }
   return ActionResult::Continue;
@@ -141,7 +141,7 @@ ActionResult handle_exit() {
 }
 
 ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_message) {
-  if (!system.cycle_split_mode()) {
+  if (!cells::cycle_split_mode(system)) {
     spdlog::error("Failed to cycle split mode");
   }
   auto mode_str = magic_enum::enum_name(system.split_mode);
@@ -175,7 +175,7 @@ ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& s
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
-      auto result = system.swap_cells(system.selection->cluster_index, *cell.leaf_id,
+      auto result = cells::swap_cells(system, system.selection->cluster_index, *cell.leaf_id,
                                       stored_cell->cluster_index, stored_cell->leaf_id,
                                       gap_horizontal, gap_vertical);
       if (result.has_value()) {
@@ -193,7 +193,7 @@ ActionResult handle_move(cells::System& system, std::optional<StoredCell>& store
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
-      auto result = system.move_cell(stored_cell->cluster_index, stored_cell->leaf_id,
+      auto result = cells::move_cell(system, stored_cell->cluster_index, stored_cell->leaf_id,
                                      system.selection->cluster_index, *cell.leaf_id, gap_horizontal,
                                      gap_vertical);
       if (result.has_value()) {
@@ -207,7 +207,8 @@ ActionResult handle_move(cells::System& system, std::optional<StoredCell>& store
 
 ActionResult handle_split_increase(cells::System& system, float gap_horizontal,
                                    float gap_vertical) {
-  if (auto center = system.adjust_selected_split_ratio(0.05f, gap_horizontal, gap_vertical)) {
+  if (auto center =
+          cells::adjust_selected_split_ratio(system, 0.05f, gap_horizontal, gap_vertical)) {
     spdlog::info("Increased split ratio");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -216,7 +217,8 @@ ActionResult handle_split_increase(cells::System& system, float gap_horizontal,
 
 ActionResult handle_split_decrease(cells::System& system, float gap_horizontal,
                                    float gap_vertical) {
-  if (auto center = system.adjust_selected_split_ratio(-0.05f, gap_horizontal, gap_vertical)) {
+  if (auto center =
+          cells::adjust_selected_split_ratio(system, -0.05f, gap_horizontal, gap_vertical)) {
     spdlog::info("Decreased split ratio");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -225,7 +227,7 @@ ActionResult handle_split_decrease(cells::System& system, float gap_horizontal,
 
 ActionResult handle_exchange_siblings(cells::System& system, float gap_horizontal,
                                       float gap_vertical) {
-  if (auto center = system.exchange_selected_with_sibling(gap_horizontal, gap_vertical)) {
+  if (auto center = cells::exchange_selected_with_sibling(system, gap_horizontal, gap_vertical)) {
     spdlog::info("Exchanged selected cell with sibling");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -233,7 +235,7 @@ ActionResult handle_exchange_siblings(cells::System& system, float gap_horizonta
 }
 
 ActionResult handle_toggle_zen(cells::System& system) {
-  if (system.toggle_selected_zen()) {
+  if (cells::toggle_selected_zen(system)) {
     spdlog::info("Toggled zen mode");
   }
   return ActionResult::Continue;
@@ -241,7 +243,7 @@ ActionResult handle_toggle_zen(cells::System& system) {
 
 ActionResult handle_reset_split_ratio(cells::System& system, float gap_horizontal,
                                       float gap_vertical) {
-  if (auto center = system.set_selected_split_ratio(0.5f, gap_horizontal, gap_vertical)) {
+  if (auto center = cells::set_selected_split_ratio(system, 0.5f, gap_horizontal, gap_vertical)) {
     spdlog::info("Reset split ratio to 50%%");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -271,7 +273,7 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
   bool do_exchange = input_state.is_ctrl_pressed;
 
-  auto result = system.perform_drop_move(source_leaf_id, cursor_x, cursor_y, zen_percentage,
+  auto result = cells::perform_drop_move(system, source_leaf_id, cursor_x, cursor_y, zen_percentage,
                                          do_exchange, gap_horizontal, gap_vertical);
   if (result.has_value()) {
     winapi::set_cursor_pos(result->cursor_pos.x, result->cursor_pos.y);
@@ -345,7 +347,7 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
   }
 
   // Update split ratio
-  bool result = system.update_split_ratio_from_resize(cluster_index, leaf_id, actual_rect,
+  bool result = cells::update_split_ratio_from_resize(system, cluster_index, leaf_id, actual_rect,
                                                       gap_horizontal, gap_vertical);
   if (result) {
     spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
@@ -464,8 +466,8 @@ void run_update_and_apply_tiles(cells::System& system, const GlobalOptions& opti
   float gap_h = options.gapOptions.horizontal;
   float gap_v = options.gapOptions.vertical;
 
-  auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
-                              fg_leaf_id, gap_h, gap_v);
+  auto result = cells::update(system, current_state, std::nullopt, {cursor_x, cursor_y},
+                              zen_percentage, fg_leaf_id, gap_h, gap_v);
 
   // Apply foreground window change
   if (result.selection_update.window_to_foreground.has_value()) {
@@ -528,7 +530,7 @@ void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& syste
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
-  system.recompute_rects(options.gapOptions.horizontal, options.gapOptions.vertical);
+  cells::recompute_rects(system, options.gapOptions.horizontal, options.gapOptions.vertical);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
 }
@@ -665,8 +667,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
     size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
     auto result =
-        system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage, fg_leaf_id,
-                      options.gapOptions.horizontal, options.gapOptions.vertical);
+        cells::update(system, current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
+                      fg_leaf_id, options.gapOptions.horizontal, options.gapOptions.vertical);
 
     // Apply foreground window change (selection already updated inside update())
     if (result.selection_update.window_to_foreground.has_value()) {

@@ -738,23 +738,23 @@ find_next_leaf_in_direction(const System& system, size_t current_cluster_index,
   return best_candidate;
 }
 
-std::optional<MoveSelectionResult> System::move_selection(Direction dir) {
-  if (!selection.has_value()) {
+std::optional<MoveSelectionResult> move_selection(System& system, Direction dir) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  auto next_opt =
-      find_next_leaf_in_direction(*this, selection->cluster_index, selection->cell_index, dir);
+  auto next_opt = find_next_leaf_in_direction(system, system.selection->cluster_index,
+                                              system.selection->cell_index, dir);
   if (!next_opt.has_value()) {
     return std::nullopt;
   }
 
   auto [next_cluster_index, next_cell_index] = *next_opt;
-  selection = CellIndicatorByIndex{next_cluster_index, next_cell_index};
+  system.selection = CellIndicatorByIndex{next_cluster_index, next_cell_index};
 
   // Clear zen if moving to non-zen cell in a cluster that has zen
-  assert(next_cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[next_cluster_index];
+  assert(next_cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[next_cluster_index];
   if (pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index != next_cell_index) {
     pc.cluster.zen_cell_index.reset();
   }
@@ -825,27 +825,27 @@ static std::optional<Rect> get_cluster_zen_display_rect(const System& system, si
   return get_cell_display_rect(pc, *pc.cluster.zen_cell_index, true, zen_percentage);
 }
 
-bool System::toggle_selected_split_dir(float gap_horizontal, float gap_vertical) {
-  if (!selection.has_value()) {
+bool toggle_selected_split_dir(System& system, float gap_horizontal, float gap_vertical) {
+  if (!system.selection.has_value()) {
     return false;
   }
 
-  assert(selection->cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[selection->cluster_index];
+  assert(system.selection->cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
-  return toggle_split_dir(pc.cluster, selection->cell_index, gap_horizontal, gap_vertical);
+  return toggle_split_dir(pc.cluster, system.selection->cell_index, gap_horizontal, gap_vertical);
 }
 
-bool System::cycle_split_mode() {
-  switch (split_mode) {
+bool cycle_split_mode(System& system) {
+  switch (system.split_mode) {
   case SplitMode::Zigzag:
-    split_mode = SplitMode::Vertical;
+    system.split_mode = SplitMode::Vertical;
     break;
   case SplitMode::Vertical:
-    split_mode = SplitMode::Horizontal;
+    system.split_mode = SplitMode::Horizontal;
     break;
   case SplitMode::Horizontal:
-    split_mode = SplitMode::Zigzag;
+    system.split_mode = SplitMode::Zigzag;
     break;
   }
   return true;
@@ -877,16 +877,16 @@ bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float 
   return true;
 }
 
-std::optional<Point> System::set_selected_split_ratio(float new_ratio, float gap_horizontal,
-                                                      float gap_vertical) {
-  if (!selection.has_value()) {
+std::optional<Point> set_selected_split_ratio(System& system, float new_ratio, float gap_horizontal,
+                                              float gap_vertical) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  assert(selection->cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[selection->cluster_index];
+  assert(system.selection->cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
-  int selected_index = selection->cell_index;
+  int selected_index = system.selection->cell_index;
 
   // If the selected cell is a leaf, get its parent
   if (is_leaf(pc.cluster, selected_index)) {
@@ -901,19 +901,19 @@ std::optional<Point> System::set_selected_split_ratio(float new_ratio, float gap
     return std::nullopt;
   }
 
-  return get_selected_cell_center(*this);
+  return get_selected_cell_center(system);
 }
 
-std::optional<Point> System::adjust_selected_split_ratio(float delta, float gap_horizontal,
-                                                         float gap_vertical) {
-  if (!selection.has_value()) {
+std::optional<Point> adjust_selected_split_ratio(System& system, float delta, float gap_horizontal,
+                                                 float gap_vertical) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  assert(selection->cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[selection->cluster_index];
+  assert(system.selection->cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
-  int selected_index = selection->cell_index;
+  int selected_index = system.selection->cell_index;
   int parent_index = selected_index;
 
   // If the selected cell is a leaf, get its parent
@@ -942,19 +942,19 @@ std::optional<Point> System::adjust_selected_split_ratio(float delta, float gap_
     return std::nullopt;
   }
 
-  return get_selected_cell_center(*this);
+  return get_selected_cell_center(system);
 }
 
-std::optional<Point> System::exchange_selected_with_sibling(float gap_horizontal,
-                                                            float gap_vertical) {
-  if (!selection.has_value()) {
+std::optional<Point> exchange_selected_with_sibling(System& system, float gap_horizontal,
+                                                    float gap_vertical) {
+  if (!system.selection.has_value()) {
     return std::nullopt;
   }
 
-  assert(selection->cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[selection->cluster_index];
+  assert(system.selection->cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
-  int selected_index = selection->cell_index;
+  int selected_index = system.selection->cell_index;
   if (!is_leaf(pc.cluster, selected_index)) {
     return std::nullopt;
   }
@@ -977,12 +977,12 @@ std::optional<Point> System::exchange_selected_with_sibling(float gap_horizontal
   // Recompute rects
   recompute_subtree_rects(pc.cluster, parent_index, gap_horizontal, gap_vertical);
 
-  return get_selected_cell_center(*this);
+  return get_selected_cell_center(system);
 }
 
-bool System::set_zen(size_t cluster_index, size_t leaf_id) {
-  assert(cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[cluster_index];
+bool set_zen(System& system, size_t cluster_index, size_t leaf_id) {
+  assert(cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[cluster_index];
   auto cell_index_opt = find_cell_by_leaf_id(pc.cluster, leaf_id);
   if (!cell_index_opt.has_value()) {
     return false;
@@ -994,36 +994,36 @@ bool System::set_zen(size_t cluster_index, size_t leaf_id) {
   return true;
 }
 
-void System::clear_zen(size_t cluster_index) {
-  assert(cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[cluster_index];
+void clear_zen(System& system, size_t cluster_index) {
+  assert(cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[cluster_index];
   pc.cluster.zen_cell_index.reset();
 }
 
-bool System::is_cell_zen(size_t cluster_index, int cell_index) const {
-  assert(cluster_index < clusters.size());
-  const PositionedCluster& pc = clusters[cluster_index];
+bool is_cell_zen(const System& system, size_t cluster_index, int cell_index) {
+  assert(cluster_index < system.clusters.size());
+  const PositionedCluster& pc = system.clusters[cluster_index];
   return pc.cluster.zen_cell_index.has_value() && *pc.cluster.zen_cell_index == cell_index;
 }
 
-bool System::toggle_selected_zen() {
-  if (!selection.has_value()) {
+bool toggle_selected_zen(System& system) {
+  if (!system.selection.has_value()) {
     return false;
   }
 
-  assert(selection->cluster_index < clusters.size());
-  PositionedCluster& pc = clusters[selection->cluster_index];
+  assert(system.selection->cluster_index < system.clusters.size());
+  PositionedCluster& pc = system.clusters[system.selection->cluster_index];
 
-  if (!is_leaf(pc.cluster, selection->cell_index)) {
+  if (!is_leaf(pc.cluster, system.selection->cell_index)) {
     return false;
   }
 
   // Toggle: if already zen, clear; otherwise set
   if (pc.cluster.zen_cell_index.has_value() &&
-      *pc.cluster.zen_cell_index == selection->cell_index) {
+      *pc.cluster.zen_cell_index == system.selection->cell_index) {
     pc.cluster.zen_cell_index.reset();
   } else {
-    pc.cluster.zen_cell_index = selection->cell_index;
+    pc.cluster.zen_cell_index = system.selection->cell_index;
   }
 
   return true;
@@ -1131,16 +1131,16 @@ bool update_ratio_for_edge(CellCluster& cluster, const PositionedCluster& pc, in
 }
 } // anonymous namespace
 
-bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
-                                            const Rect& actual_window_rect, float gap_horizontal,
-                                            float gap_vertical) {
+bool update_split_ratio_from_resize(System& system, size_t cluster_index, size_t leaf_id,
+                                    const Rect& actual_window_rect, float gap_horizontal,
+                                    float gap_vertical) {
   // Validate cluster index
-  if (cluster_index >= clusters.size()) {
+  if (cluster_index >= system.clusters.size()) {
     spdlog::trace("update_split_ratio_from_resize: invalid cluster index {}", cluster_index);
     return false;
   }
 
-  PositionedCluster& pc = clusters[cluster_index];
+  PositionedCluster& pc = system.clusters[cluster_index];
 
   // Find cell by leaf_id
   auto cell_index_opt = find_cell_by_leaf_id(pc.cluster, leaf_id);
@@ -1209,18 +1209,18 @@ bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id
   return any_updated;
 }
 
-tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                                    size_t cluster_index2, size_t leaf_id2,
-                                                    float gap_horizontal, float gap_vertical) {
+tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
+                                            size_t cluster_index2, size_t leaf_id2,
+                                            float gap_horizontal, float gap_vertical) {
   // Validate cluster indices
-  if (cluster_index1 >= clusters.size()) {
+  if (cluster_index1 >= system.clusters.size()) {
     return tl::unexpected("Cluster 1 not found");
   }
-  if (cluster_index2 >= clusters.size()) {
+  if (cluster_index2 >= system.clusters.size()) {
     return tl::unexpected("Cluster 2 not found");
   }
-  PositionedCluster& pc1 = clusters[cluster_index1];
-  PositionedCluster& pc2 = clusters[cluster_index2];
+  PositionedCluster& pc1 = system.clusters[cluster_index1];
+  PositionedCluster& pc2 = system.clusters[cluster_index2];
 
   // Find cells by leaf_id
   auto idx1_opt = find_cell_by_leaf_id(pc1.cluster, leaf_id1);
@@ -1238,7 +1238,7 @@ tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_
 
   // Check if same cell (no-op)
   if (cluster_index1 == cluster_index2 && leaf_id1 == leaf_id2) {
-    return get_selected_cell_center(*this).value_or(Point{0, 0});
+    return get_selected_cell_center(system).value_or(Point{0, 0});
   }
 
   // Validate both are leaves
@@ -1310,21 +1310,22 @@ tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_
     // because the selection tracks cell index, not leaf_id
   }
 
-  return get_selected_cell_center(*this).value_or(Point{0, 0});
+  return get_selected_cell_center(system).value_or(Point{0, 0});
 }
 
-tl::expected<MoveSuccess, std::string>
-System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t target_cluster_index,
-                  size_t target_leaf_id, float gap_horizontal, float gap_vertical) {
+tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_cluster_index,
+                                                 size_t source_leaf_id, size_t target_cluster_index,
+                                                 size_t target_leaf_id, float gap_horizontal,
+                                                 float gap_vertical) {
   // Validate cluster indices
-  if (source_cluster_index >= clusters.size()) {
+  if (source_cluster_index >= system.clusters.size()) {
     return tl::unexpected("Source cluster not found");
   }
-  if (target_cluster_index >= clusters.size()) {
+  if (target_cluster_index >= system.clusters.size()) {
     return tl::unexpected("Target cluster not found");
   }
-  PositionedCluster& src_pc = clusters[source_cluster_index];
-  PositionedCluster& tgt_pc = clusters[target_cluster_index];
+  PositionedCluster& src_pc = system.clusters[source_cluster_index];
+  PositionedCluster& tgt_pc = system.clusters[target_cluster_index];
 
   // Find cells by leaf_id
   auto src_idx_opt = find_cell_by_leaf_id(src_pc.cluster, source_leaf_id);
@@ -1339,7 +1340,7 @@ System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t tar
 
   // Check if same cell (no-op)
   if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
-    Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+    Point center = get_selected_cell_center(system).value_or(Point{0, 0});
     return MoveSuccess{*src_idx_opt, source_cluster_index, center};
   }
 
@@ -1366,19 +1367,19 @@ System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t tar
       recompute_subtree_rects(src_pc.cluster, parent_index, gap_horizontal, gap_vertical);
 
       // Selection stays valid (cell indices don't change, only their positions)
-      Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+      Point center = get_selected_cell_center(system).value_or(Point{0, 0});
       return MoveSuccess{*src_idx_opt, source_cluster_index, center};
     }
   }
 
   // Remember if source or target was selected
-  bool source_was_selected = selection.has_value() &&
-                             selection->cluster_index == source_cluster_index &&
-                             selection->cell_index == *src_idx_opt;
+  bool source_was_selected = system.selection.has_value() &&
+                             system.selection->cluster_index == source_cluster_index &&
+                             system.selection->cell_index == *src_idx_opt;
 
-  bool target_was_selected = selection.has_value() &&
-                             selection->cluster_index == target_cluster_index &&
-                             selection->cell_index == *tgt_idx_opt;
+  bool target_was_selected = system.selection.has_value() &&
+                             system.selection->cluster_index == target_cluster_index &&
+                             system.selection->cell_index == *tgt_idx_opt;
 
   // Store source's leaf_id
   size_t saved_leaf_id = source_leaf_id;
@@ -1393,15 +1394,15 @@ System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t tar
 
   // Re-find target by leaf_id (index may have changed if same cluster)
   // Note: tgt_pc is a reference, so if source == target cluster, it's already updated
-  tgt_idx_opt = find_cell_by_leaf_id(clusters[target_cluster_index].cluster, target_leaf_id);
+  tgt_idx_opt = find_cell_by_leaf_id(system.clusters[target_cluster_index].cluster, target_leaf_id);
   if (!tgt_idx_opt.has_value()) {
     return tl::unexpected("Target lost after delete");
   }
 
   // Determine split direction based on mode and split target
-  SplitDir split_dir =
-      determine_split_dir(clusters[target_cluster_index].cluster, *tgt_idx_opt, split_mode);
-  auto split_result = split_leaf(clusters[target_cluster_index].cluster, *tgt_idx_opt,
+  SplitDir split_dir = determine_split_dir(system.clusters[target_cluster_index].cluster,
+                                           *tgt_idx_opt, system.split_mode);
+  auto split_result = split_leaf(system.clusters[target_cluster_index].cluster, *tgt_idx_opt,
                                  gap_horizontal, gap_vertical, saved_leaf_id, split_dir);
 
   if (!split_result.has_value()) {
@@ -1411,14 +1412,15 @@ System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t tar
   // Find the new cell (second child)
   int first_child_idx = split_result->new_selection_index;
   Cell& first_child =
-      clusters[target_cluster_index].cluster.cells[static_cast<size_t>(first_child_idx)];
+      system.clusters[target_cluster_index].cluster.cells[static_cast<size_t>(first_child_idx)];
 
   if (!first_child.parent.has_value()) {
     return tl::unexpected("Could not find parent after split");
   }
 
   int parent_idx = *first_child.parent;
-  Cell& parent = clusters[target_cluster_index].cluster.cells[static_cast<size_t>(parent_idx)];
+  Cell& parent =
+      system.clusters[target_cluster_index].cluster.cells[static_cast<size_t>(parent_idx)];
 
   if (!parent.second_child.has_value()) {
     return tl::unexpected("Could not find new cell after split");
@@ -1429,40 +1431,41 @@ System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t tar
   // Update selection if source or target was selected
   if (source_was_selected) {
     // Source was selected - follow it to its new position
-    selection = CellIndicatorByIndex{target_cluster_index, new_cell_idx};
+    system.selection = CellIndicatorByIndex{target_cluster_index, new_cell_idx};
 
     // Clear zen if selecting non-zen cell in a cluster with zen
-    if (clusters[target_cluster_index].cluster.zen_cell_index.has_value() &&
-        *clusters[target_cluster_index].cluster.zen_cell_index != new_cell_idx) {
-      clusters[target_cluster_index].cluster.zen_cell_index.reset();
+    if (system.clusters[target_cluster_index].cluster.zen_cell_index.has_value() &&
+        *system.clusters[target_cluster_index].cluster.zen_cell_index != new_cell_idx) {
+      system.clusters[target_cluster_index].cluster.zen_cell_index.reset();
     }
   } else if (target_was_selected) {
     // Target was selected - it's now a parent, so select its first child
     // (which keeps the target's original leaf_id)
-    selection = CellIndicatorByIndex{target_cluster_index, first_child_idx};
+    system.selection = CellIndicatorByIndex{target_cluster_index, first_child_idx};
 
     // Clear zen if selecting non-zen cell in a cluster with zen
-    if (clusters[target_cluster_index].cluster.zen_cell_index.has_value() &&
-        *clusters[target_cluster_index].cluster.zen_cell_index != first_child_idx) {
-      clusters[target_cluster_index].cluster.zen_cell_index.reset();
+    if (system.clusters[target_cluster_index].cluster.zen_cell_index.has_value() &&
+        *system.clusters[target_cluster_index].cluster.zen_cell_index != first_child_idx) {
+      system.clusters[target_cluster_index].cluster.zen_cell_index.reset();
     }
   }
 
-  Point center = get_selected_cell_center(*this).value_or(Point{0, 0});
+  Point center = get_selected_cell_center(system).value_or(Point{0, 0});
   return MoveSuccess{new_cell_idx, target_cluster_index, center};
 }
 
-tl::expected<DropMoveResult, std::string>
-System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
-                          float zen_percentage, bool do_exchange, float gap_horizontal,
-                          float gap_vertical) {
+tl::expected<DropMoveResult, std::string> perform_drop_move(System& system, size_t source_leaf_id,
+                                                            float cursor_x, float cursor_y,
+                                                            float zen_percentage, bool do_exchange,
+                                                            float gap_horizontal,
+                                                            float gap_vertical) {
   // Check if source window is managed by the system
-  if (!has_leaf_id(*this, source_leaf_id)) {
+  if (!has_leaf_id(system, source_leaf_id)) {
     return tl::unexpected("Source window not managed by system");
   }
 
   // Find cell at cursor position (target)
-  auto target_cell = find_cell_at_point(*this, cursor_x, cursor_y, zen_percentage);
+  auto target_cell = find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
   if (!target_cell.has_value()) {
     return tl::unexpected("No cell at cursor position");
   }
@@ -1470,12 +1473,12 @@ System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
   auto [target_cluster_index, target_cell_index] = *target_cell;
 
   // Skip if target cluster has fullscreen app
-  if (clusters[target_cluster_index].cluster.has_fullscreen_cell) {
+  if (system.clusters[target_cluster_index].cluster.has_fullscreen_cell) {
     return tl::unexpected("Target cluster has fullscreen app");
   }
 
   // Get target cell's leaf_id
-  const auto& target_pc = clusters[target_cluster_index];
+  const auto& target_pc = system.clusters[target_cluster_index];
   const auto& target_cell_data = target_pc.cluster.cells[static_cast<size_t>(target_cell_index)];
   if (!target_cell_data.leaf_id.has_value()) {
     return tl::unexpected("Target cell has no leaf_id");
@@ -1483,7 +1486,7 @@ System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
   size_t target_leaf_id = *target_cell_data.leaf_id;
 
   // Find which cluster contains the source
-  auto source_cluster_opt = find_cluster_by_leaf_id(*this, source_leaf_id);
+  auto source_cluster_opt = find_cluster_by_leaf_id(system, source_leaf_id);
   if (!source_cluster_opt.has_value()) {
     return tl::unexpected("Source cluster not found");
   }
@@ -1496,7 +1499,7 @@ System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
 
   if (do_exchange) {
     // Exchange: swap source and target positions
-    auto result = swap_cells(source_cluster_index, source_leaf_id, target_cluster_index,
+    auto result = swap_cells(system, source_cluster_index, source_leaf_id, target_cluster_index,
                              target_leaf_id, gap_horizontal, gap_vertical);
     if (result.has_value()) {
       spdlog::info("Drop move: exchanged windows between cluster {} and cluster {}",
@@ -1507,7 +1510,7 @@ System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
     }
   } else {
     // Move: source becomes sibling of target
-    auto result = move_cell(source_cluster_index, source_leaf_id, target_cluster_index,
+    auto result = move_cell(system, source_cluster_index, source_leaf_id, target_cluster_index,
                             target_leaf_id, gap_horizontal, gap_vertical);
     if (result.has_value()) {
       spdlog::info("Drop move: moved window from cluster {} to cluster {}", source_cluster_index,
@@ -1523,8 +1526,8 @@ System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
 // Gap/Rect Recalculation
 // ============================================================================
 
-void System::recompute_rects(float gap_horizontal, float gap_vertical) {
-  for (auto& pc : clusters) {
+void recompute_rects(System& system, float gap_horizontal, float gap_vertical) {
+  for (auto& pc : system.clusters) {
     auto& cluster = pc.cluster;
     if (cluster.cells.empty()) {
       continue;
@@ -1781,10 +1784,10 @@ static void redirect_windows_to_cluster(std::vector<ClusterCellUpdateInfo>& cell
   }
 }
 
-UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
-                            std::optional<std::pair<size_t, size_t>> new_selection,
-                            std::pair<float, float> pointer_coords, float zen_percentage,
-                            size_t foreground_leaf_id, float gap_horizontal, float gap_vertical) {
+UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
+                    std::optional<std::pair<size_t, size_t>> new_selection,
+                    std::pair<float, float> pointer_coords, float zen_percentage,
+                    size_t foreground_leaf_id, float gap_horizontal, float gap_vertical) {
   UpdateResult result;
   result.selection_updated = false;
 
@@ -1793,8 +1796,8 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
 
   // Find empty cluster under pointer for redirection
   std::optional<size_t> pointer_cluster_index;
-  for (size_t ci = 0; ci < clusters.size(); ++ci) {
-    const auto& pc = clusters[ci];
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& pc = system.clusters[ci];
     if (is_point_in_cluster(pc, pointer_coords.first, pointer_coords.second) &&
         is_cluster_empty(pc.cluster)) {
       pointer_cluster_index = ci;
@@ -1810,8 +1813,8 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
     redirect_target = *pointer_cluster_index;
   }
   // Priority 2: Selected cluster (if in updates)
-  else if (selection.has_value()) {
-    size_t selected_cluster_index = selection->cluster_index;
+  else if (system.selection.has_value()) {
+    size_t selected_cluster_index = system.selection->cluster_index;
     bool selected_cluster_in_updates = false;
     for (const auto& upd : redirected_cell_ids) {
       if (upd.cluster_index == selected_cluster_index) {
@@ -1826,14 +1829,14 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
 
   // Redirect new windows to target cluster
   if (redirect_target.has_value()) {
-    auto new_windows = find_unmanaged_windows(redirected_cell_ids, clusters);
+    auto new_windows = find_unmanaged_windows(redirected_cell_ids, system.clusters);
     redirect_windows_to_cluster(redirected_cell_ids, new_windows, *redirect_target);
   }
 
   // Process each cluster update
   for (const auto& cluster_update : redirected_cell_ids) {
     // Bounds check for external input
-    if (cluster_update.cluster_index >= clusters.size()) {
+    if (cluster_update.cluster_index >= system.clusters.size()) {
       result.errors.push_back({
           UpdateError::Type::ClusterNotFound, cluster_update.cluster_index,
           0 // no specific leaf ID
@@ -1841,7 +1844,7 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
       continue;
     }
 
-    PositionedCluster& pc = clusters[cluster_update.cluster_index];
+    PositionedCluster& pc = system.clusters[cluster_update.cluster_index];
 
     // Update fullscreen state for this cluster
     pc.cluster.has_fullscreen_cell = cluster_update.has_fullscreen_cell;
@@ -1879,21 +1882,23 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
       result.deleted_leaf_ids.push_back(leaf_id);
 
       // If deletion succeeded and returned a new selection, update it if this was selected
-      if (selection.has_value() && selection->cluster_index == cluster_update.cluster_index &&
-          selection->cell_index == *cell_index_opt) {
+      if (system.selection.has_value() &&
+          system.selection->cluster_index == cluster_update.cluster_index &&
+          system.selection->cell_index == *cell_index_opt) {
         if (new_selection_opt.has_value()) {
-          selection->cell_index = *new_selection_opt;
+          system.selection->cell_index = *new_selection_opt;
         } else {
-          selection.reset();
+          system.selection.reset();
         }
       }
     }
 
     // Determine starting split index for this cluster (prefer selection)
     int split_from_index = -1;
-    if (selection.has_value() && selection->cluster_index == cluster_update.cluster_index &&
-        is_leaf(pc.cluster, selection->cell_index)) {
-      split_from_index = selection->cell_index;
+    if (system.selection.has_value() &&
+        system.selection->cluster_index == cluster_update.cluster_index &&
+        is_leaf(pc.cluster, system.selection->cell_index)) {
+      split_from_index = system.selection->cell_index;
     }
 
     // Handle additions
@@ -1918,7 +1923,7 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
       }
 
       // Determine split direction based on mode
-      SplitDir split_dir = determine_split_dir(pc.cluster, current_selection, split_mode);
+      SplitDir split_dir = determine_split_dir(pc.cluster, current_selection, system.split_mode);
       auto result_opt = split_leaf(pc.cluster, current_selection, gap_horizontal, gap_vertical,
                                    leaf_id, split_dir);
 
@@ -1939,15 +1944,15 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
   if (new_selection.has_value()) {
     auto [cluster_index, leaf_id] = *new_selection;
 
-    if (cluster_index >= clusters.size()) {
+    if (cluster_index >= system.clusters.size()) {
       result.errors.push_back({UpdateError::Type::SelectionInvalid, cluster_index, leaf_id});
     } else {
-      PositionedCluster& sel_pc = clusters[cluster_index];
+      PositionedCluster& sel_pc = system.clusters[cluster_index];
       auto cell_index_opt = find_cell_by_leaf_id(sel_pc.cluster, leaf_id);
       if (!cell_index_opt.has_value()) {
         result.errors.push_back({UpdateError::Type::SelectionInvalid, cluster_index, leaf_id});
       } else {
-        selection = CellIndicatorByIndex{cluster_index, *cell_index_opt};
+        system.selection = CellIndicatorByIndex{cluster_index, *cell_index_opt};
         result.selection_updated = true;
 
         // Clear zen if selecting non-zen cell in a cluster with zen
@@ -1960,30 +1965,30 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
   }
 
   // Compute tile layout for all windows
-  result.tile_updates = calculate_tile_layout(*this, zen_percentage);
+  result.tile_updates = calculate_tile_layout(system, zen_percentage);
 
   // Compute selection update based on cursor position and apply to system.selection
   float cursor_x = pointer_coords.first;
   float cursor_y = pointer_coords.second;
   result.selection_update =
-      compute_selection_update(*this, cursor_x, cursor_y, zen_percentage, foreground_leaf_id);
+      compute_selection_update(system, cursor_x, cursor_y, zen_percentage, foreground_leaf_id);
 
   if (result.selection_update.needs_update && result.selection_update.new_selection.has_value()) {
-    selection = *result.selection_update.new_selection;
+    system.selection = *result.selection_update.new_selection;
 
     // Clear zen if selecting non-zen cell in a cluster with zen
-    size_t sel_cluster_idx = selection->cluster_index;
-    int sel_cell_idx = selection->cell_index;
-    if (clusters[sel_cluster_idx].cluster.zen_cell_index.has_value() &&
-        *clusters[sel_cluster_idx].cluster.zen_cell_index != sel_cell_idx) {
-      clusters[sel_cluster_idx].cluster.zen_cell_index.reset();
+    size_t sel_cluster_idx = system.selection->cluster_index;
+    int sel_cell_idx = system.selection->cell_index;
+    if (system.clusters[sel_cluster_idx].cluster.zen_cell_index.has_value() &&
+        *system.clusters[sel_cluster_idx].cluster.zen_cell_index != sel_cell_idx) {
+      system.clusters[sel_cluster_idx].cluster.zen_cell_index.reset();
     }
   }
 
   // Compute cursor position for newly added windows
   if (!result.added_leaf_ids.empty()) {
     size_t last_added_id = result.added_leaf_ids.back();
-    result.new_window_cursor_pos = find_cell_center_by_leaf_id(*this, last_added_id);
+    result.new_window_cursor_pos = find_cell_center_by_leaf_id(system, last_added_id);
   }
 
   return result;
