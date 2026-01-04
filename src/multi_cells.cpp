@@ -33,6 +33,12 @@ struct DeleteResult {
   std::vector<int> deleted_indices;       // Indices to remove during compaction
 };
 
+// Result of splitting a leaf cell.
+struct SplitResult {
+  size_t new_leaf_id;
+  int new_selection_index;
+};
+
 // Helper to check if a cell is an orphan (logically deleted but not yet compacted)
 // Orphan = no parent AND not the root (index 0)
 static bool is_orphan(const CellCluster& cluster, int cell_index) {

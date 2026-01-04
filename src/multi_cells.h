@@ -72,12 +72,6 @@ enum class Direction {
   Down,
 };
 
-// Result of splitting a leaf cell.
-struct SplitResult {
-  size_t new_leaf_id;
-  int new_selection_index;
-};
-
 // Returns true if the cell at cell_index exists and has no children.
 [[nodiscard]] bool is_leaf(const CellCluster& state, int cell_index);
 
