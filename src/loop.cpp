@@ -298,7 +298,6 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
     return true;
   }
 
-  spdlog::trace("Mouse drop: {}", result.error());
   return false;
 }
 

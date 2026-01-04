@@ -1270,15 +1270,15 @@ bool update_split_ratio_from_resize(System& system, size_t cluster_index, size_t
   return any_updated;
 }
 
-tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
-                                            size_t cluster_index2, size_t leaf_id2,
-                                            float gap_horizontal, float gap_vertical) {
+std::optional<Point> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
+                                size_t cluster_index2, size_t leaf_id2, float gap_horizontal,
+                                float gap_vertical) {
   // Validate cluster indices
   if (cluster_index1 >= system.clusters.size()) {
-    return tl::unexpected("Cluster 1 not found");
+    return std::nullopt;
   }
   if (cluster_index2 >= system.clusters.size()) {
-    return tl::unexpected("Cluster 2 not found");
+    return std::nullopt;
   }
   PositionedCluster& pc1 = system.clusters[cluster_index1];
   PositionedCluster& pc2 = system.clusters[cluster_index2];
@@ -1288,10 +1288,10 @@ tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index
   auto idx2_opt = find_cell_by_leaf_id(pc2.cluster, leaf_id2);
 
   if (!idx1_opt.has_value()) {
-    return tl::unexpected("Leaf 1 not found");
+    return std::nullopt;
   }
   if (!idx2_opt.has_value()) {
-    return tl::unexpected("Leaf 2 not found");
+    return std::nullopt;
   }
 
   int idx1 = *idx1_opt;
@@ -1304,10 +1304,10 @@ tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index
 
   // Validate both are leaves
   if (!is_leaf(pc1.cluster, idx1)) {
-    return tl::unexpected("Cell 1 is not a leaf");
+    return std::nullopt;
   }
   if (!is_leaf(pc2.cluster, idx2)) {
-    return tl::unexpected("Cell 2 is not a leaf");
+    return std::nullopt;
   }
 
   if (cluster_index1 == cluster_index2) {
@@ -1379,16 +1379,16 @@ tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index
   return get_selected_cell_center(system).value_or(Point{0, 0});
 }
 
-tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_cluster_index,
-                                                 size_t source_leaf_id, size_t target_cluster_index,
-                                                 size_t target_leaf_id, float gap_horizontal,
-                                                 float gap_vertical) {
+std::optional<MoveSuccess> move_cell(System& system, size_t source_cluster_index,
+                                     size_t source_leaf_id, size_t target_cluster_index,
+                                     size_t target_leaf_id, float gap_horizontal,
+                                     float gap_vertical) {
   // Validate cluster indices
   if (source_cluster_index >= system.clusters.size()) {
-    return tl::unexpected("Source cluster not found");
+    return std::nullopt;
   }
   if (target_cluster_index >= system.clusters.size()) {
-    return tl::unexpected("Target cluster not found");
+    return std::nullopt;
   }
   PositionedCluster& src_pc = system.clusters[source_cluster_index];
   PositionedCluster& tgt_pc = system.clusters[target_cluster_index];
@@ -1398,10 +1398,10 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
   auto tgt_idx_opt = find_cell_by_leaf_id(tgt_pc.cluster, target_leaf_id);
 
   if (!src_idx_opt.has_value()) {
-    return tl::unexpected("Source leaf not found");
+    return std::nullopt;
   }
   if (!tgt_idx_opt.has_value()) {
-    return tl::unexpected("Target leaf not found");
+    return std::nullopt;
   }
 
   // Check if same cell (no-op)
@@ -1412,10 +1412,10 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
 
   // Validate both are leaves
   if (!is_leaf(src_pc.cluster, *src_idx_opt)) {
-    return tl::unexpected("Source cell is not a leaf");
+    return std::nullopt;
   }
   if (!is_leaf(tgt_pc.cluster, *tgt_idx_opt)) {
-    return tl::unexpected("Target cell is not a leaf");
+    return std::nullopt;
   }
 
   // Check if same cluster and siblings (same parent) - perform swap instead of move
@@ -1462,7 +1462,7 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
   // Note: tgt_pc is a reference, so if source == target cluster, it's already updated
   tgt_idx_opt = find_cell_by_leaf_id(system.clusters[target_cluster_index].cluster, target_leaf_id);
   if (!tgt_idx_opt.has_value()) {
-    return tl::unexpected("Target lost after delete");
+    return std::nullopt;
   }
 
   // Determine split direction based on mode and split target
@@ -1472,7 +1472,7 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
                                  gap_horizontal, gap_vertical, saved_leaf_id, split_dir);
 
   if (!split_result.has_value()) {
-    return tl::unexpected("Split failed");
+    return std::nullopt;
   }
 
   // Find the new cell (second child)
@@ -1481,7 +1481,7 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
       system.clusters[target_cluster_index].cluster.cells[static_cast<size_t>(first_child_idx)];
 
   if (!first_child.parent.has_value()) {
-    return tl::unexpected("Could not find parent after split");
+    return std::nullopt;
   }
 
   int parent_idx = *first_child.parent;
@@ -1489,7 +1489,7 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
       system.clusters[target_cluster_index].cluster.cells[static_cast<size_t>(parent_idx)];
 
   if (!parent.second_child.has_value()) {
-    return tl::unexpected("Could not find new cell after split");
+    return std::nullopt;
   }
 
   int new_cell_idx = *parent.second_child;
@@ -1520,47 +1520,46 @@ tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_c
   return MoveSuccess{new_cell_idx, target_cluster_index, center};
 }
 
-tl::expected<DropMoveResult, std::string> perform_drop_move(System& system, size_t source_leaf_id,
-                                                            float cursor_x, float cursor_y,
-                                                            float zen_percentage, bool do_exchange,
-                                                            float gap_horizontal,
-                                                            float gap_vertical) {
+std::optional<DropMoveResult> perform_drop_move(System& system, size_t source_leaf_id,
+                                                float cursor_x, float cursor_y,
+                                                float zen_percentage, bool do_exchange,
+                                                float gap_horizontal, float gap_vertical) {
   // Check if source window is managed by the system
   if (!has_leaf_id(system, source_leaf_id)) {
-    return tl::unexpected("Source window not managed by system");
+    return std::nullopt;
   }
 
   // Find cell at cursor position (target)
   auto target_cell = find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
   if (!target_cell.has_value()) {
-    return tl::unexpected("No cell at cursor position");
+    return std::nullopt;
   }
 
   auto [target_cluster_index, target_cell_index] = *target_cell;
 
   // Skip if target cluster has fullscreen app
   if (system.clusters[target_cluster_index].cluster.has_fullscreen_cell) {
-    return tl::unexpected("Target cluster has fullscreen app");
+    return std::nullopt;
   }
 
   // Get target cell's leaf_id
   const auto& target_pc = system.clusters[target_cluster_index];
   const auto& target_cell_data = target_pc.cluster.cells[static_cast<size_t>(target_cell_index)];
   if (!target_cell_data.leaf_id.has_value()) {
-    return tl::unexpected("Target cell has no leaf_id");
+    return std::nullopt;
   }
   size_t target_leaf_id = *target_cell_data.leaf_id;
 
   // Find which cluster contains the source
   auto source_cluster_opt = find_cluster_by_leaf_id(system, source_leaf_id);
   if (!source_cluster_opt.has_value()) {
-    return tl::unexpected("Source cluster not found");
+    return std::nullopt;
   }
   size_t source_cluster_index = *source_cluster_opt;
 
   // Check if dropping on same cell (source == target)
   if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
-    return tl::unexpected("Dropped on same cell");
+    return std::nullopt;
   }
 
   if (do_exchange) {
@@ -1572,7 +1571,7 @@ tl::expected<DropMoveResult, std::string> perform_drop_move(System& system, size
                    source_cluster_index, target_cluster_index);
       return DropMoveResult{Point{result->x, result->y}, true};
     } else {
-      return tl::unexpected(result.error());
+      return std::nullopt;
     }
   } else {
     // Move: source becomes sibling of target
@@ -1583,7 +1582,7 @@ tl::expected<DropMoveResult, std::string> perform_drop_move(System& system, size
                    target_cluster_index);
       return DropMoveResult{result->center, false};
     } else {
-      return tl::unexpected(result.error());
+      return std::nullopt;
     }
   }
 }

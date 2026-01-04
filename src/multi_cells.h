@@ -260,20 +260,21 @@ adjust_selected_split_ratio(System& system, float delta, float gap_horizontal, f
 [[nodiscard]] std::optional<size_t> get_selected_sibling_leaf_id(const System& system);
 
 // Swap two cells (exchange leaf IDs)
-tl::expected<Point, std::string> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
-                                            size_t cluster_index2, size_t leaf_id2,
-                                            float gap_horizontal, float gap_vertical);
+std::optional<Point> swap_cells(System& system, size_t cluster_index1, size_t leaf_id1,
+                                size_t cluster_index2, size_t leaf_id2, float gap_horizontal,
+                                float gap_vertical);
 
 // Move a cell from source to target (delete + split)
-tl::expected<MoveSuccess, std::string> move_cell(System& system, size_t source_cluster_index,
-                                                 size_t source_leaf_id, size_t target_cluster_index,
-                                                 size_t target_leaf_id, float gap_horizontal,
-                                                 float gap_vertical);
+std::optional<MoveSuccess> move_cell(System& system, size_t source_cluster_index,
+                                     size_t source_leaf_id, size_t target_cluster_index,
+                                     size_t target_leaf_id, float gap_horizontal,
+                                     float gap_vertical);
 
 // Perform drop move (drag-and-drop operation)
-tl::expected<DropMoveResult, std::string>
-perform_drop_move(System& system, size_t source_leaf_id, float cursor_x, float cursor_y,
-                  float zen_percentage, bool do_exchange, float gap_horizontal, float gap_vertical);
+std::optional<DropMoveResult> perform_drop_move(System& system, size_t source_leaf_id,
+                                                float cursor_x, float cursor_y,
+                                                float zen_percentage, bool do_exchange,
+                                                float gap_horizontal, float gap_vertical);
 
 // ============================================================================
 // Zen Mode

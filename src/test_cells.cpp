@@ -769,24 +769,22 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::validate_system(system));
   }
 
-  TEST_CASE("swapCells returns error for non-existent cluster") {
+  TEST_CASE("swapCells returns nullopt for non-existent cluster") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::swap_cells(system, 0, 10, 999, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
-  TEST_CASE("swapCells returns error for non-existent leaf") {
+  TEST_CASE("swapCells returns nullopt for non-existent leaf") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::swap_cells(system, 0, 10, 0, 999, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
   TEST_CASE("swapCells updates selection correctly in same cluster") {
@@ -894,44 +892,40 @@ TEST_SUITE("cells - swap and move") {
     CHECK(*idx10 == result->new_cell_index);
   }
 
-  TEST_CASE("moveCell returns error for non-existent source cluster") {
+  TEST_CASE("moveCell returns nullopt for non-existent source cluster") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::move_cell(system, 999, 10, 1, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
-  TEST_CASE("moveCell returns error for non-existent target cluster") {
+  TEST_CASE("moveCell returns nullopt for non-existent target cluster") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::move_cell(system, 0, 10, 999, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
-  TEST_CASE("moveCell returns error for non-existent source leaf") {
+  TEST_CASE("moveCell returns nullopt for non-existent source leaf") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::move_cell(system, 0, 999, 0, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
-  TEST_CASE("moveCell returns error for non-existent target leaf") {
+  TEST_CASE("moveCell returns nullopt for non-existent target leaf") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info}, TEST_GAP_H, TEST_GAP_V);
 
     auto result = cells::move_cell(system, 0, 10, 0, 999, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
-    CHECK(!result.error().empty());
   }
 
   TEST_CASE("moveCell updates selection when source was selected") {
