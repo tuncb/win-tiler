@@ -217,7 +217,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos,
 Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 
 // ============================================================================
-// Operations
+// Query Operations
 // ============================================================================
 
 // Get the currently selected cell across the entire system.
@@ -232,17 +232,21 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 [[nodiscard]] Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
                                          float zen_percentage);
 
-// Set the split ratio of a parent cell and recompute all descendant rectangles.
-// Returns false if the cell is not a valid non-leaf cell.
-bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float gap_horizontal,
-                     float gap_vertical);
-
 // ============================================================================
-// System Operations (formerly member functions)
+// Selection Navigation
 // ============================================================================
 
 // Move selection to adjacent cell in given direction
 [[nodiscard]] std::optional<MoveSelectionResult> move_selection(System& system, Direction dir);
+
+// ============================================================================
+// Split Operations
+// ============================================================================
+
+// Set the split ratio of a parent cell and recompute all descendant rectangles.
+// Returns false if the cell is not a valid non-leaf cell.
+bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float gap_horizontal,
+                     float gap_vertical);
 
 // Toggle split direction of selected cell's parent
 [[nodiscard]] bool toggle_selected_split_dir(System& system, float gap_horizontal,
@@ -258,6 +262,15 @@ set_selected_split_ratio(System& system, float new_ratio, float gap_horizontal, 
 // Adjust split ratio of selected cell's parent by delta
 [[nodiscard]] std::optional<Point>
 adjust_selected_split_ratio(System& system, float delta, float gap_horizontal, float gap_vertical);
+
+// Update split ratio based on window resize
+[[nodiscard]] bool update_split_ratio_from_resize(System& system, size_t cluster_index,
+                                                  size_t leaf_id, const Rect& actual_window_rect,
+                                                  float gap_horizontal, float gap_vertical);
+
+// ============================================================================
+// Cell Movement & Exchange
+// ============================================================================
 
 // Exchange selected cell with its sibling
 [[nodiscard]] std::optional<Point>
@@ -279,14 +292,9 @@ tl::expected<DropMoveResult, std::string>
 perform_drop_move(System& system, size_t source_leaf_id, float cursor_x, float cursor_y,
                   float zen_percentage, bool do_exchange, float gap_horizontal, float gap_vertical);
 
-// Recompute all cell rectangles
-void recompute_rects(System& system, float gap_horizontal, float gap_vertical);
-
-// Update system state with new window configuration
-UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
-                    std::optional<std::pair<size_t, size_t>> new_selection,
-                    std::pair<float, float> pointer_coords, float zen_percentage,
-                    size_t foreground_leaf_id, float gap_horizontal, float gap_vertical);
+// ============================================================================
+// Zen Mode
+// ============================================================================
 
 // Set zen mode for a cell
 [[nodiscard]] bool set_zen(System& system, size_t cluster_index, size_t leaf_id);
@@ -300,10 +308,18 @@ void clear_zen(System& system, size_t cluster_index);
 // Toggle zen mode for selected cell
 [[nodiscard]] bool toggle_selected_zen(System& system);
 
-// Update split ratio based on window resize
-[[nodiscard]] bool update_split_ratio_from_resize(System& system, size_t cluster_index,
-                                                  size_t leaf_id, const Rect& actual_window_rect,
-                                                  float gap_horizontal, float gap_vertical);
+// ============================================================================
+// System State Updates
+// ============================================================================
+
+// Recompute all cell rectangles
+void recompute_rects(System& system, float gap_horizontal, float gap_vertical);
+
+// Update system state with new window configuration
+UpdateResult update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
+                    std::optional<std::pair<size_t, size_t>> new_selection,
+                    std::pair<float, float> pointer_coords, float zen_percentage,
+                    size_t foreground_leaf_id, float gap_horizontal, float gap_vertical);
 
 // ============================================================================
 // Utilities
