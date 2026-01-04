@@ -504,10 +504,32 @@ extract_window_state_from_input(const winapi::LoopInputState& input_state) {
   return result;
 }
 
-// Helper: Apply tile layout by updating window positions
-void apply_tile_layout(const cells::System& system, float zen_percentage) {
-  auto updates = cells::calculate_tile_layout(system, zen_percentage);
-  for (const auto& upd : updates) {
+// Helper: Run system update and apply tile positions
+void run_update_and_apply_tiles(cells::System& system, const GlobalOptions& options,
+                                const winapi::LoopInputState& input_state) {
+  auto current_state = extract_window_state_from_input(input_state);
+
+  float cursor_x =
+      input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->x) : 0.0f;
+  float cursor_y =
+      input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
+  float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
+  size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
+
+  auto result =
+      system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage, fg_leaf_id);
+
+  // Apply foreground window change
+  if (result.selection_update.window_to_foreground.has_value()) {
+    winapi::HWND_T hwnd =
+        reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
+    if (!winapi::set_foreground_window(hwnd)) {
+      spdlog::error("Failed to set foreground window for HWND {}", hwnd);
+    }
+  }
+
+  // Apply tile updates
+  for (const auto& upd : result.tile_updates) {
     winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
     winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
     winapi::TileInfo tile_info{hwnd, pos};
@@ -577,7 +599,7 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   stored_cell.reset();
   spdlog::info("=== Reinitialized Tile Layout ===");
   print_tile_layout(system);
-  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
+  // Tile layout will be applied by the main loop's system.update() call
   return true;
 }
 
@@ -591,11 +613,14 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   winapi::log_monitors(monitors);
   auto system = create_initial_system_from_monitors(monitors, options);
 
-  // Print initial layout and apply
+  // Print initial layout and apply via system.update()
   spdlog::info("=== Initial Tile Layout ===");
   print_tile_layout(system);
 
-  apply_tile_layout(system, options.visualizationOptions.renderOptions.zen_percentage);
+  {
+    auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
+    run_update_and_apply_tiles(system, options, input_state);
+  }
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -659,10 +684,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Check for config file changes and hot-reload
     handle_config_refresh(provider, system, toast);
 
-    // Check for monitor configuration changes
-    if (handle_monitor_change(monitors, options, system, stored_cell)) {
-      continue;
-    }
+    // Check for monitor configuration changes (tile layout applied by system.update() below)
+    handle_monitor_change(monitors, options, system, stored_cell);
 
     // Check for keyboard hotkeys (kept separate - has side effects on message queue)
     if (auto hotkey_id = winapi::check_keyboard_action()) {
