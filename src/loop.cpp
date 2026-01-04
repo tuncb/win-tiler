@@ -257,86 +257,20 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
     return false;
   }
 
+  size_t source_leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
   float cursor_x = static_cast<float>(input_state.cursor_pos->x);
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
-
-  // Find cell at cursor position (target)
-  auto target_cell = cells::find_cell_at_point(system, cursor_x, cursor_y, zen_percentage);
-  if (!target_cell.has_value()) {
-    spdlog::trace("Mouse drop: no cell at cursor position ({}, {})", cursor_x, cursor_y);
-    return false;
-  }
-
-  auto [target_cluster_index, target_cell_index] = *target_cell;
-
-  // Skip if target cluster has fullscreen app
-  if (system.clusters[target_cluster_index].cluster.has_fullscreen_cell) {
-    spdlog::trace("Mouse drop: target cluster has fullscreen app");
-    return false;
-  }
-
-  // Get target cell's leaf_id
-  const auto& target_pc = system.clusters[target_cluster_index];
-  const auto& target_cell_data = target_pc.cluster.cells[static_cast<size_t>(target_cell_index)];
-  if (!target_cell_data.leaf_id.has_value()) {
-    return false;
-  }
-  size_t target_leaf_id = *target_cell_data.leaf_id;
-
-  // Find source cell by dragged HWND
-  size_t source_leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-
-  // Check if source window is managed by the system
-  if (!cells::has_leaf_id(system, source_leaf_id)) {
-    spdlog::trace("Mouse drop: dragged window not managed by system");
-    return false;
-  }
-
-  // Find which cluster contains the source
-  auto source_cluster_opt = cells::find_cluster_by_leaf_id(system, source_leaf_id);
-  if (!source_cluster_opt.has_value()) {
-    return false;
-  }
-  size_t source_cluster_index = *source_cluster_opt;
-
-  // Check if dropping on same cell (source == target)
-  if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
-    spdlog::trace("Mouse drop: dropped on same cell, no-op");
-    return false;
-  }
-
-  // Check if Ctrl is held for exchange operation
   bool do_exchange = input_state.is_ctrl_pressed;
 
-  if (do_exchange) {
-    // Exchange: swap source and target positions
-    auto result = system.swap_cells(source_cluster_index, source_leaf_id, target_cluster_index,
-                                    target_leaf_id);
-
-    if (result.has_value()) {
-      spdlog::info("Mouse drop: exchanged windows between cluster {} and cluster {}",
-                   source_cluster_index, target_cluster_index);
-      winapi::set_cursor_pos(result->x, result->y);
-      return true;
-    } else {
-      spdlog::warn("Mouse drop: exchange failed - {}", result.error());
-      return false;
-    }
-  } else {
-    // Move: source becomes sibling of target
-    auto result = system.move_cell(source_cluster_index, source_leaf_id, target_cluster_index,
-                                   target_leaf_id);
-
-    if (result.has_value()) {
-      spdlog::info("Mouse drop: moved window from cluster {} to cluster {}", source_cluster_index,
-                   target_cluster_index);
-      winapi::set_cursor_pos(result->center.x, result->center.y);
-      return true;
-    } else {
-      spdlog::warn("Mouse drop: move failed - {}", result.error());
-      return false;
-    }
+  auto result =
+      system.perform_drop_move(source_leaf_id, cursor_x, cursor_y, zen_percentage, do_exchange);
+  if (result.has_value()) {
+    winapi::set_cursor_pos(result->cursor_pos.x, result->cursor_pos.y);
+    return true;
   }
+
+  spdlog::trace("Mouse drop: {}", result.error());
+  return false;
 }
 
 // Handle window resize operation to update split ratios

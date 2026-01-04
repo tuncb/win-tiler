@@ -1441,6 +1441,73 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
   return MoveSuccess{new_cell_idx, target_cluster_index, center};
 }
 
+tl::expected<DropMoveResult, std::string> System::perform_drop_move(size_t source_leaf_id,
+                                                                    float cursor_x, float cursor_y,
+                                                                    float zen_percentage,
+                                                                    bool do_exchange) {
+  // Check if source window is managed by the system
+  if (!has_leaf_id(*this, source_leaf_id)) {
+    return tl::unexpected("Source window not managed by system");
+  }
+
+  // Find cell at cursor position (target)
+  auto target_cell = find_cell_at_point(*this, cursor_x, cursor_y, zen_percentage);
+  if (!target_cell.has_value()) {
+    return tl::unexpected("No cell at cursor position");
+  }
+
+  auto [target_cluster_index, target_cell_index] = *target_cell;
+
+  // Skip if target cluster has fullscreen app
+  if (clusters[target_cluster_index].cluster.has_fullscreen_cell) {
+    return tl::unexpected("Target cluster has fullscreen app");
+  }
+
+  // Get target cell's leaf_id
+  const auto& target_pc = clusters[target_cluster_index];
+  const auto& target_cell_data = target_pc.cluster.cells[static_cast<size_t>(target_cell_index)];
+  if (!target_cell_data.leaf_id.has_value()) {
+    return tl::unexpected("Target cell has no leaf_id");
+  }
+  size_t target_leaf_id = *target_cell_data.leaf_id;
+
+  // Find which cluster contains the source
+  auto source_cluster_opt = find_cluster_by_leaf_id(*this, source_leaf_id);
+  if (!source_cluster_opt.has_value()) {
+    return tl::unexpected("Source cluster not found");
+  }
+  size_t source_cluster_index = *source_cluster_opt;
+
+  // Check if dropping on same cell (source == target)
+  if (source_cluster_index == target_cluster_index && source_leaf_id == target_leaf_id) {
+    return tl::unexpected("Dropped on same cell");
+  }
+
+  if (do_exchange) {
+    // Exchange: swap source and target positions
+    auto result =
+        swap_cells(source_cluster_index, source_leaf_id, target_cluster_index, target_leaf_id);
+    if (result.has_value()) {
+      spdlog::info("Drop move: exchanged windows between cluster {} and cluster {}",
+                   source_cluster_index, target_cluster_index);
+      return DropMoveResult{Point{result->x, result->y}, true};
+    } else {
+      return tl::unexpected(result.error());
+    }
+  } else {
+    // Move: source becomes sibling of target
+    auto result =
+        move_cell(source_cluster_index, source_leaf_id, target_cluster_index, target_leaf_id);
+    if (result.has_value()) {
+      spdlog::info("Drop move: moved window from cluster {} to cluster {}", source_cluster_index,
+                   target_cluster_index);
+      return DropMoveResult{result->center, false};
+    } else {
+      return tl::unexpected(result.error());
+    }
+  }
+}
+
 // ============================================================================
 // Gap/Rect Recalculation
 // ============================================================================

@@ -170,6 +170,12 @@ struct MoveSelectionResult {
   Point center;   // Cursor position for mouse movement
 };
 
+// Result of a drop move operation (drag-and-drop window move)
+struct DropMoveResult {
+  Point cursor_pos;  // Where to move cursor after operation
+  bool was_exchange; // Whether exchange (vs move) was performed
+};
+
 // ============================================================================
 // System
 // ============================================================================
@@ -194,6 +200,9 @@ struct System {
                                                    size_t source_leaf_id,
                                                    size_t target_cluster_index,
                                                    size_t target_leaf_id);
+  tl::expected<DropMoveResult, std::string> perform_drop_move(size_t source_leaf_id, float cursor_x,
+                                                              float cursor_y, float zen_percentage,
+                                                              bool do_exchange);
   void update_gaps(float horizontal, float vertical);
   void recompute_rects();
   UpdateResult update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
