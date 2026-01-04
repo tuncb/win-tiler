@@ -549,8 +549,6 @@ static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& c
 System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizontal,
                      float gap_vertical) {
   System system;
-  system.gap_horizontal = gap_horizontal;
-  system.gap_vertical = gap_vertical;
   system.clusters.reserve(infos.size());
 
   for (size_t cluster_index = 0; cluster_index < infos.size(); ++cluster_index) {
@@ -567,8 +565,8 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
     int selection_index = -1;
     // Pre-create leaves if initial_cell_ids provided
     if (!info.initial_cell_ids.empty()) {
-      selection_index = pre_create_leaves(pc, info.initial_cell_ids, system.gap_horizontal,
-                                          system.gap_vertical, system.split_mode);
+      selection_index = pre_create_leaves(pc, info.initial_cell_ids, gap_horizontal, gap_vertical,
+                                          system.split_mode);
     }
 
     // If this is the first cluster with cells, make it the selected cluster
@@ -827,7 +825,7 @@ static std::optional<Rect> get_cluster_zen_display_rect(const System& system, si
   return get_cell_display_rect(pc, *pc.cluster.zen_cell_index, true, zen_percentage);
 }
 
-bool System::toggle_selected_split_dir() {
+bool System::toggle_selected_split_dir(float gap_horizontal, float gap_vertical) {
   if (!selection.has_value()) {
     return false;
   }
@@ -879,7 +877,8 @@ bool set_split_ratio(CellCluster& state, int cell_index, float new_ratio, float 
   return true;
 }
 
-std::optional<Point> System::set_selected_split_ratio(float new_ratio) {
+std::optional<Point> System::set_selected_split_ratio(float new_ratio, float gap_horizontal,
+                                                      float gap_vertical) {
   if (!selection.has_value()) {
     return std::nullopt;
   }
@@ -905,7 +904,8 @@ std::optional<Point> System::set_selected_split_ratio(float new_ratio) {
   return get_selected_cell_center(*this);
 }
 
-std::optional<Point> System::adjust_selected_split_ratio(float delta) {
+std::optional<Point> System::adjust_selected_split_ratio(float delta, float gap_horizontal,
+                                                         float gap_vertical) {
   if (!selection.has_value()) {
     return std::nullopt;
   }
@@ -945,7 +945,8 @@ std::optional<Point> System::adjust_selected_split_ratio(float delta) {
   return get_selected_cell_center(*this);
 }
 
-std::optional<Point> System::exchange_selected_with_sibling() {
+std::optional<Point> System::exchange_selected_with_sibling(float gap_horizontal,
+                                                            float gap_vertical) {
   if (!selection.has_value()) {
     return std::nullopt;
   }
@@ -1131,7 +1132,8 @@ bool update_ratio_for_edge(CellCluster& cluster, const PositionedCluster& pc, in
 } // anonymous namespace
 
 bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
-                                            const Rect& actual_window_rect) {
+                                            const Rect& actual_window_rect, float gap_horizontal,
+                                            float gap_vertical) {
   // Validate cluster index
   if (cluster_index >= clusters.size()) {
     spdlog::trace("update_split_ratio_from_resize: invalid cluster index {}", cluster_index);
@@ -1208,7 +1210,8 @@ bool System::update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id
 }
 
 tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                                    size_t cluster_index2, size_t leaf_id2) {
+                                                    size_t cluster_index2, size_t leaf_id2,
+                                                    float gap_horizontal, float gap_vertical) {
   // Validate cluster indices
   if (cluster_index1 >= clusters.size()) {
     return tl::unexpected("Cluster 1 not found");
@@ -1310,10 +1313,9 @@ tl::expected<Point, std::string> System::swap_cells(size_t cluster_index1, size_
   return get_selected_cell_center(*this).value_or(Point{0, 0});
 }
 
-tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_index,
-                                                         size_t source_leaf_id,
-                                                         size_t target_cluster_index,
-                                                         size_t target_leaf_id) {
+tl::expected<MoveSuccess, std::string>
+System::move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t target_cluster_index,
+                  size_t target_leaf_id, float gap_horizontal, float gap_vertical) {
   // Validate cluster indices
   if (source_cluster_index >= clusters.size()) {
     return tl::unexpected("Source cluster not found");
@@ -1450,10 +1452,10 @@ tl::expected<MoveSuccess, std::string> System::move_cell(size_t source_cluster_i
   return MoveSuccess{new_cell_idx, target_cluster_index, center};
 }
 
-tl::expected<DropMoveResult, std::string> System::perform_drop_move(size_t source_leaf_id,
-                                                                    float cursor_x, float cursor_y,
-                                                                    float zen_percentage,
-                                                                    bool do_exchange) {
+tl::expected<DropMoveResult, std::string>
+System::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
+                          float zen_percentage, bool do_exchange, float gap_horizontal,
+                          float gap_vertical) {
   // Check if source window is managed by the system
   if (!has_leaf_id(*this, source_leaf_id)) {
     return tl::unexpected("Source window not managed by system");
@@ -1494,8 +1496,8 @@ tl::expected<DropMoveResult, std::string> System::perform_drop_move(size_t sourc
 
   if (do_exchange) {
     // Exchange: swap source and target positions
-    auto result =
-        swap_cells(source_cluster_index, source_leaf_id, target_cluster_index, target_leaf_id);
+    auto result = swap_cells(source_cluster_index, source_leaf_id, target_cluster_index,
+                             target_leaf_id, gap_horizontal, gap_vertical);
     if (result.has_value()) {
       spdlog::info("Drop move: exchanged windows between cluster {} and cluster {}",
                    source_cluster_index, target_cluster_index);
@@ -1505,8 +1507,8 @@ tl::expected<DropMoveResult, std::string> System::perform_drop_move(size_t sourc
     }
   } else {
     // Move: source becomes sibling of target
-    auto result =
-        move_cell(source_cluster_index, source_leaf_id, target_cluster_index, target_leaf_id);
+    auto result = move_cell(source_cluster_index, source_leaf_id, target_cluster_index,
+                            target_leaf_id, gap_horizontal, gap_vertical);
     if (result.has_value()) {
       spdlog::info("Drop move: moved window from cluster {} to cluster {}", source_cluster_index,
                    target_cluster_index);
@@ -1521,13 +1523,7 @@ tl::expected<DropMoveResult, std::string> System::perform_drop_move(size_t sourc
 // Gap/Rect Recalculation
 // ============================================================================
 
-void System::update_gaps(float horizontal, float vertical) {
-  gap_horizontal = horizontal;
-  gap_vertical = vertical;
-  recompute_rects();
-}
-
-void System::recompute_rects() {
+void System::recompute_rects(float gap_horizontal, float gap_vertical) {
   for (auto& pc : clusters) {
     auto& cluster = pc.cluster;
     if (cluster.cells.empty()) {
@@ -1788,7 +1784,7 @@ static void redirect_windows_to_cluster(std::vector<ClusterCellUpdateInfo>& cell
 UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                             std::optional<std::pair<size_t, size_t>> new_selection,
                             std::pair<float, float> pointer_coords, float zen_percentage,
-                            size_t foreground_leaf_id) {
+                            size_t foreground_leaf_id, float gap_horizontal, float gap_vertical) {
   UpdateResult result;
   result.selection_updated = false;
 

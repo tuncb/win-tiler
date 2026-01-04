@@ -183,32 +183,32 @@ struct DropMoveResult {
 struct System {
   std::vector<PositionedCluster> clusters;
   std::optional<CellIndicatorByIndex> selection; // System-wide selection
-  float gap_horizontal = kDefaultCellGapHorizontal;
-  float gap_vertical = kDefaultCellGapVertical;
-  SplitMode split_mode = SplitMode::Zigzag; // How splits determine direction
+  SplitMode split_mode = SplitMode::Zigzag;      // How splits determine direction
 
   // Mutating member functions
   [[nodiscard]] std::optional<MoveSelectionResult> move_selection(Direction dir);
-  [[nodiscard]] bool toggle_selected_split_dir();
+  [[nodiscard]] bool toggle_selected_split_dir(float gap_horizontal, float gap_vertical);
   [[nodiscard]] bool cycle_split_mode();
-  [[nodiscard]] std::optional<Point> set_selected_split_ratio(float new_ratio);
-  [[nodiscard]] std::optional<Point> adjust_selected_split_ratio(float delta);
-  [[nodiscard]] std::optional<Point> exchange_selected_with_sibling();
+  [[nodiscard]] std::optional<Point> set_selected_split_ratio(float new_ratio, float gap_horizontal,
+                                                              float gap_vertical);
+  [[nodiscard]] std::optional<Point> adjust_selected_split_ratio(float delta, float gap_horizontal,
+                                                                 float gap_vertical);
+  [[nodiscard]] std::optional<Point> exchange_selected_with_sibling(float gap_horizontal,
+                                                                    float gap_vertical);
   tl::expected<Point, std::string> swap_cells(size_t cluster_index1, size_t leaf_id1,
-                                              size_t cluster_index2, size_t leaf_id2);
-  tl::expected<MoveSuccess, std::string> move_cell(size_t source_cluster_index,
-                                                   size_t source_leaf_id,
-                                                   size_t target_cluster_index,
-                                                   size_t target_leaf_id);
-  tl::expected<DropMoveResult, std::string> perform_drop_move(size_t source_leaf_id, float cursor_x,
-                                                              float cursor_y, float zen_percentage,
-                                                              bool do_exchange);
-  void update_gaps(float horizontal, float vertical);
-  void recompute_rects();
+                                              size_t cluster_index2, size_t leaf_id2,
+                                              float gap_horizontal, float gap_vertical);
+  tl::expected<MoveSuccess, std::string>
+  move_cell(size_t source_cluster_index, size_t source_leaf_id, size_t target_cluster_index,
+            size_t target_leaf_id, float gap_horizontal, float gap_vertical);
+  tl::expected<DropMoveResult, std::string>
+  perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y, float zen_percentage,
+                    bool do_exchange, float gap_horizontal, float gap_vertical);
+  void recompute_rects(float gap_horizontal, float gap_vertical);
   UpdateResult update(const std::vector<ClusterCellUpdateInfo>& cluster_cell_ids,
                       std::optional<std::pair<size_t, size_t>> new_selection,
                       std::pair<float, float> pointer_coords, float zen_percentage,
-                      size_t foreground_leaf_id);
+                      size_t foreground_leaf_id, float gap_horizontal, float gap_vertical);
 
   // Zen cell operations (per-cluster)
   [[nodiscard]] bool set_zen(size_t cluster_index, size_t leaf_id);
@@ -219,7 +219,8 @@ struct System {
   // Update split ratio based on window resize
   // Returns true if ratio was updated, false otherwise
   [[nodiscard]] bool update_split_ratio_from_resize(size_t cluster_index, size_t leaf_id,
-                                                    const Rect& actual_window_rect);
+                                                    const Rect& actual_window_rect,
+                                                    float gap_horizontal, float gap_vertical);
 };
 
 struct ClusterInitInfo {

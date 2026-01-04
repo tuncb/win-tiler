@@ -366,7 +366,7 @@ TEST_SUITE("cells - navigation") {
     // Get initial split dir of parent
     cells::SplitDir initialDir = pc.cluster.cells[0].split_dir;
 
-    bool result = system.toggle_selected_split_dir();
+    bool result = system.toggle_selected_split_dir(TEST_GAP_H, TEST_GAP_V);
     CHECK(result);
 
     // Check direction changed
@@ -402,7 +402,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add second window
     cells::ClusterCellUpdateInfo updates{0, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
@@ -413,7 +413,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add third window - should still be vertical
     updates = cells::ClusterCellUpdateInfo{0, {1, 2, 3}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     // Check that we have at least 3 cells and they all split vertically
     REQUIRE(pc.cluster.cells.size() >= 3);
@@ -433,7 +433,7 @@ TEST_SUITE("cells - navigation") {
 
     // Add second window
     cells::ClusterCellUpdateInfo updates{0, {1, 2}};
-    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    system.update({updates}, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
@@ -483,7 +483,8 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {100, 200}}};
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -501,7 +502,8 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 20, 30}} // Keep 10, add 20 and 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -520,7 +522,8 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10}} // Keep only 10, delete 20 and 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 2);
@@ -536,7 +539,8 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 30}} // Keep 10, delete 20, add 30
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
@@ -554,7 +558,7 @@ TEST_SUITE("cells - updateSystem") {
         {0, {10, 20}} // No changes, just update selection
     };
 
-    auto result = system.update(updates, {{0, 20}}, {0.0f, 0.0f}, 0.9f, 0);
+    auto result = system.update(updates, {{0, 20}}, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.selection_updated);
@@ -577,7 +581,8 @@ TEST_SUITE("cells - updateSystem") {
         {999, {10, 20}} // Cluster 999 doesn't exist
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::ClusterNotFound);
@@ -590,7 +595,8 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
-    auto result = system.update(updates, {{999, 10}}, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, {{999, 10}}, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -603,7 +609,7 @@ TEST_SUITE("cells - updateSystem") {
 
     std::vector<cells::ClusterCellUpdateInfo> updates = {{0, {10}}};
 
-    auto result = system.update(updates, {{0, 999}}, {0.0f, 0.0f}, 0.9f, 0);
+    auto result = system.update(updates, {{0, 999}}, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.size() == 1);
     CHECK(result.errors[0].type == cells::UpdateError::Type::SelectionInvalid);
@@ -621,7 +627,8 @@ TEST_SUITE("cells - updateSystem") {
         {1, {20, 21}}  // Add 21 to cluster 1
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.added_leaf_ids.size() == 2);
@@ -636,7 +643,8 @@ TEST_SUITE("cells - updateSystem") {
     // Only update cluster 2, leave cluster 1 alone
     std::vector<cells::ClusterCellUpdateInfo> updates = {{1, {20, 21}}};
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
 
@@ -660,7 +668,8 @@ TEST_SUITE("cells - updateSystem") {
         {0, {}} // Empty - delete all leaves
     };
 
-    auto result = system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0);
+    auto result =
+        system.update(updates, std::nullopt, {0.0f, 0.0f}, 0.9f, 0, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.errors.empty());
     CHECK(result.deleted_leaf_ids.size() == 1);
@@ -690,7 +699,7 @@ TEST_SUITE("cells - swap and move") {
     auto rect20Before = pc.cluster.cells[static_cast<size_t>(*idx20)].rect;
 
     // Swap
-    auto result = system.swap_cells(0, 10, 0, 20);
+    auto result = system.swap_cells(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
 
@@ -716,7 +725,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.swap_cells(0, 10, 0, 10);
+    auto result = system.swap_cells(0, 10, 0, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
     CHECK(cells::validate_system(system));
@@ -732,7 +741,7 @@ TEST_SUITE("cells - swap and move") {
     auto& pc2 = system.clusters[1];
 
     // Swap cross-cluster
-    auto result = system.swap_cells(0, 10, 1, 20);
+    auto result = system.swap_cells(0, 10, 1, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
 
@@ -751,7 +760,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.swap_cells(0, 10, 999, 20);
+    auto result = system.swap_cells(0, 10, 999, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -761,7 +770,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.swap_cells(0, 10, 0, 999);
+    auto result = system.swap_cells(0, 10, 0, 999, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -779,7 +788,7 @@ TEST_SUITE("cells - swap and move") {
     system.selection = cells::CellIndicatorByIndex{0, *idx10};
 
     // Swap
-    auto result = system.swap_cells(0, 10, 0, 20);
+    auto result = system.swap_cells(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // Selection should still point to the cell with leafId 10 (now at different index)
@@ -796,7 +805,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::count_total_leaves(system) == 2);
 
     // Move 10 to 20
-    auto result = system.move_cell(0, 10, 0, 20);
+    auto result = system.move_cell(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
     CHECK(result->new_cluster_index == 0);
@@ -819,7 +828,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(0, 10, 0, 10);
+    auto result = system.move_cell(0, 10, 0, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
     CHECK(cells::count_total_leaves(system) == 1);
@@ -833,7 +842,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(cells::count_total_leaves(system) == 3);
 
     // Move 10 from cluster 1 to cluster 2 (split from 20)
-    auto result = system.move_cell(0, 10, 1, 20);
+    auto result = system.move_cell(0, 10, 1, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
     CHECK(result->new_cluster_index == 1);
@@ -860,7 +869,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10, 20}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(0, 10, 0, 20);
+    auto result = system.move_cell(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
 
@@ -876,7 +885,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(999, 10, 1, 10);
+    auto result = system.move_cell(999, 10, 1, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -886,7 +895,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(0, 10, 999, 20);
+    auto result = system.move_cell(0, 10, 999, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -896,7 +905,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(0, 999, 0, 10);
+    auto result = system.move_cell(0, 999, 0, 10, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -906,7 +915,7 @@ TEST_SUITE("cells - swap and move") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.move_cell(0, 10, 0, 999);
+    auto result = system.move_cell(0, 10, 0, 999, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(!result.has_value());
     CHECK(!result.error().empty());
@@ -924,7 +933,7 @@ TEST_SUITE("cells - swap and move") {
     system.selection = cells::CellIndicatorByIndex{0, *idx10};
 
     // Move 10 to 20
-    auto result = system.move_cell(0, 10, 0, 20);
+    auto result = system.move_cell(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
 
@@ -944,7 +953,7 @@ TEST_SUITE("cells - swap and move") {
     auto system = cells::create_system({info1, info2});
 
     // Move the only cell from cluster 1 to cluster 2
-    auto result = system.move_cell(0, 10, 1, 20);
+    auto result = system.move_cell(0, 10, 1, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
 
@@ -983,7 +992,7 @@ TEST_SUITE("cells - swap and move") {
     CHECK(*cell10.parent == *cell20.parent);
 
     // Move 10 to 20 (siblings should swap)
-    auto result = system.move_cell(0, 10, 0, 20);
+    auto result = system.move_cell(0, 10, 0, 20, TEST_GAP_H, TEST_GAP_V);
 
     CHECK(result.has_value());
     CHECK(result->new_cluster_index == 0);
@@ -1059,7 +1068,7 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Toggle split direction to horizontal
-    CHECK(system.toggle_selected_split_dir());
+    CHECK(system.toggle_selected_split_dir(TEST_GAP_H, TEST_GAP_V));
 
     auto& parent = pc.cluster.cells[0];
     CHECK(parent.split_dir == cells::SplitDir::Horizontal);
@@ -1185,7 +1194,7 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set ratio via selected leaf
-    auto result = system.set_selected_split_ratio(0.3f);
+    auto result = system.set_selected_split_ratio(0.3f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // Parent's ratio should have changed
@@ -1198,7 +1207,7 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("setSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    auto result = system.set_selected_split_ratio(0.3f);
+    auto result = system.set_selected_split_ratio(0.3f, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1207,7 +1216,7 @@ TEST_SUITE("cells - split ratio") {
     auto system = cells::create_system({info});
 
     // Single leaf has no parent
-    auto result = system.set_selected_split_ratio(0.3f);
+    auto result = system.set_selected_split_ratio(0.3f, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1218,7 +1227,7 @@ TEST_SUITE("cells - split ratio") {
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
 
-    auto result = system.set_selected_split_ratio(0.25f);
+    auto result = system.set_selected_split_ratio(0.25f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     auto& parent = pc.cluster.cells[0];
@@ -1247,7 +1256,7 @@ TEST_SUITE("cells - split ratio") {
     CHECK(parent.split_ratio == doctest::Approx(0.5f));
 
     // Increase by 0.1
-    auto result = system.adjust_selected_split_ratio(0.1f);
+    auto result = system.adjust_selected_split_ratio(0.1f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.6f));
 
@@ -1264,7 +1273,7 @@ TEST_SUITE("cells - split ratio") {
     auto& parent = pc.cluster.cells[0];
 
     // Decrease by 0.2
-    auto result = system.adjust_selected_split_ratio(-0.2f);
+    auto result = system.adjust_selected_split_ratio(-0.2f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.3f));
 
@@ -1274,7 +1283,7 @@ TEST_SUITE("cells - split ratio") {
   TEST_CASE("adjustSelectedSplitRatio returns false with no selection") {
     auto system = cells::create_system({});
 
-    auto result = system.adjust_selected_split_ratio(0.1f);
+    auto result = system.adjust_selected_split_ratio(0.1f, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1282,7 +1291,7 @@ TEST_SUITE("cells - split ratio") {
     cells::ClusterInitInfo info{0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}};
     auto system = cells::create_system({info});
 
-    auto result = system.adjust_selected_split_ratio(0.1f);
+    auto result = system.adjust_selected_split_ratio(0.1f, TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1294,12 +1303,12 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set to 0.9 first (the maximum)
-    REQUIRE(system.set_selected_split_ratio(0.9f).has_value());
+    REQUIRE(system.set_selected_split_ratio(0.9f, TEST_GAP_H, TEST_GAP_V).has_value());
 
     auto& parent = pc.cluster.cells[0];
 
     // Increase by 0.2 - should stay clamped at 0.9
-    auto result = system.adjust_selected_split_ratio(0.2f);
+    auto result = system.adjust_selected_split_ratio(0.2f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.9f));
   }
@@ -1312,12 +1321,12 @@ TEST_SUITE("cells - split ratio") {
     auto& pc = system.clusters[0];
 
     // Set to 0.1 first (the minimum)
-    REQUIRE(system.set_selected_split_ratio(0.1f).has_value());
+    REQUIRE(system.set_selected_split_ratio(0.1f, TEST_GAP_H, TEST_GAP_V).has_value());
 
     auto& parent = pc.cluster.cells[0];
 
     // Decrease by 0.2 - should stay clamped at 0.1
-    auto result = system.adjust_selected_split_ratio(-0.2f);
+    auto result = system.adjust_selected_split_ratio(-0.2f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
     CHECK(parent.split_ratio == doctest::Approx(0.1f));
   }
@@ -1336,7 +1345,7 @@ TEST_SUITE("cells - split ratio") {
     CHECK(firstChild.rect.width == doctest::Approx(385.0f));
 
     // Adjust by -0.25 (new ratio = 0.25)
-    auto result = system.adjust_selected_split_ratio(-0.25f);
+    auto result = system.adjust_selected_split_ratio(-0.25f, TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // New width: 770 * 0.25 = 192.5
@@ -1368,7 +1377,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     auto rect20Before = pc.cluster.cells[static_cast<size_t>(*idx20)].rect;
 
     // Exchange siblings
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // Re-find cells
@@ -1392,7 +1401,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
   TEST_CASE("exchange_selected_with_sibling returns false with no selection") {
     auto system = cells::create_system({});
 
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1401,7 +1410,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     auto system = cells::create_system({info});
 
     // Single leaf has no sibling
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(!result.has_value());
   }
 
@@ -1425,7 +1434,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     CHECK(rect10Before.x < rect20Before.x);
 
     // Exchange
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // After exchange: leaf 10 should now be on the right
@@ -1445,7 +1454,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     auto system = cells::create_system({info});
 
     // Toggle to horizontal split first
-    REQUIRE(system.toggle_selected_split_dir());
+    REQUIRE(system.toggle_selected_split_dir(TEST_GAP_H, TEST_GAP_V));
 
     REQUIRE(system.clusters.size() >= 1);
     auto& pc = system.clusters[0];
@@ -1462,7 +1471,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     CHECK(rect10Before.y < rect20Before.y);
 
     // Exchange
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // After exchange: leaf 10 should now be on the bottom
@@ -1492,7 +1501,7 @@ TEST_SUITE("cells - exchange selected with sibling") {
     system.selection = cells::CellIndicatorByIndex{0, *idx10};
 
     // Exchange
-    auto result = system.exchange_selected_with_sibling();
+    auto result = system.exchange_selected_with_sibling(TEST_GAP_H, TEST_GAP_V);
     CHECK(result.has_value());
 
     // Selection should still point to same cell index (which now has different position)

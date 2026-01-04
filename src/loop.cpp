@@ -128,8 +128,8 @@ void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
   winapi::set_cursor_pos(result->center.x, result->center.y);
 }
 
-ActionResult handle_toggle_split(cells::System& system) {
-  if (system.toggle_selected_split_dir()) {
+ActionResult handle_toggle_split(cells::System& system, float gap_horizontal, float gap_vertical) {
+  if (system.toggle_selected_split_dir(gap_horizontal, gap_vertical)) {
     spdlog::info("Toggled split direction");
   }
   return ActionResult::Continue;
@@ -169,13 +169,15 @@ ActionResult handle_clear_stored(std::optional<StoredCell>& stored_cell) {
   return ActionResult::Continue;
 }
 
-ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& stored_cell) {
+ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& stored_cell,
+                             float gap_horizontal, float gap_vertical) {
   if (stored_cell.has_value() && system.selection.has_value()) {
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
       auto result = system.swap_cells(system.selection->cluster_index, *cell.leaf_id,
-                                      stored_cell->cluster_index, stored_cell->leaf_id);
+                                      stored_cell->cluster_index, stored_cell->leaf_id,
+                                      gap_horizontal, gap_vertical);
       if (result.has_value()) {
         stored_cell.reset();
         spdlog::info("Exchanged cells successfully");
@@ -185,13 +187,15 @@ ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& s
   return ActionResult::Continue;
 }
 
-ActionResult handle_move(cells::System& system, std::optional<StoredCell>& stored_cell) {
+ActionResult handle_move(cells::System& system, std::optional<StoredCell>& stored_cell,
+                         float gap_horizontal, float gap_vertical) {
   if (stored_cell.has_value() && system.selection.has_value()) {
     const auto& pc = system.clusters[system.selection->cluster_index];
     const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
     if (cell.leaf_id.has_value()) {
       auto result = system.move_cell(stored_cell->cluster_index, stored_cell->leaf_id,
-                                     system.selection->cluster_index, *cell.leaf_id);
+                                     system.selection->cluster_index, *cell.leaf_id, gap_horizontal,
+                                     gap_vertical);
       if (result.has_value()) {
         stored_cell.reset();
         spdlog::info("Moved cell successfully");
@@ -201,24 +205,27 @@ ActionResult handle_move(cells::System& system, std::optional<StoredCell>& store
   return ActionResult::Continue;
 }
 
-ActionResult handle_split_increase(cells::System& system) {
-  if (auto center = system.adjust_selected_split_ratio(0.05f)) {
+ActionResult handle_split_increase(cells::System& system, float gap_horizontal,
+                                   float gap_vertical) {
+  if (auto center = system.adjust_selected_split_ratio(0.05f, gap_horizontal, gap_vertical)) {
     spdlog::info("Increased split ratio");
     winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
 
-ActionResult handle_split_decrease(cells::System& system) {
-  if (auto center = system.adjust_selected_split_ratio(-0.05f)) {
+ActionResult handle_split_decrease(cells::System& system, float gap_horizontal,
+                                   float gap_vertical) {
+  if (auto center = system.adjust_selected_split_ratio(-0.05f, gap_horizontal, gap_vertical)) {
     spdlog::info("Decreased split ratio");
     winapi::set_cursor_pos(center->x, center->y);
   }
   return ActionResult::Continue;
 }
 
-ActionResult handle_exchange_siblings(cells::System& system) {
-  if (auto center = system.exchange_selected_with_sibling()) {
+ActionResult handle_exchange_siblings(cells::System& system, float gap_horizontal,
+                                      float gap_vertical) {
+  if (auto center = system.exchange_selected_with_sibling(gap_horizontal, gap_vertical)) {
     spdlog::info("Exchanged selected cell with sibling");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -232,8 +239,9 @@ ActionResult handle_toggle_zen(cells::System& system) {
   return ActionResult::Continue;
 }
 
-ActionResult handle_reset_split_ratio(cells::System& system) {
-  if (auto center = system.set_selected_split_ratio(0.5f)) {
+ActionResult handle_reset_split_ratio(cells::System& system, float gap_horizontal,
+                                      float gap_vertical) {
+  if (auto center = system.set_selected_split_ratio(0.5f, gap_horizontal, gap_vertical)) {
     spdlog::info("Reset split ratio to 50%%");
     winapi::set_cursor_pos(center->x, center->y);
   }
@@ -243,7 +251,8 @@ ActionResult handle_reset_split_ratio(cells::System& system) {
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
 bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
-                            const winapi::LoopInputState& input_state) {
+                            const winapi::LoopInputState& input_state, float gap_horizontal,
+                            float gap_vertical) {
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
   }
@@ -262,8 +271,8 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
   bool do_exchange = input_state.is_ctrl_pressed;
 
-  auto result =
-      system.perform_drop_move(source_leaf_id, cursor_x, cursor_y, zen_percentage, do_exchange);
+  auto result = system.perform_drop_move(source_leaf_id, cursor_x, cursor_y, zen_percentage,
+                                         do_exchange, gap_horizontal, gap_vertical);
   if (result.has_value()) {
     winapi::set_cursor_pos(result->cursor_pos.x, result->cursor_pos.y);
     return true;
@@ -275,7 +284,8 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
 
 // Handle window resize operation to update split ratios
 // Returns true if a resize was performed, false otherwise
-bool handle_window_resize(cells::System& system, const winapi::LoopInputState& input_state) {
+bool handle_window_resize(cells::System& system, const winapi::LoopInputState& input_state,
+                          float gap_horizontal, float gap_vertical) {
   // Check if drag/resize just ended
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
@@ -335,7 +345,8 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
   }
 
   // Update split ratio
-  bool result = system.update_split_ratio_from_resize(cluster_index, leaf_id, actual_rect);
+  bool result = system.update_split_ratio_from_resize(cluster_index, leaf_id, actual_rect,
+                                                      gap_horizontal, gap_vertical);
   if (result) {
     spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
                  leaf_id);
@@ -345,11 +356,12 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
 
 ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
                                     std::optional<StoredCell>& stored_cell,
-                                    std::string& out_message) {
+                                    std::string& out_message, float gap_horizontal,
+                                    float gap_vertical) {
   // Handle other actions
   switch (action) {
   case HotkeyAction::ToggleSplit:
-    return handle_toggle_split(system);
+    return handle_toggle_split(system, gap_horizontal, gap_vertical);
   case HotkeyAction::Exit:
     return handle_exit();
   case HotkeyAction::CycleSplitMode:
@@ -359,19 +371,19 @@ ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
   case HotkeyAction::ClearStored:
     return handle_clear_stored(stored_cell);
   case HotkeyAction::Exchange:
-    return handle_exchange(system, stored_cell);
+    return handle_exchange(system, stored_cell, gap_horizontal, gap_vertical);
   case HotkeyAction::Move:
-    return handle_move(system, stored_cell);
+    return handle_move(system, stored_cell, gap_horizontal, gap_vertical);
   case HotkeyAction::SplitIncrease:
-    return handle_split_increase(system);
+    return handle_split_increase(system, gap_horizontal, gap_vertical);
   case HotkeyAction::SplitDecrease:
-    return handle_split_decrease(system);
+    return handle_split_decrease(system, gap_horizontal, gap_vertical);
   case HotkeyAction::ExchangeSiblings:
-    return handle_exchange_siblings(system);
+    return handle_exchange_siblings(system, gap_horizontal, gap_vertical);
   case HotkeyAction::ToggleZen:
     return handle_toggle_zen(system);
   case HotkeyAction::ResetSplitRatio:
-    return handle_reset_split_ratio(system);
+    return handle_reset_split_ratio(system, gap_horizontal, gap_vertical);
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:
@@ -449,9 +461,11 @@ void run_update_and_apply_tiles(cells::System& system, const GlobalOptions& opti
       input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
   float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
   size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
+  float gap_h = options.gapOptions.horizontal;
+  float gap_v = options.gapOptions.vertical;
 
-  auto result =
-      system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage, fg_leaf_id);
+  auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
+                              fg_leaf_id, gap_h, gap_v);
 
   // Apply foreground window change
   if (result.selection_update.window_to_foreground.has_value()) {
@@ -514,7 +528,7 @@ void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& syste
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
-  system.update_gaps(options.gapOptions.horizontal, options.gapOptions.vertical);
+  system.recompute_rects(options.gapOptions.horizontal, options.gapOptions.vertical);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
 }
@@ -603,7 +617,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Check if a drag operation just completed
     if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
       // Try resize first (size changed = ratio update)
-      bool resized = handle_window_resize(system, input_state);
+      bool resized = handle_window_resize(system, input_state, options.gapOptions.horizontal,
+                                          options.gapOptions.vertical);
 
       if (resized) {
         // Resize performed - clear drag flag; layout applied by system.update() below
@@ -611,7 +626,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       } else {
         // Try move/swap (clear_drag_ended called inside if successful)
         handle_mouse_drop_move(system, options.visualizationOptions.renderOptions.zen_percentage,
-                               input_state);
+                               input_state, options.gapOptions.horizontal,
+                               options.gapOptions.vertical);
       }
     }
 
@@ -628,8 +644,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         continue; // Unknown hotkey ID
       }
       std::string action_message;
-      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message) ==
-          ActionResult::Exit) {
+      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message,
+                                 options.gapOptions.horizontal,
+                                 options.gapOptions.vertical) == ActionResult::Exit) {
         break;
       }
       if (!action_message.empty()) {
@@ -647,8 +664,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
     float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
     size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
-    auto result = system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
-                                fg_leaf_id);
+    auto result =
+        system.update(current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage, fg_leaf_id,
+                      options.gapOptions.horizontal, options.gapOptions.vertical);
 
     // Apply foreground window change (selection already updated inside update())
     if (result.selection_update.window_to_foreground.has_value()) {
