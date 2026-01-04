@@ -16,6 +16,15 @@ namespace wintiler {
 // ============================================================================
 namespace cells {
 
+// Forward declarations for static functions used before their definitions
+static std::optional<Point> get_selected_cell_center(const System& system);
+static std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id);
+static std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t leaf_id);
+static std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage);
+static SelectionUpdateResult compute_selection_update(const System& system, float cursor_x,
+                                                      float cursor_y, float zen_percentage,
+                                                      size_t foreground_window_leaf_id);
+
 static CellCluster create_initial_state(float width, float height) {
   CellCluster state{};
 
@@ -790,7 +799,7 @@ std::optional<Rect> get_selected_cell_global_rect(const System& system) {
   return get_cell_global_rect(pc, cell_index);
 }
 
-std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
+static std::optional<int> get_cluster_zen_cell(const CellCluster& cluster) {
   return cluster.zen_cell_index;
 }
 
@@ -808,8 +817,8 @@ Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_
   return get_cell_global_rect(pc, cell_index);
 }
 
-std::optional<Rect> get_cluster_zen_display_rect(const System& system, size_t cluster_index,
-                                                 float zen_percentage) {
+static std::optional<Rect> get_cluster_zen_display_rect(const System& system, size_t cluster_index,
+                                                        float zen_percentage) {
   assert(cluster_index < system.clusters.size());
   const PositionedCluster& pc = system.clusters[cluster_index];
   if (!pc.cluster.zen_cell_index.has_value()) {
@@ -1988,7 +1997,7 @@ UpdateResult System::update(const std::vector<ClusterCellUpdateInfo>& cluster_ce
 // Pure Logic Utilities
 // ============================================================================
 
-std::optional<Point> get_selected_cell_center(const System& system) {
+static std::optional<Point> get_selected_cell_center(const System& system) {
   auto selected = get_selected_cell(system);
   if (!selected.has_value()) {
     return std::nullopt;
@@ -2002,7 +2011,7 @@ std::optional<Point> get_selected_cell_center(const System& system) {
                static_cast<long>(global_rect.y + global_rect.height / 2.0f)};
 }
 
-std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id) {
+static std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id) {
   for (size_t i = 0; i < system.clusters.size(); ++i) {
     if (find_cell_by_leaf_id(system.clusters[i].cluster, leaf_id).has_value()) {
       return i;
@@ -2011,7 +2020,7 @@ std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_
   return std::nullopt;
 }
 
-std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t leaf_id) {
+static std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t leaf_id) {
   for (const auto& pc : system.clusters) {
     auto cell_index_opt = find_cell_by_leaf_id(pc.cluster, leaf_id);
     if (cell_index_opt.has_value()) {
@@ -2023,7 +2032,7 @@ std::optional<Point> find_cell_center_by_leaf_id(const System& system, size_t le
   return std::nullopt;
 }
 
-std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage) {
+static std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_percentage) {
   std::vector<TileUpdate> updates;
 
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
@@ -2060,9 +2069,9 @@ std::vector<TileUpdate> calculate_tile_layout(const System& system, float zen_pe
   return updates;
 }
 
-SelectionUpdateResult compute_selection_update(const System& system, float cursor_x, float cursor_y,
-                                               float zen_percentage,
-                                               size_t foreground_window_leaf_id) {
+static SelectionUpdateResult compute_selection_update(const System& system, float cursor_x,
+                                                      float cursor_y, float zen_percentage,
+                                                      size_t foreground_window_leaf_id) {
   SelectionUpdateResult result;
   result.needs_update = false;
   result.new_selection = std::nullopt;

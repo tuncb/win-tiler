@@ -262,18 +262,11 @@ Rect get_cell_global_rect(const PositionedCluster& pc, int cell_index);
 // Get the global rect of the currently selected cell.
 [[nodiscard]] std::optional<Rect> get_selected_cell_global_rect(const System& system);
 
-// Get the zen cell for a specific cluster (returns cell index).
-[[nodiscard]] std::optional<int> get_cluster_zen_cell(const CellCluster& cluster);
-
 // Get the global rect of a cell, considering zen state.
 // If is_zen is true, returns centered rect at zen_percentage of cluster size.
 // Otherwise returns the cell's normal tree position.
 [[nodiscard]] Rect get_cell_display_rect(const PositionedCluster& pc, int cell_index, bool is_zen,
                                          float zen_percentage);
-
-// Get display rect for zen cell of a specific cluster (centered at zen_percentage).
-[[nodiscard]] std::optional<Rect>
-get_cluster_zen_display_rect(const System& system, size_t cluster_index, float zen_percentage);
 
 // Set the split ratio of a parent cell and recompute all descendant rectangles.
 // Returns false if the cell is not a valid non-leaf cell.
@@ -316,37 +309,6 @@ find_cell_at_point(const System& system, float global_x, float global_y, float z
 
 // Find cell index by leaf ID. Returns nullopt if not found.
 [[nodiscard]] std::optional<int> find_cell_by_leaf_id(const CellCluster& cluster, size_t leaf_id);
-
-// ============================================================================
-// Pure Logic Utilities (no side effects, suitable for use without Windows API)
-// ============================================================================
-
-// Get the center point of the currently selected cell.
-// Returns nullopt if no selection exists.
-[[nodiscard]] std::optional<Point> get_selected_cell_center(const System& system);
-
-// Find which cluster contains a cell with the given leaf_id.
-// Returns the cluster index or nullopt if not found.
-[[nodiscard]] std::optional<size_t> find_cluster_by_leaf_id(const System& system, size_t leaf_id);
-
-// Find a cell by leaf_id and return its center point.
-// Returns nullopt if not found.
-[[nodiscard]] std::optional<Point> find_cell_center_by_leaf_id(const System& system,
-                                                               size_t leaf_id);
-
-// Calculate tile positions for all cells without applying them.
-// Skips clusters with has_fullscreen_cell set.
-// Returns a list of updates for the caller to apply.
-[[nodiscard]] std::vector<TileUpdate> calculate_tile_layout(const System& system,
-                                                            float zen_percentage);
-
-// Compute whether selection should change based on cursor position.
-// Returns the new selection and window to foreground (if any).
-// Does not mutate the system - caller applies the changes.
-// Skips clusters with has_fullscreen_cell set.
-[[nodiscard]] SelectionUpdateResult compute_selection_update(const System& system, float cursor_x,
-                                                             float cursor_y, float zen_percentage,
-                                                             size_t foreground_window_leaf_id);
 
 } // namespace cells
 } // namespace wintiler
