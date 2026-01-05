@@ -213,6 +213,7 @@
     <ClCompile Include="src\multi_ui.cpp" />
     <ClCompile Include="src\overlay.cpp" />
     <ClCompile Include="src\options.cpp" />
+    <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_cells.cpp" />
     <ClCompile Include="src\test_options.cpp" />
     <ClCompile Include="src\main.cpp" />
@@ -220,6 +221,7 @@
     <ClCompile Include="src\track_windows.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\binary_tree.h" />
     <ClInclude Include="src\argument_parser.h" />
     <ClInclude Include="src\track_windows.h" />
     <ClInclude Include="src\loop.h" />
