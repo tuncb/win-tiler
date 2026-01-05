@@ -126,6 +126,14 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
+  // Check if window is cloaked (hidden by shell/virtual desktops)
+  BOOL cloaked = FALSE;
+  if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)))) {
+    if (cloaked) {
+      return TRUE;
+    }
+  }
+
   char title[256];
   if (GetWindowTextA(hwnd, title, sizeof(title)) == 0) {
     return TRUE;
@@ -142,9 +150,30 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  // Check for standard Windows dialog boxes (always ignore)
-  if (className == "#32770")
-    return true;
+  // Check for tooltip windows (always ignore)
+  if (className == "tooltips_class32") {
+    return TRUE;
+  }
+
+  // Check extended window styles
+  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+  if (exStyle & WS_EX_TOOLWINDOW) {
+    return TRUE; // Tool windows (floating panels, utility windows)
+  }
+  if (exStyle & WS_EX_TOPMOST) {
+    return TRUE; // Always-on-top windows (overlays)
+  }
+  if (exStyle & WS_EX_TRANSPARENT) {
+    return TRUE; // Click-through windows
+  }
+  if (exStyle & WS_EX_NOACTIVATE) {
+    return TRUE; // Windows that can't be activated
+  }
+
+  // Skip unresponsive windows
+  if (IsHungAppWindow(hwnd)) {
+    return TRUE;
+  }
 
   auto pid = get_window_pid((HWND_T)hwnd);
   std::string processName;

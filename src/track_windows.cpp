@@ -1,5 +1,6 @@
 #include "track_windows.h"
 
+#include <dwmapi.h>
 #include <spdlog/spdlog.h>
 #include <Windows.h>
 
@@ -86,10 +87,20 @@ void run_track_windows_mode(GlobalOptionsProvider& optionsProvider) {
         int width = rect.right - rect.left;
         int height = rect.bottom - rect.top;
 
+        // Get extended window styles
+        LONG exStyle = GetWindowLong((HWND)hwnd, GWL_EXSTYLE);
+
+        // Check if window is hung
+        bool isHung = IsHungAppWindow((HWND)hwnd) != 0;
+
+        // Check if window is cloaked
+        BOOL cloaked = FALSE;
+        DwmGetWindowAttribute((HWND)hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+
         spdlog::info("  HWND: {}, PID: {}, Process: {}, Class: {}, Pos: ({},{}), Size: {}x{}, "
-                     "Title: \"{}\"",
+                     "ExStyle: 0x{:08X}, Hung: {}, Cloaked: {}, Title: \"{}\"",
                      info.handle, info.pid.value_or(0), info.processName, info.className, rect.left,
-                     rect.top, width, height, info.title);
+                     rect.top, width, height, exStyle, isHung, cloaked != 0, info.title);
       }
     }
 
