@@ -1,12 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace wintiler {
 
-template <typename T>
+template <typename T, typename Allocator = std::allocator<T>>
 class BinaryTree {
 public:
   struct Node {
@@ -14,8 +16,17 @@ public:
     std::optional<int> parent;
     std::optional<int> first_child;
     std::optional<int> second_child;
-    bool is_dead = false;
   };
+
+  using allocator_type = Allocator;
+  using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<Node>;
+
+  // Constructors
+
+  BinaryTree() = default;
+
+  explicit BinaryTree(const Allocator& alloc) : nodes_(NodeAllocator(alloc)) {
+  }
 
   // Core Operations
 
@@ -25,17 +36,9 @@ public:
     node.parent = parent_index;
     node.first_child = std::nullopt;
     node.second_child = std::nullopt;
-    node.is_dead = false;
 
     nodes_.push_back(std::move(node));
     return static_cast<int>(nodes_.size() - 1);
-  }
-
-  void mark_dead(int index) {
-    if (!is_valid_index(index)) {
-      return;
-    }
-    nodes_[static_cast<size_t>(index)].is_dead = true;
   }
 
   [[nodiscard]] bool is_leaf(int index) const {
@@ -43,17 +46,7 @@ public:
       return false;
     }
     const Node& node = nodes_[static_cast<size_t>(index)];
-    if (node.is_dead) {
-      return false;
-    }
     return !node.first_child.has_value() && !node.second_child.has_value();
-  }
-
-  [[nodiscard]] bool is_dead(int index) const {
-    if (!is_valid_index(index)) {
-      return false;
-    }
-    return nodes_[static_cast<size_t>(index)].is_dead;
   }
 
   [[nodiscard]] bool is_valid_index(int index) const {
@@ -147,30 +140,33 @@ public:
     nodes_[static_cast<size_t>(child_index)].parent = new_parent;
   }
 
-  // Compaction
-  // Removes all dead nodes and remaps indices.
-  // Returns: vector where remap[old_index] = new_index, or -1 if deleted.
-  [[nodiscard]] std::vector<int> compact() {
+  // Removal
+  // Removes nodes at specified indices and remaps all indices.
+  // Returns: vector where remap[old_index] = new_index, or -1 if removed.
+  [[nodiscard]] std::vector<int> remove(const std::vector<int>& indices_to_remove) {
     if (nodes_.empty()) {
       return {};
     }
+
+    // Build set for O(1) lookup
+    std::set<int> to_remove(indices_to_remove.begin(), indices_to_remove.end());
 
     // Build remap: old_index -> new_index
     std::vector<int> remap(nodes_.size(), -1);
     int new_index = 0;
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
-      if (!nodes_[i].is_dead) {
+      if (to_remove.find(static_cast<int>(i)) == to_remove.end()) {
         remap[i] = new_index++;
       }
     }
 
     // Create new nodes vector with remapped indices
-    std::vector<Node> new_nodes;
+    std::vector<Node, NodeAllocator> new_nodes(nodes_.get_allocator());
     new_nodes.reserve(static_cast<size_t>(new_index));
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
-      if (nodes_[i].is_dead) {
+      if (to_remove.find(static_cast<int>(i)) != to_remove.end()) {
         continue;
       }
 
@@ -247,8 +243,24 @@ public:
     nodes_.clear();
   }
 
+  // Capacity management
+
+  void reserve(size_t capacity) {
+    nodes_.reserve(capacity);
+  }
+
+  [[nodiscard]] size_t capacity() const {
+    return nodes_.capacity();
+  }
+
+  // Allocator access
+
+  [[nodiscard]] allocator_type get_allocator() const {
+    return allocator_type(nodes_.get_allocator());
+  }
+
 private:
-  std::vector<Node> nodes_;
+  std::vector<Node, NodeAllocator> nodes_;
 };
 
 } // namespace wintiler
