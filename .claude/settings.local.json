@@ -24,7 +24,8 @@
       "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\\\\win-tiler.exe --help\")",
       "Bash(cmd //c \"C:\\\\work\\\\win-tiler\\\\x64\\\\Debug\\\\win-tiler.exe --unknown\")",
       "WebSearch",
-      "Bash(cmd //c:*)"
+      "Bash(cmd //c:*)",
+      "Bash(wc:*)"
     ]
   }
 }
