@@ -155,6 +155,7 @@ IgnoreOptions get_default_ignore_options() {
       {"WidgetBoard.exe", "Windows Widgets"},
       {"msedgewebview2.exe", "MSN"},
   };
+  options.ignore_children_of_processes = {};
   options.small_window_barrier =
       SmallWindowBarrier{kDefaultSmallWindowBarrierWidth, kDefaultSmallWindowBarrierHeight};
   return options;
@@ -182,6 +183,8 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     ignore.insert("merge_window_titles_with_defaults", options.ignoreOptions.merge_window_titles);
     ignore.insert("merge_process_title_pairs_with_defaults",
                   options.ignoreOptions.merge_process_title_pairs);
+    ignore.insert("merge_ignore_children_of_processes_with_defaults",
+                  options.ignoreOptions.merge_ignore_children_of_processes);
 
     toml::array processes;
     for (const auto& p : options.ignoreOptions.ignored_processes) {
@@ -203,6 +206,12 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
       process_title_pairs.push_back(pair);
     }
     ignore.insert("process_title_pairs", process_title_pairs);
+
+    toml::array ignore_children_of_processes;
+    for (const auto& p : options.ignoreOptions.ignore_children_of_processes) {
+      ignore_children_of_processes.push_back(p);
+    }
+    ignore.insert("ignore_children_of_processes", ignore_children_of_processes);
 
     if (options.ignoreOptions.small_window_barrier) {
       toml::table barrier;
@@ -286,11 +295,13 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
     bool mergeProcesses = true;
     bool mergeWindowTitles = true;
     bool mergeProcessTitlePairs = true;
+    bool mergeIgnoreChildrenOfProcesses = true;
 
     // Temporary storage for user values
     std::vector<std::string> userProcesses;
     std::vector<std::string> userWindowTitles;
     std::vector<std::pair<std::string, std::string>> userProcessTitlePairs;
+    std::vector<std::string> userIgnoreChildrenOfProcesses;
 
     if (auto ignore = tbl["ignore"].as_table()) {
       // Read merge flags
@@ -302,6 +313,9 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       }
       if (auto flag = (*ignore)["merge_process_title_pairs_with_defaults"].as_boolean()) {
         mergeProcessTitlePairs = flag->get();
+      }
+      if (auto flag = (*ignore)["merge_ignore_children_of_processes_with_defaults"].as_boolean()) {
+        mergeIgnoreChildrenOfProcesses = flag->get();
       }
 
       if (auto processes = (*ignore)["processes"].as_array()) {
@@ -332,6 +346,14 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
         }
       }
 
+      if (auto children = (*ignore)["ignore_children_of_processes"].as_array()) {
+        for (const auto& p : *children) {
+          if (auto str = p.as_string()) {
+            userIgnoreChildrenOfProcesses.push_back(str->get());
+          }
+        }
+      }
+
       if (auto barrier = (*ignore)["small_window_barrier"].as_table()) {
         auto width = (*barrier)["width"].as_integer();
         auto height = (*barrier)["height"].as_integer();
@@ -354,6 +376,7 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
     options.ignoreOptions.merge_processes = mergeProcesses;
     options.ignoreOptions.merge_window_titles = mergeWindowTitles;
     options.ignoreOptions.merge_process_title_pairs = mergeProcessTitlePairs;
+    options.ignoreOptions.merge_ignore_children_of_processes = mergeIgnoreChildrenOfProcesses;
 
     // Apply merge logic for processes
     if (mergeProcesses) {
@@ -395,6 +418,22 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       }
     } else {
       options.ignoreOptions.ignored_process_title_pairs = std::move(userProcessTitlePairs);
+    }
+
+    // Apply merge logic for ignore children of processes
+    if (mergeIgnoreChildrenOfProcesses) {
+      options.ignoreOptions.ignore_children_of_processes =
+          defaultIgnore.ignore_children_of_processes;
+      for (const auto& proc : userIgnoreChildrenOfProcesses) {
+        if (std::find(options.ignoreOptions.ignore_children_of_processes.begin(),
+                      options.ignoreOptions.ignore_children_of_processes.end(),
+                      proc) == options.ignoreOptions.ignore_children_of_processes.end()) {
+          options.ignoreOptions.ignore_children_of_processes.push_back(proc);
+        }
+      }
+    } else {
+      options.ignoreOptions.ignore_children_of_processes =
+          std::move(userIgnoreChildrenOfProcesses);
     }
 
     // Parse keyboard section

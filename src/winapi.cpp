@@ -224,6 +224,21 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     }
   }
 
+  // Check if this is a child/owned window of a process we want to ignore children for
+  if (!options.ignore_children_of_processes.empty()) {
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    HWND parent = GetParent(hwnd);
+
+    if (owner != NULL || parent != NULL) {
+      // This is a child/owned window - check if process is in the ignore list
+      for (const auto& proc : options.ignore_children_of_processes) {
+        if (iequals(processName, proc)) {
+          return TRUE; // Skip this child window
+        }
+      }
+    }
+  }
+
   ctx->handles->push_back((HWND_T)hwnd);
   return TRUE;
 }
