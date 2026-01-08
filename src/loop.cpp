@@ -697,10 +697,13 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Apply foreground window change (selection already updated inside update())
     if (result.selection_update.window_to_foreground.has_value()) {
-      winapi::HWND_T hwnd =
-          reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
-      if (!winapi::set_foreground_window(hwnd)) {
-        spdlog::error("Failed to set foreground window for HWND {}", hwnd);
+      // Skip if a context menu is active to avoid stealing focus
+      if (!winapi::is_context_menu_active()) {
+        winapi::HWND_T hwnd =
+            reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
+        if (!winapi::set_foreground_window(hwnd)) {
+          spdlog::error("Failed to set foreground window for HWND {}", hwnd);
+        }
       }
     }
 

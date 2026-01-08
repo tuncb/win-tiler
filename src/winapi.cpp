@@ -919,6 +919,48 @@ bool is_session_paused() {
   return g_session_locked || g_system_suspended || g_display_off;
 }
 
+bool is_context_menu_active() {
+  // Check if the foreground thread has an active popup menu
+  HWND foreground = GetForegroundWindow();
+  if (foreground != nullptr) {
+    DWORD foregroundThreadId = GetWindowThreadProcessId(foreground, nullptr);
+    GUITHREADINFO gti = {};
+    gti.cbSize = sizeof(GUITHREADINFO);
+    if (GetGUIThreadInfo(foregroundThreadId, &gti)) {
+      if (gti.flags & GUI_POPUPMENUMODE) {
+        return true;
+      }
+    }
+  }
+
+  // Also check the window at cursor position for menu-like windows
+  POINT pt;
+  if (GetCursorPos(&pt)) {
+    HWND hwndAtCursor = WindowFromPoint(pt);
+    if (hwndAtCursor != nullptr) {
+      char className[256];
+      if (GetClassNameA(hwndAtCursor, className, sizeof(className)) > 0) {
+        // Standard Windows popup menu class
+        if (strcmp(className, "#32768") == 0) {
+          return true;
+        }
+        // Check for common menu/popup window styles
+        LONG exStyle = GetWindowLong(hwndAtCursor, GWL_EXSTYLE);
+        LONG style = GetWindowLong(hwndAtCursor, GWL_STYLE);
+        // Popup windows with topmost that have an owner are likely menus/dropdowns
+        if ((style & WS_POPUP) && (exStyle & WS_EX_TOPMOST)) {
+          HWND owner = GetWindow(hwndAtCursor, GW_OWNER);
+          if (owner != nullptr) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 static bool is_ctrl_pressed() {
   return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 }

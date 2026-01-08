@@ -11,8 +11,9 @@ build-run.bat build-run --Test-Debug  # Build and run unit tests
 ```
 
 For validation run unit tests and then build in debug mode.
-The development is going on windows OS, so use \\ for bash commands path separation.
-Ie. cmd //c "C:\\work\\win-tiler\\build-run.bat build --Debug"
+The development is going on windows OS, so use \\ for bash commands path separation. 
+cd to the current folder and run build-run.bat directly. 
+Ie. cmd //c "build-run.bat build --Debug"
 
 ## Running the Application
 

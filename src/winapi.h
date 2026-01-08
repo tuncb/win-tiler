@@ -108,6 +108,9 @@ void wait_for_session_active();
 // Check if session is currently paused (locked, sleeping, or display off)
 bool is_session_paused();
 
+// Detect if a context menu is currently the foreground window
+bool is_context_menu_active();
+
 // Drag operation tracking (for mouse-based window move operations)
 struct DragInfo {
   HWND_T hwnd;     // Window being dragged
