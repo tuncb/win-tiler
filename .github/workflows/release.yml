@@ -21,7 +21,7 @@ jobs:
           vcpkgGitCommitId: 'b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01'
 
       - name: Build Release
-        run: msbuild win-tiler.slnx /p:Configuration=Release /m
+        run: msbuild win-tiler.slnx /p:Configuration=Release /p:VcpkgRoot=$env:VCPKG_ROOT /m
 
       - name: Package Release
         run: |
