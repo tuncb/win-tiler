@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01'
+
+      - name: Build Release
+        run: msbuild win-tiler.slnx /p:Configuration=Release /m
+
+      - name: Package Release
+        run: |
+          mkdir release-package
+          copy x64\Release\win-tiler.exe release-package\
+          copy x64\Release\*.dll release-package\
+          Compress-Archive -Path release-package\* -DestinationPath win-tiler-${{ github.ref_name }}.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: win-tiler-${{ github.ref_name }}.zip
+          generate_release_notes: true
