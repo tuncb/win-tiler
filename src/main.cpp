@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -17,6 +18,7 @@
 #include "multi_ui.h"
 #include "options.h"
 #include "track_windows.h"
+#include "version.h"
 #include "winapi.h"
 
 namespace {
@@ -144,6 +146,9 @@ int main(int argc, char* argv[]) {
     applyLogLevel(*result.args.options.log_level);
   }
 
+  // Log version at startup
+  spdlog::info("win-tiler v{}", get_version_string());
+
   // Get default global options
   auto globalOptions = get_default_global_options();
 
@@ -186,6 +191,9 @@ int main(int argc, char* argv[]) {
   if (result.args.command) {
     std::visit(overloaded{
                    [](const HelpCommand&) { print_usage(); },
+                   [](const VersionCommand&) {
+                     std::cout << "win-tiler v" << get_version_string() << std::endl;
+                   },
                    [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
                    [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
                    [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },

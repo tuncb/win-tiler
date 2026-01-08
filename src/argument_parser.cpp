@@ -52,6 +52,12 @@ ParseResult parse_args(int argc, char* argv[]) {
       return make_success(args);
     }
 
+    // Check for version flag
+    if (arg == "--version" || arg == "-v") {
+      args.command = VersionCommand{};
+      return make_success(args);
+    }
+
     // Check if it's an option (starts with --)
     if (arg.rfind("--", 0) == 0) {
       std::string option_name = arg.substr(2);
@@ -90,7 +96,9 @@ ParseResult parse_args(int argc, char* argv[]) {
     std::string cmd = argv[i];
     ++i;
 
-    if (cmd == "loop") {
+    if (cmd == "version") {
+      args.command = VersionCommand{};
+    } else if (cmd == "loop") {
       args.command = LoopCommand{};
     } else if (cmd == "ui-test-monitor") {
       args.command = UiTestMonitorCommand{};
@@ -143,10 +151,12 @@ void print_usage() {
             << "\n"
             << "Options:\n"
             << "  --help, -h              Show this help message\n"
+            << "  --version, -v           Show version information\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
             << "  --config <filepath>     Load configuration from a TOML file\n"
             << "\n"
             << "Commands:\n"
+            << "  version                 Show version information\n"
             << "  loop                    Run in loop mode (hotkey-driven)\n"
             << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
