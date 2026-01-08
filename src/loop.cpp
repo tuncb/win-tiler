@@ -592,6 +592,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Register window move/resize detection hooks
   winapi::register_move_size_hook();
 
+  // Register session/power notifications for pause on lock/sleep/display-off
+  winapi::register_session_power_notifications();
+
   // Initialize overlay for rendering
   overlay::init();
 
@@ -613,6 +616,14 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
+
+    // Block if session is paused (locked, sleeping, or display off)
+    if (winapi::is_session_paused()) {
+      spdlog::debug("Session paused, waiting for resume...");
+      winapi::wait_for_session_active();
+      spdlog::debug("Session resumed, continuing loop");
+      continue; // Re-gather state after resume
+    }
 
     auto loop_start = std::chrono::high_resolution_clock::now();
 
@@ -736,6 +747,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
   // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(options.keyboardOptions);
+  winapi::unregister_session_power_notifications();
   winapi::unregister_move_size_hook();
   overlay::shutdown();
   spdlog::info("Hotkeys unregistered, hooks unregistered, overlay shutdown, exiting...");

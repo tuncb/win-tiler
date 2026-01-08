@@ -4,6 +4,7 @@
 #include <psapi.h>
 #include <spdlog/spdlog.h>
 #include <windows.h>
+#include <wtsapi32.h>
 
 #include <algorithm>
 #include <atomic>
@@ -12,6 +13,7 @@
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "Dwmapi.lib")
+#pragma comment(lib, "Wtsapi32.lib")
 
 namespace winapi {
 
@@ -702,6 +704,204 @@ static std::optional<DragInfo> get_drag_info() {
 void clear_drag_ended() {
   g_move_just_ended = false;
   g_moving_hwnd = nullptr;
+}
+
+// Session/Power notification handling
+namespace {
+// GUID for display power state notifications
+// {6FE69556-704A-47A0-8F24-C28D936FDA47}
+static const GUID GUID_CONSOLE_DISPLAY_STATE_LOCAL = {
+    0x6fe69556, 0x704a, 0x47a0, {0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47}};
+
+// Hidden window for receiving notifications
+HWND g_notification_hwnd = nullptr;
+HPOWERNOTIFY g_power_notify_handle = nullptr;
+
+// Pause state flags (atomic for thread safety)
+std::atomic<bool> g_session_locked{false};
+std::atomic<bool> g_system_suspended{false};
+std::atomic<bool> g_display_off{false};
+
+// Track if we've received initial display state (to avoid spurious "resuming" on startup)
+std::atomic<bool> g_display_state_initialized{false};
+
+// Event for blocking wait
+HANDLE g_resume_event = nullptr;
+
+const wchar_t* NOTIFICATION_WINDOW_CLASS = L"WinTilerNotificationWindow";
+
+LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  switch (msg) {
+  case WM_WTSSESSION_CHANGE:
+    if (wParam == WTS_SESSION_LOCK) {
+      g_session_locked = true;
+      if (g_resume_event) {
+        ResetEvent(g_resume_event);
+      }
+      spdlog::info("Session locked - pausing");
+    } else if (wParam == WTS_SESSION_UNLOCK) {
+      g_session_locked = false;
+      if (g_resume_event && !g_system_suspended && !g_display_off) {
+        SetEvent(g_resume_event);
+      }
+      spdlog::info("Session unlocked - resuming");
+    }
+    return 0;
+
+  case WM_POWERBROADCAST:
+    if (wParam == PBT_APMSUSPEND) {
+      g_system_suspended = true;
+      if (g_resume_event) {
+        ResetEvent(g_resume_event);
+      }
+      spdlog::info("System suspending - pausing");
+    } else if (wParam == PBT_APMRESUMESUSPEND || wParam == PBT_APMRESUMEAUTOMATIC) {
+      g_system_suspended = false;
+      if (g_resume_event && !g_session_locked && !g_display_off) {
+        SetEvent(g_resume_event);
+      }
+      spdlog::info("System resumed - resuming");
+    } else if (wParam == PBT_POWERSETTINGCHANGE) {
+      auto* setting = reinterpret_cast<POWERBROADCAST_SETTING*>(lParam);
+      if (setting && IsEqualGUID(setting->PowerSetting, GUID_CONSOLE_DISPLAY_STATE_LOCAL)) {
+        DWORD state = *reinterpret_cast<DWORD*>(setting->Data);
+        bool was_initialized = g_display_state_initialized.exchange(true);
+        if (state == 0) { // Display off
+          g_display_off = true;
+          if (g_resume_event) {
+            ResetEvent(g_resume_event);
+          }
+          spdlog::info("Display off - pausing");
+        } else { // Display on or dimmed
+          g_display_off = false;
+          if (g_resume_event && !g_session_locked && !g_system_suspended) {
+            SetEvent(g_resume_event);
+          }
+          // Only log if this isn't the initial state notification on startup
+          if (was_initialized) {
+            spdlog::info("Display on - resuming");
+          }
+        }
+      }
+    }
+    return TRUE; // Must return TRUE for power messages
+
+  default:
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+  }
+}
+
+bool create_notification_window() {
+  WNDCLASSEXW wc = {};
+  wc.cbSize = sizeof(wc);
+  wc.lpfnWndProc = notification_wnd_proc;
+  wc.hInstance = GetModuleHandleW(nullptr);
+  wc.lpszClassName = NOTIFICATION_WINDOW_CLASS;
+
+  if (!RegisterClassExW(&wc)) {
+    // Class may already be registered
+    if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      spdlog::error("Failed to register notification window class, error={}", GetLastError());
+      return false;
+    }
+  }
+
+  g_notification_hwnd =
+      CreateWindowExW(0, NOTIFICATION_WINDOW_CLASS, L"WinTiler Notifications", 0, 0, 0, 0, 0,
+                      HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+
+  if (!g_notification_hwnd) {
+    spdlog::error("Failed to create notification window, error={}", GetLastError());
+    return false;
+  }
+
+  return true;
+}
+} // namespace
+
+void register_session_power_notifications() {
+  // Create event for blocking wait (manual reset, initially signaled)
+  g_resume_event = CreateEventW(nullptr, TRUE, TRUE, nullptr);
+  if (!g_resume_event) {
+    spdlog::error("Failed to create resume event, error={}", GetLastError());
+    return;
+  }
+
+  // Create hidden window for notifications
+  if (!create_notification_window()) {
+    spdlog::error("Failed to create notification window");
+    CloseHandle(g_resume_event);
+    g_resume_event = nullptr;
+    return;
+  }
+
+  // Register for session notifications (lock/unlock)
+  if (!WTSRegisterSessionNotification(g_notification_hwnd, NOTIFY_FOR_THIS_SESSION)) {
+    spdlog::error("Failed to register session notifications, error={}", GetLastError());
+  }
+
+  // Register for display power state changes
+  g_power_notify_handle = RegisterPowerSettingNotification(
+      g_notification_hwnd, &GUID_CONSOLE_DISPLAY_STATE_LOCAL, DEVICE_NOTIFY_WINDOW_HANDLE);
+  if (!g_power_notify_handle) {
+    spdlog::error("Failed to register power setting notification, error={}", GetLastError());
+  }
+
+  spdlog::info("Registered session/power notifications");
+}
+
+void unregister_session_power_notifications() {
+  if (g_notification_hwnd) {
+    WTSUnRegisterSessionNotification(g_notification_hwnd);
+
+    if (g_power_notify_handle) {
+      UnregisterPowerSettingNotification(g_power_notify_handle);
+      g_power_notify_handle = nullptr;
+    }
+
+    DestroyWindow(g_notification_hwnd);
+    g_notification_hwnd = nullptr;
+  }
+
+  if (g_resume_event) {
+    CloseHandle(g_resume_event);
+    g_resume_event = nullptr;
+  }
+
+  // Reset state
+  g_session_locked = false;
+  g_system_suspended = false;
+  g_display_off = false;
+  g_display_state_initialized = false;
+
+  spdlog::info("Unregistered session/power notifications");
+}
+
+void wait_for_session_active() {
+  if (!g_resume_event) {
+    return;
+  }
+
+  // Process messages while waiting to ensure notifications are received
+  while (g_session_locked || g_system_suspended || g_display_off) {
+    DWORD result = MsgWaitForMultipleObjects(1, &g_resume_event, FALSE, INFINITE, QS_ALLINPUT);
+
+    if (result == WAIT_OBJECT_0) {
+      // Event signaled - session is active
+      break;
+    } else if (result == WAIT_OBJECT_0 + 1) {
+      // Messages available - process them
+      MSG msg;
+      while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+      }
+    }
+  }
+}
+
+bool is_session_paused() {
+  return g_session_locked || g_system_suspended || g_display_off;
 }
 
 static bool is_ctrl_pressed() {

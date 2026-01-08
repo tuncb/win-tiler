@@ -97,6 +97,17 @@ bool wait_for_messages_or_timeout(unsigned long timeout_ms);
 void register_move_size_hook();
 void unregister_move_size_hook();
 
+// Session/Power state management - pauses loop on lock/sleep/display-off
+void register_session_power_notifications();
+void unregister_session_power_notifications();
+
+// Blocks until session is active (unlocked, awake, display on)
+// Returns immediately if already active
+void wait_for_session_active();
+
+// Check if session is currently paused (locked, sleeping, or display off)
+bool is_session_paused();
+
 // Drag operation tracking (for mouse-based window move operations)
 struct DragInfo {
   HWND_T hwnd;     // Window being dragged
