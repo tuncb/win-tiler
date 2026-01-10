@@ -250,12 +250,26 @@ build_current_state(const MultiClusterAppState& app_state) {
 }
 
 void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process_id) {
-  // Determine target cluster: use selection if available, otherwise use hovered cluster
+  // Determine target cluster:
+  // 1. If hovering over an empty cluster, prioritize that cluster
+  // 2. Otherwise use selection if available
+  // 3. Fall back to hovered cluster
   std::optional<size_t> target_cluster_index;
 
-  if (app_state.system.selection.has_value()) {
+  if (app_state.hovered_cluster_index.has_value()) {
+    size_t hovered_idx = *app_state.hovered_cluster_index;
+    const auto& hovered_cluster = app_state.system.clusters[hovered_idx];
+    if (hovered_cluster.tree.empty()) {
+      // Hovering over empty cluster - prioritize it for new windows
+      target_cluster_index = hovered_idx;
+    }
+  }
+
+  if (!target_cluster_index.has_value() && app_state.system.selection.has_value()) {
     target_cluster_index = static_cast<size_t>(app_state.system.selection->cluster_index);
-  } else if (app_state.hovered_cluster_index.has_value()) {
+  }
+
+  if (!target_cluster_index.has_value() && app_state.hovered_cluster_index.has_value()) {
     target_cluster_index = app_state.hovered_cluster_index;
   }
 
