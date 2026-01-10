@@ -1,6 +1,13 @@
 #include "controller.h"
 
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <limits>
+#include <magic_enum/magic_enum.hpp>
+#include <set>
 
 namespace wintiler::ctrl {
 
@@ -539,6 +546,698 @@ bool toggle_selected_zen(System& system) {
   }
 
   return true;
+}
+
+// ============================================================================
+// Query Functions (additional)
+// ============================================================================
+
+std::optional<int> find_cell_by_leaf_id(const Cluster& cluster, size_t leaf_id) {
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    if (cluster.tree.is_leaf(i) && cluster.tree[i].leaf_id.has_value() &&
+        *cluster.tree[i].leaf_id == leaf_id) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster) {
+  std::vector<size_t> leaf_ids;
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    if (cluster.tree.is_leaf(i) && cluster.tree[i].leaf_id.has_value()) {
+      leaf_ids.push_back(*cluster.tree[i].leaf_id);
+    }
+  }
+  return leaf_ids;
+}
+
+// Find any leaf in the cluster
+static std::optional<int> find_any_leaf(const Cluster& cluster) {
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    if (cluster.tree.is_leaf(i)) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+// ============================================================================
+// Geometric Navigation Helpers
+// ============================================================================
+
+// Check if a rect is valid (non-empty)
+static bool is_valid_rect(const Rect& r) {
+  return r.width > 0.0f && r.height > 0.0f;
+}
+
+// Check if 'to' rect is in the given direction from 'from' rect
+static bool is_in_direction(const Rect& from, const Rect& to, Direction dir) {
+  switch (dir) {
+  case Direction::Left:
+    return to.x + to.width <= from.x;
+  case Direction::Right:
+    return to.x >= from.x + from.width;
+  case Direction::Up:
+    return to.y + to.height <= from.y;
+  case Direction::Down:
+    return to.y >= from.y + from.height;
+  default:
+    return false;
+  }
+}
+
+// Calculate directional distance with overlap preference
+// Returns a score where lower is better
+static float directional_distance(const Rect& from, const Rect& to, Direction dir) {
+  float dx_center = (to.x + to.width * 0.5f) - (from.x + from.width * 0.5f);
+  float dy_center = (to.y + to.height * 0.5f) - (from.y + from.height * 0.5f);
+
+  // Check for perpendicular overlap - cells that share vertical/horizontal space
+  // are strongly preferred over cells that don't
+  bool has_vertical_overlap = (to.y < from.y + from.height) && (to.y + to.height > from.y);
+  bool has_horizontal_overlap = (to.x < from.x + from.width) && (to.x + to.width > from.x);
+
+  switch (dir) {
+  case Direction::Left:
+  case Direction::Right: {
+    float primary_dist = (dir == Direction::Left) ? -dx_center : dx_center;
+    if (has_vertical_overlap) {
+      return primary_dist; // Overlapping cells get pure horizontal distance
+    }
+    // Non-overlapping cells get a large penalty
+    float gap =
+        std::min(std::abs(to.y - (from.y + from.height)), std::abs(from.y - (to.y + to.height)));
+    return primary_dist + 10000.0f + gap;
+  }
+  case Direction::Up:
+  case Direction::Down: {
+    float primary_dist = (dir == Direction::Up) ? -dy_center : dy_center;
+    if (has_horizontal_overlap) {
+      return primary_dist; // Overlapping cells get pure vertical distance
+    }
+    float gap =
+        std::min(std::abs(to.x - (from.x + from.width)), std::abs(from.x - (to.x + to.width)));
+    return primary_dist + 10000.0f + gap;
+  }
+  default:
+    return std::numeric_limits<float>::max();
+  }
+}
+
+// ============================================================================
+// Selection Navigation
+// ============================================================================
+
+std::optional<CellIndicatorByIndex>
+move_selection(System& system, Direction dir,
+               const std::vector<std::vector<Rect>>& cell_geometries) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
+  }
+
+  int current_cluster = system.selection->cluster_index;
+  int current_cell = system.selection->cell_index;
+
+  // Validate current selection and get its geometry
+  if (current_cluster < 0 || static_cast<size_t>(current_cluster) >= cell_geometries.size()) {
+    return std::nullopt;
+  }
+  if (current_cell < 0 || static_cast<size_t>(current_cell) >=
+                              cell_geometries[static_cast<size_t>(current_cluster)].size()) {
+    return std::nullopt;
+  }
+
+  const Rect& current_rect =
+      cell_geometries[static_cast<size_t>(current_cluster)][static_cast<size_t>(current_cell)];
+  if (!is_valid_rect(current_rect)) {
+    return std::nullopt;
+  }
+
+  // Find best candidate using geometric navigation
+  std::optional<CellIndicatorByIndex> best_candidate;
+  float best_score = std::numeric_limits<float>::max();
+
+  for (size_t ci = 0; ci < cell_geometries.size(); ++ci) {
+    if (ci >= system.clusters.size()) {
+      continue;
+    }
+    const auto& cluster = system.clusters[ci];
+    const auto& cluster_rects = cell_geometries[ci];
+
+    // ZEN MODE HANDLING: If cluster has zen, only consider the zen cell
+    if (cluster.zen_cell_index.has_value()) {
+      int zen_idx = *cluster.zen_cell_index;
+
+      // Skip if this is the current cell
+      if (static_cast<int>(ci) == current_cluster && zen_idx == current_cell) {
+        continue;
+      }
+
+      // Check if zen cell has valid geometry
+      if (zen_idx < 0 || static_cast<size_t>(zen_idx) >= cluster_rects.size()) {
+        continue;
+      }
+      const Rect& zen_rect = cluster_rects[static_cast<size_t>(zen_idx)];
+      if (!is_valid_rect(zen_rect)) {
+        continue;
+      }
+
+      // Check if in direction and score
+      if (!is_in_direction(current_rect, zen_rect, dir)) {
+        continue;
+      }
+
+      float score = directional_distance(current_rect, zen_rect, dir);
+      if (score < best_score) {
+        best_score = score;
+        best_candidate = CellIndicatorByIndex{static_cast<int>(ci), zen_idx};
+      }
+      continue; // Skip normal leaf iteration for this cluster
+    }
+
+    // No zen cell: search all leaves in this cluster
+    for (size_t cell_idx = 0; cell_idx < cluster_rects.size(); ++cell_idx) {
+      // Skip current cell
+      if (static_cast<int>(ci) == current_cluster && static_cast<int>(cell_idx) == current_cell) {
+        continue;
+      }
+
+      const Rect& candidate_rect = cluster_rects[cell_idx];
+      if (!is_valid_rect(candidate_rect)) {
+        continue;
+      }
+
+      if (!is_in_direction(current_rect, candidate_rect, dir)) {
+        continue;
+      }
+
+      float score = directional_distance(current_rect, candidate_rect, dir);
+      if (score < best_score) {
+        best_score = score;
+        best_candidate = CellIndicatorByIndex{static_cast<int>(ci), static_cast<int>(cell_idx)};
+      }
+    }
+  }
+
+  if (best_candidate.has_value()) {
+    system.selection = best_candidate;
+
+    // Clear zen if moving to a non-zen cell in a zen cluster
+    auto& new_cluster = system.clusters[static_cast<size_t>(best_candidate->cluster_index)];
+    if (new_cluster.zen_cell_index.has_value() &&
+        *new_cluster.zen_cell_index != best_candidate->cell_index) {
+      new_cluster.zen_cell_index.reset();
+    }
+
+    return best_candidate;
+  }
+
+  return std::nullopt;
+}
+
+// ============================================================================
+// Split Operations
+// ============================================================================
+
+bool toggle_selected_split_dir(System& system) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+
+  if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
+    return false;
+  }
+
+  auto parent_opt = cluster.tree.get_parent(cell_index);
+  if (!parent_opt.has_value()) {
+    return false; // Root leaf has no parent
+  }
+
+  int parent_index = *parent_opt;
+
+  // Verify both children are leaves (can only toggle when splitting two leaves)
+  auto first_child = cluster.tree.get_first_child(parent_index);
+  auto second_child = cluster.tree.get_second_child(parent_index);
+
+  if (!first_child.has_value() || !second_child.has_value()) {
+    return false;
+  }
+
+  if (!cluster.tree.is_leaf(*first_child) || !cluster.tree.is_leaf(*second_child)) {
+    return false;
+  }
+
+  // Toggle the split direction
+  CellData& parent_data = cluster.tree[parent_index];
+  parent_data.split_dir =
+      (parent_data.split_dir == SplitDir::Vertical) ? SplitDir::Horizontal : SplitDir::Vertical;
+
+  return true;
+}
+
+bool cycle_split_mode(System& system) {
+  switch (system.split_mode) {
+  case SplitMode::Zigzag:
+    system.split_mode = SplitMode::Vertical;
+    break;
+  case SplitMode::Vertical:
+    system.split_mode = SplitMode::Horizontal;
+    break;
+  case SplitMode::Horizontal:
+    system.split_mode = SplitMode::Zigzag;
+    break;
+  }
+  return true;
+}
+
+bool set_selected_split_ratio(System& system, float new_ratio) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+
+  if (!cluster.tree.is_valid_index(cell_index)) {
+    return false;
+  }
+
+  // If selected cell is a leaf, get its parent
+  int parent_index = cell_index;
+  if (cluster.tree.is_leaf(cell_index)) {
+    auto parent_opt = cluster.tree.get_parent(cell_index);
+    if (!parent_opt.has_value()) {
+      return false; // Root leaf has no parent to adjust
+    }
+    parent_index = *parent_opt;
+  }
+
+  // Clamp ratio to valid range
+  float clamped_ratio = std::clamp(new_ratio, 0.1f, 0.9f);
+
+  cluster.tree[parent_index].split_ratio = clamped_ratio;
+  return true;
+}
+
+bool adjust_selected_split_ratio(System& system, float delta) {
+  if (!system.selection.has_value()) {
+    return false;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+
+  if (!cluster.tree.is_valid_index(cell_index)) {
+    return false;
+  }
+
+  // If selected cell is a leaf, get its parent
+  int parent_index = cell_index;
+  if (cluster.tree.is_leaf(cell_index)) {
+    auto parent_opt = cluster.tree.get_parent(cell_index);
+    if (!parent_opt.has_value()) {
+      return false; // Root leaf has no parent to adjust
+    }
+    parent_index = *parent_opt;
+  }
+
+  // If selected is second child, negate delta so positive = grow selected
+  float adjusted_delta = delta;
+  auto second_child = cluster.tree.get_second_child(parent_index);
+  if (second_child.has_value() && *second_child == cell_index) {
+    adjusted_delta = -delta;
+  }
+
+  float new_ratio = cluster.tree[parent_index].split_ratio + adjusted_delta;
+  float clamped_ratio = std::clamp(new_ratio, 0.1f, 0.9f);
+
+  cluster.tree[parent_index].split_ratio = clamped_ratio;
+  return true;
+}
+
+// ============================================================================
+// System State Updates
+// ============================================================================
+
+bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+            std::optional<int> redirect_cluster_index) {
+  bool updated = false;
+
+  // Make a mutable copy for redirection
+  std::vector<ClusterCellUpdateInfo> redirected_updates = cluster_updates;
+
+  // If redirect_cluster_index is provided, find new windows and redirect them
+  if (redirect_cluster_index.has_value()) {
+    int target_idx = *redirect_cluster_index;
+    if (target_idx >= 0 && static_cast<size_t>(target_idx) < system.clusters.size()) {
+      // Find windows that don't exist in any cluster yet
+      std::vector<size_t> new_windows;
+      for (const auto& upd : redirected_updates) {
+        for (size_t leaf_id : upd.leaf_ids) {
+          bool exists = false;
+          for (const auto& cluster : system.clusters) {
+            if (find_cell_by_leaf_id(cluster, leaf_id).has_value()) {
+              exists = true;
+              break;
+            }
+          }
+          if (!exists) {
+            new_windows.push_back(leaf_id);
+          }
+        }
+      }
+
+      // Remove new windows from all clusters and add to target
+      if (!new_windows.empty()) {
+        for (auto& upd : redirected_updates) {
+          auto& ids = upd.leaf_ids;
+          ids.erase(std::remove_if(ids.begin(), ids.end(),
+                                   [&new_windows](size_t id) {
+                                     return std::find(new_windows.begin(), new_windows.end(), id) !=
+                                            new_windows.end();
+                                   }),
+                    ids.end());
+        }
+
+        // Add to target cluster
+        if (static_cast<size_t>(target_idx) < redirected_updates.size()) {
+          for (size_t id : new_windows) {
+            redirected_updates[static_cast<size_t>(target_idx)].leaf_ids.push_back(id);
+          }
+        }
+      }
+    }
+  }
+
+  // Process each cluster update (vector index = cluster index)
+  for (size_t cluster_idx = 0; cluster_idx < redirected_updates.size(); ++cluster_idx) {
+    if (cluster_idx >= system.clusters.size()) {
+      continue;
+    }
+
+    const auto& cluster_update = redirected_updates[cluster_idx];
+    auto& cluster = system.clusters[cluster_idx];
+
+    // Update fullscreen state
+    cluster.has_fullscreen_cell = cluster_update.has_fullscreen_cell;
+
+    // Get current leaf IDs
+    std::vector<size_t> current_leaf_ids = get_cluster_leaf_ids(cluster);
+
+    // Compute set differences
+    std::vector<size_t> sorted_current = current_leaf_ids;
+    std::vector<size_t> sorted_desired = cluster_update.leaf_ids;
+    std::sort(sorted_current.begin(), sorted_current.end());
+    std::sort(sorted_desired.begin(), sorted_desired.end());
+
+    // to_delete = current - desired
+    std::vector<size_t> to_delete;
+    std::set_difference(sorted_current.begin(), sorted_current.end(), sorted_desired.begin(),
+                        sorted_desired.end(), std::back_inserter(to_delete));
+
+    // to_add = desired - current
+    std::vector<size_t> to_add;
+    std::set_difference(sorted_desired.begin(), sorted_desired.end(), sorted_current.begin(),
+                        sorted_current.end(), std::back_inserter(to_add));
+
+    // Handle deletions
+    for (size_t leaf_id : to_delete) {
+      auto cell_index_opt = find_cell_by_leaf_id(cluster, leaf_id);
+      if (!cell_index_opt.has_value()) {
+        continue;
+      }
+
+      int cell_idx = *cell_index_opt;
+
+      // Check if this was the selected cell
+      bool was_selected = system.selection.has_value() &&
+                          system.selection->cluster_index == static_cast<int>(cluster_idx) &&
+                          system.selection->cell_index == cell_idx;
+
+      // Get sibling for selection update before deletion
+      auto sibling_opt = cluster.tree.get_sibling(cell_idx);
+
+      if (delete_leaf(cluster, cell_idx)) {
+        updated = true;
+
+        // Update selection if deleted cell was selected
+        if (was_selected) {
+          // Try to select sibling (which took parent's place after deletion)
+          auto parent_opt = cluster.tree.get_parent(cell_idx);
+          if (parent_opt.has_value()) {
+            // After deletion, parent took sibling's data
+            // So we can try to find any remaining leaf
+            auto new_leaf = find_any_leaf(cluster);
+            if (new_leaf.has_value()) {
+              system.selection = CellIndicatorByIndex{static_cast<int>(cluster_idx), *new_leaf};
+            } else {
+              system.selection.reset();
+            }
+          } else {
+            system.selection.reset();
+          }
+        }
+      }
+    }
+
+    // Determine starting split index for additions (prefer selection)
+    int split_from_index = -1;
+    if (system.selection.has_value() &&
+        system.selection->cluster_index == static_cast<int>(cluster_idx) &&
+        cluster.tree.is_valid_index(system.selection->cell_index) &&
+        cluster.tree.is_leaf(system.selection->cell_index)) {
+      split_from_index = system.selection->cell_index;
+    }
+
+    // Handle additions
+    for (size_t leaf_id : to_add) {
+      int current_selection = -1;
+
+      if (cluster.tree.empty()) {
+        // Cluster is empty - will create root
+        current_selection = -1;
+      } else if (split_from_index >= 0 && cluster.tree.is_valid_index(split_from_index) &&
+                 cluster.tree.is_leaf(split_from_index)) {
+        current_selection = split_from_index;
+      } else {
+        // Fallback: find any leaf
+        auto leaf_opt = find_any_leaf(cluster);
+        if (leaf_opt.has_value()) {
+          current_selection = *leaf_opt;
+        }
+      }
+
+      // Determine split direction
+      SplitDir split_dir = determine_split_dir(cluster, current_selection, system.split_mode);
+
+      auto result_opt = split_leaf(cluster, current_selection, leaf_id, split_dir);
+      if (result_opt.has_value()) {
+        split_from_index = result_opt->new_selection_index;
+        updated = true;
+      }
+    }
+
+    // Reset zen if cells were added or removed
+    if (!to_delete.empty() || !to_add.empty()) {
+      cluster.zen_cell_index.reset();
+    }
+  }
+
+  return updated;
+}
+
+// ============================================================================
+// Validation Helpers
+// ============================================================================
+
+static bool validate_cluster(const Cluster& cluster) {
+  // Validate tree structure
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    // Check parent-child relationship consistency
+    auto parent_opt = cluster.tree.get_parent(i);
+    if (parent_opt.has_value()) {
+      int parent_idx = *parent_opt;
+      auto first_child = cluster.tree.get_first_child(parent_idx);
+      auto second_child = cluster.tree.get_second_child(parent_idx);
+
+      bool is_child_of_parent = (first_child.has_value() && *first_child == i) ||
+                                (second_child.has_value() && *second_child == i);
+
+      if (!is_child_of_parent) {
+        spdlog::error("[validate_cluster] Node {} claims parent {} but is not a child of it", i,
+                      parent_idx);
+        return false;
+      }
+    }
+
+    // Leaf nodes must have leaf_id
+    if (cluster.tree.is_leaf(i)) {
+      if (!cluster.tree[i].leaf_id.has_value()) {
+        spdlog::error("[validate_cluster] Leaf node {} has no leaf_id", i);
+        return false;
+      }
+    } else {
+      // Internal nodes must not have leaf_id
+      if (cluster.tree[i].leaf_id.has_value()) {
+        spdlog::error("[validate_cluster] Internal node {} has leaf_id", i);
+        return false;
+      }
+    }
+  }
+
+  // Check zen_cell_index points to valid leaf
+  if (cluster.zen_cell_index.has_value()) {
+    int zen_idx = *cluster.zen_cell_index;
+    if (!cluster.tree.is_valid_index(zen_idx) || !cluster.tree.is_leaf(zen_idx)) {
+      spdlog::error("[validate_cluster] zen_cell_index {} is invalid or not a leaf", zen_idx);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// ============================================================================
+// Utilities
+// ============================================================================
+
+bool validate_system(const System& system) {
+  bool ok = true;
+
+  spdlog::debug("===== Validating System =====");
+  spdlog::debug("Total clusters: {}", system.clusters.size());
+
+  if (system.selection.has_value()) {
+    spdlog::debug("selection: cluster={}, cell_index={}", system.selection->cluster_index,
+                  system.selection->cell_index);
+  } else {
+    spdlog::debug("selection: null");
+  }
+
+  // Check that selection points to a valid cluster and cell
+  if (system.selection.has_value()) {
+    if (system.selection->cluster_index < 0 ||
+        static_cast<size_t>(system.selection->cluster_index) >= system.clusters.size()) {
+      spdlog::error("[validate] ERROR: selection points to non-existent cluster");
+      ok = false;
+    } else {
+      const auto& sel_cluster =
+          system.clusters[static_cast<size_t>(system.selection->cluster_index)];
+      if (!sel_cluster.tree.is_valid_index(system.selection->cell_index) ||
+          !sel_cluster.tree.is_leaf(system.selection->cell_index)) {
+        spdlog::error("[validate] ERROR: selection points to non-leaf cell");
+        ok = false;
+      }
+    }
+  }
+
+  // Validate each cluster
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+    spdlog::debug("--- Cluster {} at ({}, {}) ---", ci, cluster.global_x, cluster.global_y);
+    if (!validate_cluster(cluster)) {
+      ok = false;
+    }
+  }
+
+  // Check for duplicate leaf_ids across all clusters
+  std::vector<size_t> all_leaf_ids;
+  for (const auto& cluster : system.clusters) {
+    auto ids = get_cluster_leaf_ids(cluster);
+    all_leaf_ids.insert(all_leaf_ids.end(), ids.begin(), ids.end());
+  }
+  std::sort(all_leaf_ids.begin(), all_leaf_ids.end());
+  for (size_t i = 1; i < all_leaf_ids.size(); ++i) {
+    if (all_leaf_ids[i] == all_leaf_ids[i - 1]) {
+      spdlog::error("[validate] ERROR: duplicate leaf_id {} across clusters", all_leaf_ids[i]);
+      ok = false;
+    }
+  }
+
+  if (ok) {
+    spdlog::debug("[validate] System OK");
+  } else {
+    spdlog::warn("[validate] System has anomalies");
+  }
+
+  spdlog::debug("===== End Validation =====");
+
+  return ok;
+}
+
+static void debug_print_cluster(const Cluster& cluster) {
+  spdlog::debug("  tree.size = {}", cluster.tree.size());
+  spdlog::debug("  window_width = {}, window_height = {}", cluster.window_width,
+                cluster.window_height);
+
+  if (cluster.zen_cell_index.has_value()) {
+    spdlog::debug("  zen_cell_index = {}", *cluster.zen_cell_index);
+  } else {
+    spdlog::debug("  zen_cell_index = null");
+  }
+
+  spdlog::debug("  has_fullscreen_cell = {}", cluster.has_fullscreen_cell);
+
+  // Print tree structure
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    const auto& node = cluster.tree.node(i);
+    const auto& data = cluster.tree[i];
+
+    std::string parent_str = node.parent.has_value() ? std::to_string(*node.parent) : "null";
+    std::string first_str =
+        node.first_child.has_value() ? std::to_string(*node.first_child) : "null";
+    std::string second_str =
+        node.second_child.has_value() ? std::to_string(*node.second_child) : "null";
+    std::string leaf_str = data.leaf_id.has_value() ? std::to_string(*data.leaf_id) : "null";
+
+    spdlog::debug("  [{}] parent={}, first={}, second={}, split_dir={}, ratio={:.2f}, leaf_id={}",
+                  i, parent_str, first_str, second_str, magic_enum::enum_name(data.split_dir),
+                  data.split_ratio, leaf_str);
+  }
+}
+
+void debug_print_system(const System& system) {
+  spdlog::debug("===== System =====");
+  spdlog::debug("clusters.size = {}", system.clusters.size());
+  spdlog::debug("split_mode = {}", magic_enum::enum_name(system.split_mode));
+
+  if (system.selection.has_value()) {
+    spdlog::debug("selection = cluster={}, cell_index={}", system.selection->cluster_index,
+                  system.selection->cell_index);
+  } else {
+    spdlog::debug("selection = null");
+  }
+
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+    spdlog::debug("--- Cluster {} ---", ci);
+    spdlog::debug("  global_x = {}, global_y = {}", cluster.global_x, cluster.global_y);
+    debug_print_cluster(cluster);
+  }
+
+  spdlog::debug("===== End System =====");
 }
 
 } // namespace wintiler::ctrl

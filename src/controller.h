@@ -77,12 +77,24 @@ struct ClusterInitInfo {
   std::vector<size_t> initial_cell_ids;
 };
 
+// Update info for a single cluster (index is implicit from vector position)
+struct ClusterCellUpdateInfo {
+  std::vector<size_t> leaf_ids;
+  bool has_fullscreen_cell = false;
+};
+
 // ============================================================================
 // Query Functions
 // ============================================================================
 
 // Returns true if the cell at cell_index is a leaf (has no children)
 [[nodiscard]] bool is_leaf(const Cluster& cluster, int cell_index);
+
+// Find cell index by leaf ID. Returns nullopt if not found.
+[[nodiscard]] std::optional<int> find_cell_by_leaf_id(const Cluster& cluster, size_t leaf_id);
+
+// Get all leaf IDs from a cluster.
+[[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster);
 
 // ============================================================================
 // Initialization
@@ -128,5 +140,57 @@ void clear_zen(System& system, int cluster_index);
 
 // Toggle zen mode for selected cell
 [[nodiscard]] bool toggle_selected_zen(System& system);
+
+// ============================================================================
+// Selection Navigation
+// ============================================================================
+
+// Move selection to adjacent cell using geometric navigation
+// cell_geometries: 2D vector where:
+//   - Outer index = cluster_index
+//   - Inner index = cell_index
+//   - Value = global Rect for that cell (empty rect for non-leaf/invalid cells)
+// Handles zen mode: when a cluster has zen, only the zen cell is considered for navigation
+// Returns the new selection if navigation succeeded
+[[nodiscard]] std::optional<CellIndicatorByIndex>
+move_selection(System& system, Direction dir,
+               const std::vector<std::vector<Rect>>& cell_geometries);
+
+// ============================================================================
+// Split Operations
+// ============================================================================
+
+// Toggle split direction of selected cell's parent
+[[nodiscard]] bool toggle_selected_split_dir(System& system);
+
+// Cycle through split modes (Zigzag -> Vertical -> Horizontal -> Zigzag)
+[[nodiscard]] bool cycle_split_mode(System& system);
+
+// Set split ratio of selected cell's parent (clamped to 0.1-0.9)
+[[nodiscard]] bool set_selected_split_ratio(System& system, float new_ratio);
+
+// Adjust split ratio of selected cell's parent by delta
+// Delta is negated if selected cell is second child (so positive = grow selected cell)
+[[nodiscard]] bool adjust_selected_split_ratio(System& system, float delta);
+
+// ============================================================================
+// System State Updates
+// ============================================================================
+
+// Update system state with new window configuration
+// If redirect_cluster_index is provided, new windows are added to that cluster
+// Returns true if any cells were added or deleted
+[[nodiscard]] bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+                          std::optional<int> redirect_cluster_index = std::nullopt);
+
+// ============================================================================
+// Utilities
+// ============================================================================
+
+// Validate the entire multi-cluster system
+[[nodiscard]] bool validate_system(const System& system);
+
+// Debug: print the entire multi-cluster system to stdout
+void debug_print_system(const System& system);
 
 } // namespace wintiler::ctrl
