@@ -36,18 +36,13 @@ struct CellData {
   std::optional<size_t> leaf_id; // Only set for leaf cells (windows)
 };
 
-// A cluster of cells forming a binary tree
-struct CellCluster {
+// A cluster of cells forming a binary tree with position and monitor info
+struct Cluster {
   BinaryTree<CellData> tree;
   float window_width = 0.0f;
   float window_height = 0.0f;
   std::optional<int> zen_cell_index;
   bool has_fullscreen_cell = false;
-};
-
-// A cluster with its global position and monitor info
-struct PositionedCluster {
-  CellCluster cluster;
   float global_x = 0.0f;
   float global_y = 0.0f;
   float monitor_x = 0.0f;
@@ -64,7 +59,7 @@ struct CellIndicatorByIndex {
 
 // The top-level system managing all clusters
 struct System {
-  std::vector<PositionedCluster> clusters;
+  std::vector<Cluster> clusters;
   std::optional<CellIndicatorByIndex> selection;
   SplitMode split_mode = SplitMode::Zigzag;
 };
@@ -87,15 +82,14 @@ struct ClusterInitInfo {
 // ============================================================================
 
 // Returns true if the cell at cell_index is a leaf (has no children)
-[[nodiscard]] bool is_leaf(const CellCluster& cluster, int cell_index);
+[[nodiscard]] bool is_leaf(const Cluster& cluster, int cell_index);
 
 // ============================================================================
 // Initialization
 // ============================================================================
 
 // Create a multi-cluster system from cluster initialization info
-[[nodiscard]] System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizontal,
-                                   float gap_vertical);
+[[nodiscard]] System create_system(const std::vector<ClusterInitInfo>& infos);
 
 // ============================================================================
 // Cell Operations
@@ -103,7 +97,7 @@ struct ClusterInitInfo {
 
 // Delete a leaf cell and promote its sibling
 // Returns true on success, false if cell is not a valid leaf or is root with no sibling
-[[nodiscard]] bool delete_leaf(CellCluster& cluster, int cell_index);
+[[nodiscard]] bool delete_leaf(Cluster& cluster, int cell_index);
 
 // Swap two cells (exchange positions or leaf_ids)
 // Returns true on success, false on failure (invalid indices, not leaves)

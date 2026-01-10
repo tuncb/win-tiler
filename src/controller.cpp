@@ -8,7 +8,7 @@ namespace wintiler::ctrl {
 // Query Functions
 // ============================================================================
 
-bool is_leaf(const CellCluster& cluster, int cell_index) {
+bool is_leaf(const Cluster& cluster, int cell_index) {
   return cluster.tree.is_leaf(cell_index);
 }
 
@@ -17,7 +17,7 @@ bool is_leaf(const CellCluster& cluster, int cell_index) {
 // ============================================================================
 
 // Determine split direction based on split mode and current selection
-static SplitDir determine_split_dir(const CellCluster& cluster, int selected_index,
+static SplitDir determine_split_dir(const Cluster& cluster, int selected_index,
                                     SplitMode mode) {
   switch (mode) {
   case SplitMode::Vertical:
@@ -49,8 +49,7 @@ struct SplitResult {
 
 // Split a leaf cell or create the root cell
 // Returns the new selection index, or nullopt on failure
-static std::optional<SplitResult> split_leaf(CellCluster& cluster, int selected_index,
-                                             float gap_horizontal, float gap_vertical,
+static std::optional<SplitResult> split_leaf(Cluster& cluster, int selected_index,
                                              size_t new_leaf_id, SplitDir split_dir,
                                              float split_ratio = 0.5f) {
   // Special case: if cluster is empty and selected_index is -1, create root
@@ -99,25 +98,23 @@ static std::optional<SplitResult> split_leaf(CellCluster& cluster, int selected_
 
 // Pre-create leaves in a cluster from initial cell IDs
 // Returns the selection index (or -1 if no cells created)
-static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& cell_ids,
-                             float gap_horizontal, float gap_vertical, SplitMode mode) {
+static int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids,
+                             SplitMode mode) {
   int current_selection = -1;
 
   for (size_t cell_id : cell_ids) {
     // Determine split direction based on mode
-    SplitDir split_dir = determine_split_dir(pc.cluster, current_selection, mode);
+    SplitDir split_dir = determine_split_dir(cluster, current_selection, mode);
 
-    if (pc.cluster.tree.empty()) {
+    if (cluster.tree.empty()) {
       // First cell: create root leaf (pass -1 for empty cluster)
-      auto result_opt =
-          split_leaf(pc.cluster, -1, gap_horizontal, gap_vertical, cell_id, split_dir);
+      auto result_opt = split_leaf(cluster, -1, cell_id, split_dir);
       if (result_opt.has_value()) {
         current_selection = result_opt->new_selection_index;
       }
     } else {
       // Subsequent cells: split current selection
-      auto result_opt = split_leaf(pc.cluster, current_selection, gap_horizontal, gap_vertical,
-                                   cell_id, split_dir);
+      auto result_opt = split_leaf(cluster, current_selection, cell_id, split_dir);
       if (result_opt.has_value()) {
         // After split, selection moves to first child
         current_selection = result_opt->new_selection_index;
@@ -132,32 +129,30 @@ static int pre_create_leaves(PositionedCluster& pc, const std::vector<size_t>& c
 // Initialization
 // ============================================================================
 
-System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizontal,
-                     float gap_vertical) {
+System create_system(const std::vector<ClusterInitInfo>& infos) {
   System system;
   system.clusters.reserve(infos.size());
 
   for (size_t cluster_index = 0; cluster_index < infos.size(); ++cluster_index) {
     const auto& info = infos[cluster_index];
 
-    PositionedCluster pc;
-    pc.global_x = info.x;
-    pc.global_y = info.y;
-    pc.monitor_x = info.monitor_x;
-    pc.monitor_y = info.monitor_y;
-    pc.monitor_width = info.monitor_width;
-    pc.monitor_height = info.monitor_height;
+    Cluster cluster;
+    cluster.global_x = info.x;
+    cluster.global_y = info.y;
+    cluster.monitor_x = info.monitor_x;
+    cluster.monitor_y = info.monitor_y;
+    cluster.monitor_width = info.monitor_width;
+    cluster.monitor_height = info.monitor_height;
 
     // Initialize cluster dimensions
-    pc.cluster.window_width = info.width;
-    pc.cluster.window_height = info.height;
+    cluster.window_width = info.width;
+    cluster.window_height = info.height;
 
     int selection_index = -1;
 
     // Pre-create leaves if initial_cell_ids provided
     if (!info.initial_cell_ids.empty()) {
-      selection_index = pre_create_leaves(pc, info.initial_cell_ids, gap_horizontal, gap_vertical,
-                                          system.split_mode);
+      selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode);
     }
 
     // If this is the first cluster with cells, make it the selected cluster
@@ -165,7 +160,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
       system.selection = CellIndicatorByIndex{static_cast<int>(cluster_index), selection_index};
     }
 
-    system.clusters.push_back(std::move(pc));
+    system.clusters.push_back(std::move(cluster));
   }
 
   return system;
@@ -175,7 +170,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, float gap_horizo
 // Cell Operations
 // ============================================================================
 
-bool delete_leaf(CellCluster& cluster, int cell_index) {
+bool delete_leaf(Cluster& cluster, int cell_index) {
   // Must be a valid leaf
   if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
     return false;
@@ -255,8 +250,8 @@ bool swap_cells(System& system, int cluster_index1, int cell_index1, int cluster
     return false;
   }
 
-  auto& cluster1 = system.clusters[static_cast<size_t>(cluster_index1)].cluster;
-  auto& cluster2 = system.clusters[static_cast<size_t>(cluster_index2)].cluster;
+  auto& cluster1 = system.clusters[static_cast<size_t>(cluster_index1)];
+  auto& cluster2 = system.clusters[static_cast<size_t>(cluster_index2)];
 
   // Validate cell indices are valid leaves
   if (!cluster1.tree.is_valid_index(cell_index1) || !cluster1.tree.is_leaf(cell_index1) ||
@@ -343,8 +338,8 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
     return false;
   }
 
-  auto& src_cluster = system.clusters[static_cast<size_t>(source_cluster_index)].cluster;
-  auto& tgt_cluster = system.clusters[static_cast<size_t>(target_cluster_index)].cluster;
+  auto& src_cluster = system.clusters[static_cast<size_t>(source_cluster_index)];
+  auto& tgt_cluster = system.clusters[static_cast<size_t>(target_cluster_index)];
 
   // Validate cell indices are valid leaves
   if (!src_cluster.tree.is_valid_index(source_cell_index) ||
@@ -470,7 +465,7 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
   // The split_leaf function will create two children:
   // - first_child gets target's original leaf_id
   // - second_child gets source's leaf_id
-  auto result_opt = split_leaf(tgt_cluster, adjusted_target_index, 0.0f, 0.0f,
+  auto result_opt = split_leaf(tgt_cluster, adjusted_target_index,
                                source_leaf_id.value_or(0), split_dir);
 
   if (!result_opt.has_value()) {
@@ -503,7 +498,7 @@ bool set_zen(System& system, int cluster_index, int cell_index) {
   if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
     return false;
   }
-  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)].cluster;
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
   if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
     return false;
   }
@@ -513,12 +508,12 @@ bool set_zen(System& system, int cluster_index, int cell_index) {
 
 void clear_zen(System& system, int cluster_index) {
   assert(cluster_index >= 0 && static_cast<size_t>(cluster_index) < system.clusters.size());
-  system.clusters[static_cast<size_t>(cluster_index)].cluster.zen_cell_index.reset();
+  system.clusters[static_cast<size_t>(cluster_index)].zen_cell_index.reset();
 }
 
 bool is_cell_zen(const System& system, int cluster_index, int cell_index) {
   assert(cluster_index >= 0 && static_cast<size_t>(cluster_index) < system.clusters.size());
-  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)].cluster;
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
   return cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell_index;
 }
 
@@ -531,7 +526,7 @@ bool toggle_selected_zen(System& system) {
   int cell_index = system.selection->cell_index;
 
   assert(cluster_index >= 0 && static_cast<size_t>(cluster_index) < system.clusters.size());
-  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)].cluster;
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
 
   if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
     return false;
