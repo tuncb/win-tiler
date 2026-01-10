@@ -432,8 +432,7 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
         }
       }
     } else {
-      options.ignoreOptions.ignore_children_of_processes =
-          std::move(userIgnoreChildrenOfProcesses);
+      options.ignoreOptions.ignore_children_of_processes = std::move(userIgnoreChildrenOfProcesses);
     }
 
     // Parse keyboard section
