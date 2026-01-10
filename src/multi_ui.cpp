@@ -55,6 +55,7 @@ struct ViewTransform {
 
 struct MultiClusterAppState {
   cells::System system;
+  std::vector<std::vector<size_t>> leaf_ids_per_cluster;
 };
 
 ViewTransform compute_view_transform(const cells::System& system, float screen_w, float screen_h,
@@ -155,12 +156,12 @@ void center_mouse_on_selection(const MultiClusterAppState& app_state, const View
   SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
 }
 
-std::vector<cells::ClusterCellUpdateInfo> build_current_state(const cells::System& system) {
+std::vector<cells::ClusterCellUpdateInfo> build_current_state(const MultiClusterAppState& app_state) {
   std::vector<cells::ClusterCellUpdateInfo> state;
-  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
+  for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
+    const auto& pc = app_state.system.clusters[cluster_idx];
     state.push_back(
-        {cluster_idx, cells::get_cluster_leaf_ids(pc.cluster), pc.cluster.has_fullscreen_cell});
+        {cluster_idx, app_state.leaf_ids_per_cluster[cluster_idx], pc.cluster.has_fullscreen_cell});
   }
   return state;
 }
@@ -172,16 +173,13 @@ void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process
   }
 
   auto selected_cluster_index = app_state.system.selection->cluster_index;
-  auto state = build_current_state(app_state.system);
 
-  // Add the new process ID (which becomes the leaf ID) to the selected cluster
+  // Add the new process ID to our stored list
   size_t new_leaf_id = next_process_id++;
-  for (auto& cluster_cell_ids : state) {
-    if (cluster_cell_ids.cluster_index == selected_cluster_index) {
-      cluster_cell_ids.leaf_ids.push_back(new_leaf_id);
-      break;
-    }
-  }
+  app_state.leaf_ids_per_cluster[selected_cluster_index].push_back(new_leaf_id);
+
+  // Build state from stored IDs
+  auto state = build_current_state(app_state);
 
   // Get mouse position in global coordinates
   Vector2 mouse_pos = GetMousePosition();
@@ -211,16 +209,13 @@ void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTr
   }
 
   size_t leaf_id_to_remove = *cell.leaf_id;
-  auto state = build_current_state(app_state.system);
 
-  // Remove the leaf ID from the appropriate cluster's list
-  for (auto& cluster_cell_ids : state) {
-    if (cluster_cell_ids.cluster_index == cluster_index) {
-      auto& ids = cluster_cell_ids.leaf_ids;
-      ids.erase(std::remove(ids.begin(), ids.end(), leaf_id_to_remove), ids.end());
-      break;
-    }
-  }
+  // Remove from our stored list
+  auto& ids = app_state.leaf_ids_per_cluster[cluster_index];
+  ids.erase(std::remove(ids.begin(), ids.end(), leaf_id_to_remove), ids.end());
+
+  // Build state from stored IDs (now without the removed ID)
+  auto state = build_current_state(app_state);
 
   // Get mouse position in global coordinates
   Vector2 mouse_pos = GetMousePosition();
@@ -279,6 +274,12 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
   MultiClusterAppState app_state;
   app_state.system =
       cells::create_system(infos, options.gapOptions.horizontal, options.gapOptions.vertical);
+
+  // Initialize leaf_ids_per_cluster from infos
+  app_state.leaf_ids_per_cluster.resize(infos.size());
+  for (size_t i = 0; i < infos.size(); ++i) {
+    app_state.leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+  }
 
   // Set next_process_id to avoid collisions with any pre-existing leaf IDs
   size_t next_process_id = CELL_ID_START;
