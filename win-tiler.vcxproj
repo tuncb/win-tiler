@@ -208,6 +208,7 @@
   <ItemGroup>
     <ClCompile Include="src\argument_parser.cpp" />
     <ClCompile Include="src\controller.cpp" />
+    <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\loop.cpp" />
     <ClCompile Include="src\multi_cell_renderer.cpp" />
     <ClCompile Include="src\multi_cells.cpp" />
@@ -226,6 +227,7 @@
     <ClInclude Include="src\arena_allocator.h" />
     <ClInclude Include="src\binary_tree.h" />
     <ClInclude Include="src\controller.h" />
+    <ClInclude Include="src\engine.h" />
     <ClInclude Include="src\argument_parser.h" />
     <ClInclude Include="src\track_windows.h" />
     <ClInclude Include="src\loop.h" />
