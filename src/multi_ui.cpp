@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 
+#include "controller.h"
 #include "model.h"
 #include "options.h"
 #include "raylib.h"
@@ -54,11 +55,12 @@ struct ViewTransform {
 };
 
 struct MultiClusterAppState {
-  cells::System system;
+  ctrl::System system;
   std::vector<std::vector<size_t>> leaf_ids_per_cluster;
+  std::optional<size_t> hovered_cluster_index; // Track hovered cluster for empty clusters
 };
 
-ViewTransform compute_view_transform(const cells::System& system, float screen_w, float screen_h,
+ViewTransform compute_view_transform(const ctrl::System& system, float screen_w, float screen_h,
                                      float margin) {
   if (system.clusters.empty()) {
     return ViewTransform{0.0f, 0.0f, 1.0f, margin, screen_w, screen_h};
@@ -69,11 +71,11 @@ ViewTransform compute_view_transform(const cells::System& system, float screen_w
   float max_x = std::numeric_limits<float>::lowest();
   float max_y = std::numeric_limits<float>::lowest();
 
-  for (const auto& pc : system.clusters) {
-    min_x = std::min(min_x, pc.global_x);
-    min_y = std::min(min_y, pc.global_y);
-    max_x = std::max(max_x, pc.global_x + pc.cluster.window_width);
-    max_y = std::max(max_y, pc.global_y + pc.cluster.window_height);
+  for (const auto& cluster : system.clusters) {
+    min_x = std::min(min_x, cluster.global_x);
+    min_y = std::min(min_y, cluster.global_y);
+    max_x = std::max(max_x, cluster.global_x + cluster.window_width);
+    max_y = std::max(max_y, cluster.global_y + cluster.window_height);
   }
 
   float world_w = max_x - min_x;
@@ -94,7 +96,7 @@ ViewTransform compute_view_transform(const cells::System& system, float screen_w
   return ViewTransform{min_x, min_y, scale, margin, screen_w, screen_h};
 }
 
-Rectangle to_screen_rect(const ViewTransform& vt, const cells::Rect& global_rect) {
+Rectangle to_screen_rect(const ViewTransform& vt, const ctrl::Rect& global_rect) {
   return Rectangle{vt.margin + (global_rect.x - vt.offset_x) * vt.scale,
                    vt.margin + (global_rect.y - vt.offset_y) * vt.scale,
                    global_rect.width * vt.scale, global_rect.height * vt.scale};
@@ -112,20 +114,59 @@ void to_screen_point(const ViewTransform& vt, float global_x, float global_y, fl
   screen_y = vt.margin + (global_y - vt.offset_y) * vt.scale;
 }
 
-// Find the cluster and cell index at a global point
-std::optional<std::pair<size_t, int>> find_cell_at_global_point(const cells::System& system,
-                                                                float global_x, float global_y) {
+// Compute all cluster geometries (local coordinates)
+std::vector<std::vector<ctrl::Rect>> compute_all_geometries(const ctrl::System& system, float gap_h,
+                                                            float gap_v, float zen_pct) {
+  std::vector<std::vector<ctrl::Rect>> result;
+  result.reserve(system.clusters.size());
+  for (const auto& cluster : system.clusters) {
+    result.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
+  }
+  return result;
+}
+
+// Convert local geometries to global coordinates for navigation
+std::vector<std::vector<ctrl::Rect>>
+to_global_geometries(const ctrl::System& system,
+                     const std::vector<std::vector<ctrl::Rect>>& local_geometries) {
+  std::vector<std::vector<ctrl::Rect>> result;
+  result.reserve(system.clusters.size());
+
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+    const auto& local_rects = local_geometries[ci];
+    std::vector<ctrl::Rect> global_rects;
+    global_rects.reserve(local_rects.size());
+
+    for (const auto& r : local_rects) {
+      global_rects.push_back({cluster.global_x + r.x, cluster.global_y + r.y, r.width, r.height});
+    }
+    result.push_back(std::move(global_rects));
+  }
+  return result;
+}
+
+// Find the cluster and cell index at a global point using precomputed geometries
+std::optional<std::pair<size_t, int>>
+find_cell_at_global_point(const ctrl::System& system,
+                          const std::vector<std::vector<ctrl::Rect>>& global_geometries,
+                          float global_x, float global_y) {
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      if (!cells::is_leaf(pc.cluster, i)) {
+    const auto& cluster = system.clusters[cluster_idx];
+    if (cluster_idx >= global_geometries.size()) {
+      continue;
+    }
+    const auto& rects = global_geometries[cluster_idx];
+
+    for (int i = 0; i < static_cast<int>(rects.size()); ++i) {
+      const auto& r = rects[static_cast<size_t>(i)];
+      // Skip non-leaf cells (they have zero size in geometry)
+      if (r.width <= 0.0f || r.height <= 0.0f) {
         continue;
       }
 
-      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
-
-      if (global_x >= global_rect.x && global_x < global_rect.x + global_rect.width &&
-          global_y >= global_rect.y && global_y < global_rect.y + global_rect.height) {
+      if (global_x >= r.x && global_x < r.x + r.width && global_y >= r.y &&
+          global_y < r.y + r.height) {
         return std::make_pair(cluster_idx, i);
       }
     }
@@ -133,99 +174,137 @@ std::optional<std::pair<size_t, int>> find_cell_at_global_point(const cells::Sys
   return std::nullopt;
 }
 
-void center_mouse_on_point(const ViewTransform& vt, const cells::Point& center) {
-  float screen_x, screen_y;
-  to_screen_point(vt, static_cast<float>(center.x), static_cast<float>(center.y), screen_x,
-                  screen_y);
-  SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
+// Find which cluster contains a global point (for empty cluster hover detection)
+std::optional<size_t> find_cluster_at_global_point(const ctrl::System& system, float global_x,
+                                                   float global_y) {
+  for (size_t i = 0; i < system.clusters.size(); ++i) {
+    const auto& cluster = system.clusters[i];
+    if (global_x >= cluster.global_x && global_x < cluster.global_x + cluster.window_width &&
+        global_y >= cluster.global_y && global_y < cluster.global_y + cluster.window_height) {
+      return i;
+    }
+  }
+  return std::nullopt;
 }
 
-void center_mouse_on_selection(const MultiClusterAppState& app_state, const ViewTransform& vt) {
-  if (!app_state.system.selection.has_value()) {
-    return;
+// Get selected cell rect for cursor positioning
+std::optional<ctrl::Rect>
+get_selected_rect(const ctrl::System& system,
+                  const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
   }
-  const auto& sel = *app_state.system.selection;
-  const auto& pc = app_state.system.clusters[sel.cluster_index];
-  auto selected_rect = cells::get_cell_global_rect(pc, sel.cell_index);
-  float center_x = selected_rect.x + selected_rect.width / 2.0f;
-  float center_y = selected_rect.y + selected_rect.height / 2.0f;
 
+  int ci = system.selection->cluster_index;
+  int cell_idx = system.selection->cell_index;
+
+  if (ci < 0 || static_cast<size_t>(ci) >= global_geometries.size()) {
+    return std::nullopt;
+  }
+  if (cell_idx < 0 ||
+      static_cast<size_t>(cell_idx) >= global_geometries[static_cast<size_t>(ci)].size()) {
+    return std::nullopt;
+  }
+
+  return global_geometries[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
+}
+
+// Get sibling cell index for selected cell
+std::optional<int> get_selected_sibling_cell_index(const ctrl::System& system) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
+  }
+  int ci = system.selection->cluster_index;
+  int cell_idx = system.selection->cell_index;
+  if (ci < 0 || static_cast<size_t>(ci) >= system.clusters.size()) {
+    return std::nullopt;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(ci)];
+  return cluster.tree.get_sibling(cell_idx);
+}
+
+void center_mouse_on_rect(const ViewTransform& vt, const ctrl::Rect& rect) {
+  float center_x = rect.x + rect.width / 2.0f;
+  float center_y = rect.y + rect.height / 2.0f;
   float screen_x, screen_y;
   to_screen_point(vt, center_x, center_y, screen_x, screen_y);
-
   SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
 }
 
-std::vector<cells::ClusterCellUpdateInfo>
+void center_mouse_on_selection(const MultiClusterAppState& app_state, const ViewTransform& vt,
+                               const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
+  if (auto rect = get_selected_rect(app_state.system, global_geometries)) {
+    center_mouse_on_rect(vt, *rect);
+  }
+}
+
+std::vector<ctrl::ClusterCellUpdateInfo>
 build_current_state(const MultiClusterAppState& app_state) {
-  std::vector<cells::ClusterCellUpdateInfo> state;
+  std::vector<ctrl::ClusterCellUpdateInfo> state;
   for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
-    const auto& pc = app_state.system.clusters[cluster_idx];
-    state.push_back(
-        {cluster_idx, app_state.leaf_ids_per_cluster[cluster_idx], pc.cluster.has_fullscreen_cell});
+    const auto& cluster = app_state.system.clusters[cluster_idx];
+    state.push_back({app_state.leaf_ids_per_cluster[cluster_idx], cluster.has_fullscreen_cell});
   }
   return state;
 }
 
-void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process_id,
-                           const ViewTransform& vt, float gap_horizontal, float gap_vertical) {
-  if (!app_state.system.selection.has_value()) {
-    return;
+void add_new_process_multi(MultiClusterAppState& app_state, size_t& next_process_id) {
+  // Determine target cluster: use selection if available, otherwise use hovered cluster
+  std::optional<size_t> target_cluster_index;
+
+  if (app_state.system.selection.has_value()) {
+    target_cluster_index = static_cast<size_t>(app_state.system.selection->cluster_index);
+  } else if (app_state.hovered_cluster_index.has_value()) {
+    target_cluster_index = app_state.hovered_cluster_index;
   }
 
-  auto selected_cluster_index = app_state.system.selection->cluster_index;
+  if (!target_cluster_index.has_value()) {
+    return; // No valid target cluster
+  }
 
   // Add the new process ID to our stored list
   size_t new_leaf_id = next_process_id++;
-  app_state.leaf_ids_per_cluster[selected_cluster_index].push_back(new_leaf_id);
+  app_state.leaf_ids_per_cluster[*target_cluster_index].push_back(new_leaf_id);
 
   // Build state from stored IDs
   auto state = build_current_state(app_state);
 
-  // Get mouse position in global coordinates
-  Vector2 mouse_pos = GetMousePosition();
-  float global_x, global_y;
-  to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
-
-  // Update system and select the newly added cell
-  cells::update(app_state.system, state, std::make_pair(selected_cluster_index, new_leaf_id),
-                {global_x, global_y}, 0.9f, 0, gap_horizontal, gap_vertical);
+  // Update system - new windows go to the target cluster
+  if (!ctrl::update(app_state.system, state, static_cast<int>(*target_cluster_index))) {
+    spdlog::error("add_new_process_multi: failed to update system");
+  }
 }
 
-void delete_selected_process_multi(MultiClusterAppState& app_state, const ViewTransform& vt,
-                                   float gap_horizontal, float gap_vertical) {
+void delete_selected_process_multi(MultiClusterAppState& app_state) {
   if (!app_state.system.selection.has_value()) {
     return;
   }
 
   auto [cluster_index, cell_index] = *app_state.system.selection;
-  const auto& pc = app_state.system.clusters[cluster_index];
-  if (cell_index < 0 || static_cast<size_t>(cell_index) >= pc.cluster.cells.size()) {
+  const auto& cluster = app_state.system.clusters[static_cast<size_t>(cluster_index)];
+  if (cell_index < 0 || static_cast<size_t>(cell_index) >= cluster.tree.size()) {
     return;
   }
 
-  const auto& cell = pc.cluster.cells[static_cast<size_t>(cell_index)];
-  if (!cell.leaf_id.has_value()) {
+  const auto& cell_data = cluster.tree[cell_index];
+  if (!cell_data.leaf_id.has_value()) {
     return;
   }
 
-  size_t leaf_id_to_remove = *cell.leaf_id;
+  size_t leaf_id_to_remove = *cell_data.leaf_id;
 
   // Remove from our stored list
-  auto& ids = app_state.leaf_ids_per_cluster[cluster_index];
+  auto& ids = app_state.leaf_ids_per_cluster[static_cast<size_t>(cluster_index)];
   ids.erase(std::remove(ids.begin(), ids.end(), leaf_id_to_remove), ids.end());
 
   // Build state from stored IDs (now without the removed ID)
   auto state = build_current_state(app_state);
 
-  // Get mouse position in global coordinates
-  Vector2 mouse_pos = GetMousePosition();
-  float global_x, global_y;
-  to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
-
   // Update system (selection will auto-update)
-  cells::update(app_state.system, state, std::nullopt, {global_x, global_y}, 0.9f, 0,
-                gap_horizontal, gap_vertical);
+  if (!ctrl::update(app_state.system, state, std::nullopt)) {
+    spdlog::error("delete_selected_process_multi: failed to update system");
+  }
 }
 
 Color get_cluster_color(size_t cluster_index) {
@@ -268,13 +347,12 @@ std::optional<HotkeyAction> get_key_action() {
 
 } // namespace
 
-void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& infos,
+void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos,
                                  GlobalOptionsProvider& options_provider) {
   const auto& options = options_provider.options;
 
   MultiClusterAppState app_state;
-  app_state.system =
-      cells::create_system(infos, options.gapOptions.horizontal, options.gapOptions.vertical);
+  app_state.system = ctrl::create_system(infos);
 
   // Initialize leaf_ids_per_cluster from infos
   app_state.leaf_ids_per_cluster.resize(infos.size());
@@ -284,11 +362,11 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
   // Set next_process_id to avoid collisions with any pre-existing leaf IDs
   size_t next_process_id = CELL_ID_START;
-  for (const auto& pc : app_state.system.clusters) {
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (cells::is_leaf(pc.cluster, i) && cell.leaf_id.has_value()) {
-        next_process_id = std::max(next_process_id, *cell.leaf_id + 1);
+  for (const auto& cluster : app_state.system.clusters) {
+    for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+      const auto& cell_data = cluster.tree[i];
+      if (ctrl::is_leaf(cluster, i) && cell_data.leaf_id.has_value()) {
+        next_process_id = std::max(next_process_id, *cell_data.leaf_id + 1);
       }
     }
   }
@@ -315,44 +393,58 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
     if (options_provider.refresh()) {
       gap_h = options.gapOptions.horizontal;
       gap_v = options.gapOptions.vertical;
-      cells::recompute_rects(app_state.system, gap_h, gap_v);
+      // Geometry is computed on-demand each frame, no explicit recompute needed
     }
+
+    // Process tree-modifying input BEFORE computing geometries
+    // This ensures geometries are always in sync with the current tree state
+    if (IsKeyPressed(KEY_SPACE)) {
+      add_new_process_multi(app_state, next_process_id);
+    }
+
+    if (IsKeyPressed(KEY_D)) {
+      delete_selected_process_multi(app_state);
+    }
+
+    if (IsKeyPressed(KEY_I)) {
+      ctrl::debug_print_system(app_state.system);
+    }
+
+    if (IsKeyPressed(KEY_C)) {
+      if (!ctrl::validate_system(app_state.system)) {
+        spdlog::error("System validation failed");
+      }
+    }
+
+    // Compute geometries once per frame (after tree-modifying input)
+    auto local_geometries = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+    auto global_geometries = to_global_geometries(app_state.system, local_geometries);
 
     // Mouse hover selection
     Vector2 mouse_pos = GetMousePosition();
     float global_x, global_y;
     to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
 
-    auto cell_at_mouse = find_cell_at_global_point(app_state.system, global_x, global_y);
+    // Always track which cluster the mouse is over (even if empty)
+    app_state.hovered_cluster_index =
+        find_cluster_at_global_point(app_state.system, global_x, global_y);
+
+    auto cell_at_mouse =
+        find_cell_at_global_point(app_state.system, global_geometries, global_x, global_y);
     if (cell_at_mouse.has_value()) {
       auto [cluster_index, cell_index] = *cell_at_mouse;
 
       // Update selection if different
       const auto& current_sel = app_state.system.selection;
-      if (!current_sel.has_value() || current_sel->cluster_index != cluster_index ||
+      if (!current_sel.has_value() ||
+          current_sel->cluster_index != static_cast<int>(cluster_index) ||
           current_sel->cell_index != cell_index) {
         // Set new selection
-        app_state.system.selection = cells::CellIndicatorByIndex{cluster_index, cell_index};
+        app_state.system.selection =
+            ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), cell_index};
       }
     }
     // Note: Empty clusters no longer maintain "selected" state - selection requires a cell
-
-    // Keyboard input (actions not in HotkeyAction enum)
-    if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process_multi(app_state, next_process_id, vt, gap_h, gap_v);
-    }
-
-    if (IsKeyPressed(KEY_D)) {
-      delete_selected_process_multi(app_state, vt, gap_h, gap_v);
-    }
-
-    if (IsKeyPressed(KEY_I)) {
-      cells::debug_print_system(app_state.system);
-    }
-
-    if (IsKeyPressed(KEY_C)) {
-      cells::validate_system(app_state.system);
-    }
 
     // Keyboard input (HotkeyAction enum actions)
     auto action = get_key_action();
@@ -360,42 +452,61 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       switch (*action) {
       case HotkeyAction::NavigateLeft:
         spdlog::info("NavigateLeft: moving selection to the left");
-        if (auto result = cells::move_selection(app_state.system, cells::Direction::Left)) {
-          center_mouse_on_point(vt, result->center);
+        if (ctrl::move_selection(app_state.system, ctrl::Direction::Left, global_geometries)) {
+          // Recompute geometries and center on selection
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::NavigateDown:
         spdlog::info("NavigateDown: moving selection downward");
-        if (auto result = cells::move_selection(app_state.system, cells::Direction::Down)) {
-          center_mouse_on_point(vt, result->center);
+        if (ctrl::move_selection(app_state.system, ctrl::Direction::Down, global_geometries)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::NavigateUp:
         spdlog::info("NavigateUp: moving selection upward");
-        if (auto result = cells::move_selection(app_state.system, cells::Direction::Up)) {
-          center_mouse_on_point(vt, result->center);
+        if (ctrl::move_selection(app_state.system, ctrl::Direction::Up, global_geometries)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::NavigateRight:
         spdlog::info("NavigateRight: moving selection to the right");
-        if (auto result = cells::move_selection(app_state.system, cells::Direction::Right)) {
-          center_mouse_on_point(vt, result->center);
+        if (ctrl::move_selection(app_state.system, ctrl::Direction::Right, global_geometries)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::ToggleSplit:
         spdlog::info("ToggleSplit: toggling split direction of selected cell");
-        if (!cells::toggle_selected_split_dir(app_state.system, gap_h, gap_v)) {
+        if (!ctrl::toggle_selected_split_dir(app_state.system)) {
           spdlog::trace("Failed to toggle split direction");
         }
         break;
       case HotkeyAction::StoreCell:
         spdlog::info("StoreCell: storing current cell for swap/move operation");
         if (app_state.system.selection.has_value()) {
-          const auto& pc = app_state.system.clusters[app_state.system.selection->cluster_index];
-          const auto& cell =
-              pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
-          if (cell.leaf_id.has_value()) {
-            stored_cell = StoredCell{app_state.system.selection->cluster_index, *cell.leaf_id};
+          const auto& cluster =
+              app_state.system
+                  .clusters[static_cast<size_t>(app_state.system.selection->cluster_index)];
+          const auto& cell_data = cluster.tree[app_state.system.selection->cell_index];
+          if (cell_data.leaf_id.has_value()) {
+            stored_cell = StoredCell{static_cast<size_t>(app_state.system.selection->cluster_index),
+                                     *cell_data.leaf_id};
           }
         }
         break;
@@ -406,14 +517,13 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       case HotkeyAction::Exchange:
         spdlog::info("Exchange: swapping stored cell with selected cell");
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
-          const auto& pc = app_state.system.clusters[app_state.system.selection->cluster_index];
-          const auto& cell =
-              pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
-          if (cell.leaf_id.has_value()) {
-            auto result = cells::swap_cells(
-                app_state.system, app_state.system.selection->cluster_index, *cell.leaf_id,
-                stored_cell->cluster_index, stored_cell->leaf_id, gap_h, gap_v);
-            if (result.has_value()) {
+          // Find stored cell index from leaf_id
+          auto stored_cell_idx = ctrl::find_cell_by_leaf_id(
+              app_state.system.clusters[stored_cell->cluster_index], stored_cell->leaf_id);
+          if (stored_cell_idx.has_value()) {
+            if (ctrl::swap_cells(app_state.system, app_state.system.selection->cluster_index,
+                                 app_state.system.selection->cell_index,
+                                 static_cast<int>(stored_cell->cluster_index), *stored_cell_idx)) {
               stored_cell.reset();
             }
           }
@@ -422,14 +532,13 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       case HotkeyAction::Move:
         spdlog::info("Move: moving stored cell to selected cell's position");
         if (stored_cell.has_value() && app_state.system.selection.has_value()) {
-          const auto& pc = app_state.system.clusters[app_state.system.selection->cluster_index];
-          const auto& cell =
-              pc.cluster.cells[static_cast<size_t>(app_state.system.selection->cell_index)];
-          if (cell.leaf_id.has_value()) {
-            auto result = cells::move_cell(
-                app_state.system, stored_cell->cluster_index, stored_cell->leaf_id,
-                app_state.system.selection->cluster_index, *cell.leaf_id, gap_h, gap_v);
-            if (result.has_value()) {
+          // Find stored cell index from leaf_id
+          auto stored_cell_idx = ctrl::find_cell_by_leaf_id(
+              app_state.system.clusters[stored_cell->cluster_index], stored_cell->leaf_id);
+          if (stored_cell_idx.has_value()) {
+            if (ctrl::move_cell(app_state.system, static_cast<int>(stored_cell->cluster_index),
+                                *stored_cell_idx, app_state.system.selection->cluster_index,
+                                app_state.system.selection->cell_index)) {
               stored_cell.reset();
             }
           }
@@ -437,31 +546,36 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::SplitIncrease:
         spdlog::info("SplitIncrease: increasing split ratio by 5%%");
-        if (auto center =
-                cells::adjust_selected_split_ratio(app_state.system, 0.05f, gap_h, gap_v)) {
-          center_mouse_on_point(vt, *center);
+        if (ctrl::adjust_selected_split_ratio(app_state.system, 0.05f)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::SplitDecrease:
         spdlog::info("SplitDecrease: decreasing split ratio by 5%%");
-        if (auto center =
-                cells::adjust_selected_split_ratio(app_state.system, -0.05f, gap_h, gap_v)) {
-          center_mouse_on_point(vt, *center);
+        if (ctrl::adjust_selected_split_ratio(app_state.system, -0.05f)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::ExchangeSiblings:
         spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
         if (app_state.system.selection.has_value()) {
-          if (auto sibling_leaf_id = cells::get_selected_sibling_leaf_id(app_state.system)) {
-            const auto& sel = *app_state.system.selection;
-            const auto& cluster = app_state.system.clusters[sel.cluster_index].cluster;
-            if (auto selected_leaf_id =
-                    cluster.cells[static_cast<size_t>(sel.cell_index)].leaf_id) {
-              auto result =
-                  cells::swap_cells(app_state.system, sel.cluster_index, *selected_leaf_id,
-                                    sel.cluster_index, *sibling_leaf_id, gap_h, gap_v);
-              if (result.has_value()) {
-                center_mouse_on_point(vt, *result);
+          if (auto sibling_idx = get_selected_sibling_cell_index(app_state.system)) {
+            if (ctrl::swap_cells(app_state.system, app_state.system.selection->cluster_index,
+                                 app_state.system.selection->cell_index,
+                                 app_state.system.selection->cluster_index, *sibling_idx)) {
+              // Recompute and center mouse
+              auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+              auto new_global = to_global_geometries(app_state.system, new_local);
+              if (auto rect = get_selected_rect(app_state.system, new_global)) {
+                center_mouse_on_rect(vt, *rect);
               }
             }
           }
@@ -469,12 +583,12 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::ToggleZen:
         spdlog::info("ToggleZen: toggling zen mode for selected cell");
-        if (!cells::toggle_selected_zen(app_state.system)) {
+        if (!ctrl::toggle_selected_zen(app_state.system)) {
           spdlog::error("ToggleZen: failed to toggle zen mode");
         }
         break;
       case HotkeyAction::CycleSplitMode:
-        if (!cells::cycle_split_mode(app_state.system)) {
+        if (!ctrl::cycle_split_mode(app_state.system)) {
           spdlog::error("CycleSplitMode: failed to cycle split mode");
         }
         spdlog::info("CycleSplitMode: switched to {}",
@@ -482,8 +596,12 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         break;
       case HotkeyAction::ResetSplitRatio:
         spdlog::info("ResetSplitRatio: resetting split ratio of parent to 50%%");
-        if (auto center = cells::set_selected_split_ratio(app_state.system, 0.5f, gap_h, gap_v)) {
-          center_mouse_on_point(vt, *center);
+        if (ctrl::set_selected_split_ratio(app_state.system, 0.5f)) {
+          auto new_local = compute_all_geometries(app_state.system, gap_h, gap_v, 0.85f);
+          auto new_global = to_global_geometries(app_state.system, new_local);
+          if (auto rect = get_selected_rect(app_state.system, new_global)) {
+            center_mouse_on_rect(vt, *rect);
+          }
         }
         break;
       case HotkeyAction::Exit:
@@ -499,9 +617,9 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
     // Draw cluster backgrounds first
     for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
-      const auto& pc = app_state.system.clusters[cluster_idx];
-      cells::Rect cluster_global_rect{pc.global_x, pc.global_y, pc.cluster.window_width,
-                                      pc.cluster.window_height};
+      const auto& cluster = app_state.system.clusters[cluster_idx];
+      ctrl::Rect cluster_global_rect{cluster.global_x, cluster.global_y, cluster.window_width,
+                                     cluster.window_height};
       Rectangle screen_rect = to_screen_rect(vt, cluster_global_rect);
       DrawRectangleRec(screen_rect, get_cluster_color(cluster_idx));
       DrawRectangleLinesEx(screen_rect, 2.0f, DARKGRAY);
@@ -511,24 +629,31 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
     const auto& selected_cell = app_state.system.selection;
 
     for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
-      const auto& pc = app_state.system.clusters[cluster_idx];
-      for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-        if (!cells::is_leaf(pc.cluster, i)) {
+      const auto& cluster = app_state.system.clusters[cluster_idx];
+      const auto& cluster_geom = global_geometries[cluster_idx];
+
+      for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+        if (!ctrl::is_leaf(cluster, i)) {
           continue;
         }
 
-        const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-        cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
+        // Use precomputed geometry
+        const auto& global_rect = cluster_geom[static_cast<size_t>(i)];
+        if (global_rect.width <= 0.0f || global_rect.height <= 0.0f) {
+          continue; // Skip non-leaf cells
+        }
+
+        const auto& cell_data = cluster.tree[i];
         Rectangle screen_rect = to_screen_rect(vt, global_rect);
 
         bool is_selected = selected_cell.has_value() &&
-                           selected_cell->cluster_index == cluster_idx &&
+                           selected_cell->cluster_index == static_cast<int>(cluster_idx) &&
                            selected_cell->cell_index == i;
 
         // Check if this cell is the stored cell
         bool is_stored_cell = false;
         if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-          auto stored_idx = cells::find_cell_by_leaf_id(pc.cluster, stored_cell->leaf_id);
+          auto stored_idx = ctrl::find_cell_by_leaf_id(cluster, stored_cell->leaf_id);
           if (stored_idx.has_value() && *stored_idx == i) {
             is_stored_cell = true;
           }
@@ -555,8 +680,8 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
         DrawRectangleLinesEx(screen_rect, border_width, border_color);
 
         // Draw process ID (leaf_id is the process ID)
-        if (cell.leaf_id.has_value()) {
-          std::string label_text = "P:" + std::to_string(*cell.leaf_id);
+        if (cell_data.leaf_id.has_value()) {
+          std::string label_text = "P:" + std::to_string(*cell_data.leaf_id);
           float font_size = std::min(screen_rect.width, screen_rect.height) * 0.2f;
           if (font_size < 10.0f)
             font_size = 10.0f;
@@ -572,16 +697,20 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
     // Draw zen cell overlays for each cluster
     for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
-      const auto& pc = app_state.system.clusters[cluster_idx];
-      if (!pc.cluster.zen_cell_index.has_value()) {
+      const auto& cluster = app_state.system.clusters[cluster_idx];
+      if (!cluster.zen_cell_index.has_value()) {
         continue;
       }
 
-      int zen_cell_index = *pc.cluster.zen_cell_index;
+      int zen_cell_index = *cluster.zen_cell_index;
 
-      // Get zen display rect (centered at percentage of cluster)
-      cells::Rect zen_display_rect = cells::get_cell_display_rect(
-          pc, zen_cell_index, true, options.visualizationOptions.renderOptions.zen_percentage);
+      // Get zen display rect from precomputed geometry
+      // Note: compute_cluster_geometry already handles zen mode
+      const auto& zen_local_rect =
+          local_geometries[cluster_idx][static_cast<size_t>(zen_cell_index)];
+      ctrl::Rect zen_display_rect{cluster.global_x + zen_local_rect.x,
+                                  cluster.global_y + zen_local_rect.y, zen_local_rect.width,
+                                  zen_local_rect.height};
       Rectangle zen_screen_rect = to_screen_rect(vt, zen_display_rect);
 
       // Draw semi-transparent fill
@@ -590,7 +719,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
 
       // Determine border color based on selection state (same as normal cells)
       bool is_zen_selected = selected_cell.has_value() &&
-                             selected_cell->cluster_index == cluster_idx &&
+                             selected_cell->cluster_index == static_cast<int>(cluster_idx) &&
                              selected_cell->cell_index == zen_cell_index;
       const auto& ro = options.visualizationOptions.renderOptions;
       Color border_color =
@@ -599,7 +728,7 @@ void run_raylib_ui_multi_cluster(const std::vector<cells::ClusterInitInfo>& info
       DrawRectangleLinesEx(zen_screen_rect, ro.border_width, border_color);
 
       // Draw label "Z:<id>"
-      const auto& zen_cell_data = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
+      const auto& zen_cell_data = cluster.tree[zen_cell_index];
       if (zen_cell_data.leaf_id.has_value()) {
         std::string label = "Z:" + std::to_string(*zen_cell_data.leaf_id);
         float font_size = std::min(zen_screen_rect.width, zen_screen_rect.height) * 0.2f;

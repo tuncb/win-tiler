@@ -73,7 +73,7 @@ void applyLogLevel(LogLevel level) {
 void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
   const auto& globalOptions = optionsProvider.options;
   auto monitors = winapi::get_monitors();
-  std::vector<cells::ClusterInitInfo> infos;
+  std::vector<ctrl::ClusterInitInfo> infos;
 
   for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
     const auto& monitor = monitors[monitorIndex];
@@ -103,7 +103,7 @@ void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
 }
 
 void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& optionsProvider) {
-  std::vector<cells::ClusterInitInfo> infos;
+  std::vector<ctrl::ClusterInitInfo> infos;
 
   if (cmd.clusters.empty()) {
     // Default: two monitors side by side (monitor bounds = workspace bounds for UI test)
