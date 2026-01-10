@@ -572,6 +572,81 @@ std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster) {
   return leaf_ids;
 }
 
+// Helper: recursively compute child rectangles
+static void compute_children_rects(const Cluster& cluster, int node_index, std::vector<Rect>& rects,
+                                   float gap_h, float gap_v) {
+  auto first_opt = cluster.tree.get_first_child(node_index);
+  auto second_opt = cluster.tree.get_second_child(node_index);
+
+  if (!first_opt.has_value() || !second_opt.has_value()) {
+    return;
+  }
+
+  const Rect& parent = rects[static_cast<size_t>(node_index)];
+  const CellData& data = cluster.tree[node_index];
+
+  if (data.split_dir == SplitDir::Vertical) {
+    float available = parent.width - gap_h;
+    float first_w = available > 0.0f ? available * data.split_ratio : 0.0f;
+    float second_w = available > 0.0f ? available * (1.0f - data.split_ratio) : 0.0f;
+
+    rects[static_cast<size_t>(*first_opt)] = {parent.x, parent.y, first_w, parent.height};
+    rects[static_cast<size_t>(*second_opt)] = {parent.x + first_w + gap_h, parent.y, second_w,
+                                               parent.height};
+  } else {
+    float available = parent.height - gap_v;
+    float first_h = available > 0.0f ? available * data.split_ratio : 0.0f;
+    float second_h = available > 0.0f ? available * (1.0f - data.split_ratio) : 0.0f;
+
+    rects[static_cast<size_t>(*first_opt)] = {parent.x, parent.y, parent.width, first_h};
+    rects[static_cast<size_t>(*second_opt)] = {parent.x, parent.y + first_h + gap_v, parent.width,
+                                               second_h};
+  }
+
+  // Recurse into children
+  compute_children_rects(cluster, *first_opt, rects, gap_h, gap_v);
+  compute_children_rects(cluster, *second_opt, rects, gap_h, gap_v);
+}
+
+std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, float gap_v,
+                                           float zen_percentage) {
+  // Allocate output vector, initialized to empty rects
+  std::vector<Rect> rects(cluster.tree.size(), Rect{0.0f, 0.0f, 0.0f, 0.0f});
+
+  if (cluster.tree.empty()) {
+    return rects;
+  }
+
+  // Compute root rect with outer gaps
+  float root_w = cluster.window_width - 2.0f * gap_h;
+  float root_h = cluster.window_height - 2.0f * gap_v;
+  rects[0] = Rect{gap_h, gap_v, root_w > 0.0f ? root_w : 0.0f, root_h > 0.0f ? root_h : 0.0f};
+
+  // Recursively compute child rects starting from root (index 0)
+  compute_children_rects(cluster, 0, rects, gap_h, gap_v);
+
+  // Handle zen mode: override zen cell with centered rect
+  if (cluster.zen_cell_index.has_value()) {
+    int zen_idx = *cluster.zen_cell_index;
+    if (cluster.tree.is_valid_index(zen_idx) && cluster.tree.is_leaf(zen_idx)) {
+      float zen_w = cluster.window_width * zen_percentage;
+      float zen_h = cluster.window_height * zen_percentage;
+      float offset_x = (cluster.window_width - zen_w) / 2.0f;
+      float offset_y = (cluster.window_height - zen_h) / 2.0f;
+      rects[static_cast<size_t>(zen_idx)] = Rect{offset_x, offset_y, zen_w, zen_h};
+    }
+  }
+
+  // Clear internal node rects (only keep leaf rects)
+  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+    if (!cluster.tree.is_leaf(i)) {
+      rects[static_cast<size_t>(i)] = Rect{0.0f, 0.0f, 0.0f, 0.0f};
+    }
+  }
+
+  return rects;
+}
+
 // Find any leaf in the cluster
 static std::optional<int> find_any_leaf(const Cluster& cluster) {
   for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {

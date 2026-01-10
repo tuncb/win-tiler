@@ -29,7 +29,8 @@
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler-b_tree && build-run.bat build-run --Test-Debug\")",
-      "Bash(powershell -Command \"cd ''c:\\\\work\\\\win-tiler\\\\win-tiler-b_tree''; & .\\\\build-run.bat build --Debug 2>&1\")"
+      "Bash(powershell -Command \"cd ''c:\\\\work\\\\win-tiler\\\\win-tiler-b_tree''; & .\\\\build-run.bat build --Debug 2>&1\")",
+      "Bash(grep:*)"
       "Bash(cat:*)"
     ]
   }
