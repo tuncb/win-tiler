@@ -17,8 +17,7 @@ bool is_leaf(const Cluster& cluster, int cell_index) {
 // ============================================================================
 
 // Determine split direction based on split mode and current selection
-static SplitDir determine_split_dir(const Cluster& cluster, int selected_index,
-                                    SplitMode mode) {
+static SplitDir determine_split_dir(const Cluster& cluster, int selected_index, SplitMode mode) {
   switch (mode) {
   case SplitMode::Vertical:
     return SplitDir::Vertical;
@@ -465,8 +464,8 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
   // The split_leaf function will create two children:
   // - first_child gets target's original leaf_id
   // - second_child gets source's leaf_id
-  auto result_opt = split_leaf(tgt_cluster, adjusted_target_index,
-                               source_leaf_id.value_or(0), split_dir);
+  auto result_opt =
+      split_leaf(tgt_cluster, adjusted_target_index, source_leaf_id.value_or(0), split_dir);
 
   if (!result_opt.has_value()) {
     return false;

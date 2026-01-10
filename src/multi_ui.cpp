@@ -156,7 +156,8 @@ void center_mouse_on_selection(const MultiClusterAppState& app_state, const View
   SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
 }
 
-std::vector<cells::ClusterCellUpdateInfo> build_current_state(const MultiClusterAppState& app_state) {
+std::vector<cells::ClusterCellUpdateInfo>
+build_current_state(const MultiClusterAppState& app_state) {
   std::vector<cells::ClusterCellUpdateInfo> state;
   for (size_t cluster_idx = 0; cluster_idx < app_state.system.clusters.size(); ++cluster_idx) {
     const auto& pc = app_state.system.clusters[cluster_idx];
