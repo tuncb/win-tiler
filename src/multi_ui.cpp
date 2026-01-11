@@ -14,6 +14,7 @@
 
 #include "controller.h"
 #include "engine.h"
+#include "multi_engine.h"
 #include "options.h"
 #include "raylib.h"
 #include "spdlog/spdlog.h"
@@ -49,19 +50,13 @@ struct ViewTransform {
   float screen_height;
 };
 
-// Generic desktop state template - reusable across different systems
-template <typename ExtraData>
-struct DesktopState {
-  Engine engine;
-  ExtraData data; // System-specific data
-};
-
 // multi_ui-specific extra data
 struct MultiUiDesktopData {
   std::vector<std::vector<size_t>> leaf_ids_per_cluster;
 };
 
-using MultiUiDesktop = DesktopState<MultiUiDesktopData>;
+// Use PerEngineState from multi_engine.h
+using MultiUiDesktop = PerEngineState<MultiUiDesktopData>;
 
 ViewTransform compute_view_transform(const ctrl::System& system, float screen_w, float screen_h,
                                      float margin) {
@@ -246,11 +241,9 @@ void delete_selected_process(Engine& engine,
   }
 }
 
-// Create a new empty desktop with same cluster layout (no cells)
-MultiUiDesktop create_empty_desktop(const std::vector<ctrl::ClusterInitInfo>& infos) {
-  MultiUiDesktop desktop;
-
-  // Create cluster infos with empty initial_cell_ids
+// Create empty cluster infos (same layout, no cells)
+std::vector<ctrl::ClusterInitInfo>
+create_empty_infos(const std::vector<ctrl::ClusterInitInfo>& infos) {
   std::vector<ctrl::ClusterInitInfo> empty_infos;
   empty_infos.reserve(infos.size());
   for (const auto& info : infos) {
@@ -258,42 +251,59 @@ MultiUiDesktop create_empty_desktop(const std::vector<ctrl::ClusterInitInfo>& in
     empty_info.initial_cell_ids.clear();
     empty_infos.push_back(empty_info);
   }
-
-  desktop.engine.init(empty_infos);
-
-  // Initialize leaf_ids_per_cluster with empty vectors
-  desktop.data.leaf_ids_per_cluster.resize(infos.size());
-
-  return desktop;
+  return empty_infos;
 }
 
 // Handle desktop switching/creation keys
 // Returns true if a desktop key was handled
-bool handle_desktop_keys(std::vector<MultiUiDesktop>& desktops, size_t& current_desktop_index,
+bool handle_desktop_keys(MultiEngine<MultiUiDesktopData>& multi_engine,
                          const std::vector<ctrl::ClusterInitInfo>& infos) {
   // N: Create new desktop
   if (IsKeyPressed(KEY_N)) {
-    desktops.push_back(create_empty_desktop(infos));
-    current_desktop_index = desktops.size() - 1; // Switch to new desktop
-    spdlog::info("Created new desktop {} (total: {})", current_desktop_index + 1, desktops.size());
+    size_t new_id = multi_engine.desktop_count();
+    auto empty_infos = create_empty_infos(infos);
+    auto result = multi_engine.create_desktop(new_id, empty_infos);
+    if (result.has_value()) {
+      // Initialize leaf_ids_per_cluster with empty vectors
+      result->get().data.leaf_ids_per_cluster.resize(infos.size());
+      multi_engine.switch_to(new_id);
+      spdlog::info("Created new desktop {} (total: {})", new_id + 1, multi_engine.desktop_count());
+    }
     return true;
   }
 
   // TAB: Switch to next desktop
   if (IsKeyPressed(KEY_TAB)) {
-    if (desktops.size() > 1) {
-      current_desktop_index = (current_desktop_index + 1) % desktops.size();
-      spdlog::info("Switched to desktop {}/{}", current_desktop_index + 1, desktops.size());
+    if (multi_engine.desktop_count() > 1) {
+      auto ids = multi_engine.desktop_ids();
+      size_t current_idx = 0;
+      for (size_t i = 0; i < ids.size(); ++i) {
+        if (ids[i] == *multi_engine.current_id) {
+          current_idx = i;
+          break;
+        }
+      }
+      size_t next_idx = (current_idx + 1) % ids.size();
+      multi_engine.switch_to(ids[next_idx]);
+      spdlog::info("Switched to desktop {}/{}", next_idx + 1, multi_engine.desktop_count());
     }
     return true;
   }
 
   // GRAVE (`): Switch to previous desktop
   if (IsKeyPressed(KEY_GRAVE)) {
-    if (desktops.size() > 1) {
-      current_desktop_index =
-          (current_desktop_index == 0) ? desktops.size() - 1 : current_desktop_index - 1;
-      spdlog::info("Switched to desktop {}/{}", current_desktop_index + 1, desktops.size());
+    if (multi_engine.desktop_count() > 1) {
+      auto ids = multi_engine.desktop_ids();
+      size_t current_idx = 0;
+      for (size_t i = 0; i < ids.size(); ++i) {
+        if (ids[i] == *multi_engine.current_id) {
+          current_idx = i;
+          break;
+        }
+      }
+      size_t prev_idx = (current_idx == 0) ? ids.size() - 1 : current_idx - 1;
+      multi_engine.switch_to(ids[prev_idx]);
+      spdlog::info("Switched to desktop {}/{}", prev_idx + 1, multi_engine.desktop_count());
     }
     return true;
   }
@@ -307,27 +317,26 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
                                  GlobalOptionsProvider& options_provider) {
   const auto& options = options_provider.options;
 
-  // Multi-desktop support: vector of desktops with current index
-  std::vector<MultiUiDesktop> desktops;
-  size_t current_desktop_index = 0;
+  // Multi-desktop support using MultiEngine
+  MultiEngine<MultiUiDesktopData> multi_engine;
 
-  // Initialize first desktop from infos
+  // Initialize first desktop (ID 0) from infos
   {
-    MultiUiDesktop first_desktop;
-    first_desktop.engine.init(infos);
-
-    // Initialize leaf_ids_per_cluster from infos
-    first_desktop.data.leaf_ids_per_cluster.resize(infos.size());
-    for (size_t i = 0; i < infos.size(); ++i) {
-      first_desktop.data.leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+    auto result = multi_engine.create_desktop(0, infos);
+    if (result.has_value()) {
+      auto& desktop = result->get();
+      // Initialize leaf_ids_per_cluster from infos
+      desktop.data.leaf_ids_per_cluster.resize(infos.size());
+      for (size_t i = 0; i < infos.size(); ++i) {
+        desktop.data.leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+      }
     }
-
-    desktops.push_back(std::move(first_desktop));
+    multi_engine.switch_to(0);
   }
 
   // Initialize next_process_id GLOBALLY to avoid collisions across all desktops
   size_t next_process_id = 10;
-  for (const auto& cluster : desktops[0].engine.system.clusters) {
+  for (const auto& cluster : multi_engine.current().engine.system.clusters) {
     for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
       const auto& cell_data = cluster.tree[i];
       if (ctrl::is_leaf(cluster, i) && cell_data.leaf_id.has_value()) {
@@ -342,7 +351,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
   InitWindow(screen_width, screen_height, "win-tiler multi-cluster");
 
-  ViewTransform vt = compute_view_transform(desktops[current_desktop_index].engine.system,
+  ViewTransform vt = compute_view_transform(multi_engine.current().engine.system,
                                             (float)screen_width, (float)screen_height, margin);
 
   SetTargetFPS(60);
@@ -361,13 +370,13 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     }
 
     // Get reference to current desktop for convenience
-    auto& current_desktop = desktops[current_desktop_index];
+    auto& current_desktop = multi_engine.current();
 
     // Handle desktop switching/creation keys first
-    if (handle_desktop_keys(desktops, current_desktop_index, infos)) {
+    if (handle_desktop_keys(multi_engine, infos)) {
       // Desktop changed, recompute view transform for the new desktop
-      vt = compute_view_transform(desktops[current_desktop_index].engine.system,
-                                  (float)screen_width, (float)screen_height, margin);
+      vt = compute_view_transform(multi_engine.current().engine.system, (float)screen_width,
+                                  (float)screen_height, margin);
     }
 
     // Process tree-modifying input BEFORE computing geometries
@@ -553,8 +562,8 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
     // Draw desktop indicator (top-left corner)
     {
-      std::string desktop_label = "Desktop " + std::to_string(current_desktop_index + 1) + "/" +
-                                  std::to_string(desktops.size());
+      std::string desktop_label = "Desktop " + std::to_string(*multi_engine.current_id + 1) + "/" +
+                                  std::to_string(multi_engine.desktop_count());
       const int indicator_font_size = 20;
       const int indicator_padding = 5;
       int label_width = MeasureText(desktop_label.c_str(), indicator_font_size);

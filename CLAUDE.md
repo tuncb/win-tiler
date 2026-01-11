@@ -73,3 +73,4 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 ## Syntax Rules
 
  - Do not use (void), log error for handling return statements from [[nodiscard]] functions.
+ - Do not use private members, all members should be public.
