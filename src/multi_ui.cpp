@@ -150,17 +150,20 @@ std::optional<HotkeyAction> get_key_action() {
 }
 
 // Build cluster cell update info for add/delete operations
-std::vector<ctrl::ClusterCellUpdateInfo> build_current_state(const Engine& engine) {
+std::vector<ctrl::ClusterCellUpdateInfo>
+build_current_state(const Engine& engine,
+                    const std::vector<std::vector<size_t>>& leaf_ids_per_cluster) {
   std::vector<ctrl::ClusterCellUpdateInfo> state;
   for (size_t cluster_idx = 0; cluster_idx < engine.system.clusters.size(); ++cluster_idx) {
     const auto& cluster = engine.system.clusters[cluster_idx];
-    state.push_back({engine.leaf_ids_per_cluster[cluster_idx], cluster.has_fullscreen_cell});
+    state.push_back({leaf_ids_per_cluster[cluster_idx], cluster.has_fullscreen_cell});
   }
   return state;
 }
 
 void add_new_process(Engine& engine, size_t& next_process_id,
-                     std::optional<size_t> hovered_cluster_index) {
+                     std::optional<size_t> hovered_cluster_index,
+                     std::vector<std::vector<size_t>>& leaf_ids_per_cluster) {
   // Determine target cluster:
   // 1. If hovering over an empty cluster, prioritize that cluster
   // 2. Otherwise use selection if available
@@ -190,16 +193,17 @@ void add_new_process(Engine& engine, size_t& next_process_id,
 
   // Add the new process ID to our stored list
   size_t new_leaf_id = next_process_id++;
-  engine.leaf_ids_per_cluster[*target_cluster_index].push_back(new_leaf_id);
+  leaf_ids_per_cluster[*target_cluster_index].push_back(new_leaf_id);
 
   // Build state and update
-  auto state = build_current_state(engine);
+  auto state = build_current_state(engine, leaf_ids_per_cluster);
   if (!engine.update(state, static_cast<int>(*target_cluster_index))) {
     spdlog::error("add_new_process: failed to update system");
   }
 }
 
-void delete_selected_process(Engine& engine) {
+void delete_selected_process(Engine& engine,
+                             std::vector<std::vector<size_t>>& leaf_ids_per_cluster) {
   if (!engine.system.selection.has_value()) {
     return;
   }
@@ -218,11 +222,11 @@ void delete_selected_process(Engine& engine) {
   size_t leaf_id_to_remove = *cell_data.leaf_id;
 
   // Remove from stored list
-  auto& ids = engine.leaf_ids_per_cluster[static_cast<size_t>(cluster_index)];
+  auto& ids = leaf_ids_per_cluster[static_cast<size_t>(cluster_index)];
   ids.erase(std::remove(ids.begin(), ids.end(), leaf_id_to_remove), ids.end());
 
   // Build state and update
-  auto state = build_current_state(engine);
+  auto state = build_current_state(engine, leaf_ids_per_cluster);
   if (!engine.update(state, std::nullopt)) {
     spdlog::error("delete_selected_process: failed to update system");
   }
@@ -236,6 +240,13 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
   Engine engine;
   engine.init(infos);
+
+  // Initialize leaf_ids_per_cluster from infos
+  std::vector<std::vector<size_t>> leaf_ids_per_cluster;
+  leaf_ids_per_cluster.resize(infos.size());
+  for (size_t i = 0; i < infos.size(); ++i) {
+    leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+  }
 
   // Initialize next_process_id to avoid collisions with existing leaf IDs
   size_t next_process_id = 10;
@@ -274,11 +285,11 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
     // Process tree-modifying input BEFORE computing geometries
     if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process(engine, next_process_id, hovered_cluster_index);
+      add_new_process(engine, next_process_id, hovered_cluster_index, leaf_ids_per_cluster);
     }
 
     if (IsKeyPressed(KEY_D)) {
-      delete_selected_process(engine);
+      delete_selected_process(engine, leaf_ids_per_cluster);
     }
 
     if (IsKeyPressed(KEY_I)) {

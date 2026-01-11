@@ -74,12 +74,6 @@ std::optional<size_t> find_cluster_at_global_point(const ctrl::System& system, f
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
   system = ctrl::create_system(infos);
-
-  // Initialize leaf_ids_per_cluster from infos
-  leaf_ids_per_cluster.resize(infos.size());
-  for (size_t i = 0; i < infos.size(); ++i) {
-    leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
-  }
 }
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,

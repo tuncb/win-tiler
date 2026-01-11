@@ -25,7 +25,6 @@ struct HoverInfo {
 // All members are public for easy access
 struct Engine {
   ctrl::System system;
-  std::vector<std::vector<size_t>> leaf_ids_per_cluster;
   std::optional<StoredCell> stored_cell;
 
   // Initialize engine from cluster init info
