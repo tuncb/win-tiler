@@ -39,7 +39,10 @@
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler && build-run.bat build --Test-Debug 2>&1\")",
       "Bash(cmd /c \"c:\\\\work\\\\win-tiler\\\\win-tiler\\\\build-run.bat build --Debug\")",
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler & build-run.bat build --Test-Debug\")",
-      "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler & build-run.bat build --Test-Debug > build_output.txt 2>&1 & type build_output.txt\")"
+      "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler & build-run.bat build --Test-Debug > build_output.txt 2>&1 & type build_output.txt\")",
+      "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler && build-run.bat build --Debug\")",
+      "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler && call build-run.bat build --Debug 2>&1\")",
+      "Bash(powershell -Command \"cd ''c:\\\\work\\\\win-tiler\\\\win-tiler''; & .\\\\build-run.bat build --Debug\")"
     ]
   },
   "outputStyle": "Explanatory"

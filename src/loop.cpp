@@ -10,10 +10,14 @@
 #include "engine.h"
 #include "model.h"
 #include "multi_cell_renderer.h"
+#include "multi_engine.h"
 #include "overlay.h"
 #include "winapi.h"
 
 namespace wintiler {
+
+// Empty data struct for now - extension point for future per-desktop state
+struct LoopDesktopData {};
 
 namespace {
 
@@ -383,21 +387,17 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
 
-  Engine engine;
-  initialize_engine_from_monitors(engine, monitors, options);
+  // MultiEngine manages separate tiling state per virtual desktop
+  // Uses GUID strings as desktop identifiers
+  MultiEngine<LoopDesktopData, std::string> multi_engine;
 
-  // Get gap and zen settings
+  // Gap and zen settings (read per-frame from options in case of hot-reload)
   float gap_h = options.gapOptions.horizontal;
   float gap_v = options.gapOptions.vertical;
   float zen_pct = options.visualizationOptions.renderOptions.zen_percentage;
 
-  // Compute initial geometries and print layout
-  auto geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
-  spdlog::info("=== Initial Tile Layout ===");
-  print_tile_layout(engine.system, geometries);
-
-  // Apply initial tile positions
-  apply_tile_positions(engine.system, geometries);
+  // Geometries computed per-frame after desktop is determined
+  std::vector<std::vector<ctrl::Rect>> geometries;
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -407,6 +407,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
   // Register session/power notifications for pause on lock/sleep/display-off
   winapi::register_session_power_notifications();
+
+  // Initialize virtual desktop manager for desktop ID detection
+  winapi::register_virtual_desktop_notifications();
 
   // Initialize overlay for rendering
   overlay::init();
@@ -439,6 +442,33 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Gather all Windows API input state in a single call
     auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
+
+    // Virtual desktop handling via desktop_id from managed windows
+    if (!input_state.desktop_id.has_value()) {
+      // No windows - skip iteration
+      spdlog::debug("No desktop ID (no windows), skipping iteration");
+      overlay::clear();
+      continue;
+    }
+
+    // Virtual desktop management - create new desktop on first encounter, switch as needed
+    const std::string& current_desktop_id = *input_state.desktop_id;
+
+    // Create desktop if this is a new virtual desktop
+    if (!multi_engine.has_desktop(current_desktop_id)) {
+      auto cluster_infos = create_cluster_infos_from_monitors(monitors, provider.options);
+      multi_engine.create_desktop(current_desktop_id, cluster_infos);
+      spdlog::info("Created new virtual desktop engine: {}", current_desktop_id);
+    }
+
+    // Switch to current desktop if needed
+    if (!multi_engine.has_current() || *multi_engine.current_id != current_desktop_id) {
+      multi_engine.switch_to(current_desktop_id);
+      spdlog::info("Switched to virtual desktop: {}", current_desktop_id);
+    }
+
+    // Get reference to current desktop's engine
+    auto& engine = multi_engine.current().engine;
 
     // Update gap and zen settings (in case config was reloaded)
     gap_h = provider.options.gapOptions.horizontal;
@@ -591,6 +621,10 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Apply tile positions
     apply_tile_positions(engine.system, geometries);
 
+    // Debug: print current system state
+    spdlog::debug("=== Current System State ===");
+    print_tile_layout(engine.system, geometries);
+
     // Render cell system overlay
     renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
                      engine.stored_cell, toast.get_visible_message());
@@ -603,6 +637,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
   // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(provider.options.keyboardOptions);
+  winapi::unregister_virtual_desktop_notifications();
   winapi::unregister_session_power_notifications();
   winapi::unregister_move_size_hook();
   overlay::shutdown();

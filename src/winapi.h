@@ -108,8 +108,9 @@ void wait_for_session_active();
 // Check if session is currently paused (locked, sleeping, or display off)
 bool is_session_paused();
 
-// Detect if a context menu is currently the foreground window
-bool is_context_menu_active();
+// Virtual desktop management - initializes COM interface for desktop ID detection
+void register_virtual_desktop_notifications();
+void unregister_virtual_desktop_notifications();
 
 // Drag operation tracking (for mouse-based window move operations)
 struct DragInfo {
@@ -144,6 +145,9 @@ struct LoopInputState {
 
   // Per-monitor managed windows (index matches monitors vector)
   std::vector<std::vector<ManagedWindowInfo>> windows_per_monitor;
+
+  // Virtual desktop ID (GUID as string, from first managed window)
+  std::optional<std::string> desktop_id;
 };
 
 // Gather all input state for the main loop in a single call
