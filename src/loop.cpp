@@ -546,8 +546,32 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Extract window state from consolidated input
     auto current_state = extract_window_state_from_input(input_state);
 
-    // Update system state (selection updated inside ctrl::update)
-    bool changed = engine.update(current_state);
+    // Determine redirect cluster for new windows
+    std::optional<int> redirect_cluster;
+
+    // Check if mouse is over an empty cluster (priority)
+    if (input_state.cursor_pos.has_value()) {
+      float cursor_x = static_cast<float>(input_state.cursor_pos->x);
+      float cursor_y = static_cast<float>(input_state.cursor_pos->y);
+      auto hover_info = engine.get_hover_info(cursor_x, cursor_y, geometries);
+
+      if (hover_info.cluster_index.has_value()) {
+        size_t hover_idx = *hover_info.cluster_index;
+        if (hover_idx < engine.system.clusters.size() &&
+            ctrl::get_cluster_leaf_ids(engine.system.clusters[hover_idx]).empty()) {
+          // Empty cluster under mouse - redirect new windows here
+          redirect_cluster = static_cast<int>(hover_idx);
+        }
+      }
+    }
+
+    // If no empty cluster redirect, use selection's cluster
+    if (!redirect_cluster.has_value() && engine.system.selection.has_value()) {
+      redirect_cluster = engine.system.selection->cluster_index;
+    }
+
+    // Update system state with redirect (selection updated inside ctrl::update)
+    bool changed = engine.update(current_state, redirect_cluster);
 
     if (changed) {
       // Recompute geometries after update
