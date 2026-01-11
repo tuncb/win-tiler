@@ -96,9 +96,9 @@ struct ClusterCellUpdateInfo {
 // Get all leaf IDs from a cluster.
 [[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster);
 
-// Compute geometry for all cells in a cluster.
+// Compute geometry for all cells in a cluster (in global coordinates).
 // Returns vector where index = cell_index:
-// - Leaf cells: computed rectangle with gaps applied
+// - Leaf cells: computed rectangle with gaps applied (global coordinates)
 // - Internal nodes: empty Rect (0,0,0,0)
 // - Zen cell (if active): centered rect at zen_percentage of cluster size
 [[nodiscard]] std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h,

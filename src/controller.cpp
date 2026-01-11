@@ -617,15 +617,16 @@ std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, 
     return rects;
   }
 
-  // Compute root rect with outer gaps
+  // Compute root rect with outer gaps (in global coordinates)
   float root_w = cluster.window_width - 2.0f * gap_h;
   float root_h = cluster.window_height - 2.0f * gap_v;
-  rects[0] = Rect{gap_h, gap_v, root_w > 0.0f ? root_w : 0.0f, root_h > 0.0f ? root_h : 0.0f};
+  rects[0] = Rect{cluster.global_x + gap_h, cluster.global_y + gap_v, root_w > 0.0f ? root_w : 0.0f,
+                  root_h > 0.0f ? root_h : 0.0f};
 
   // Recursively compute child rects starting from root (index 0)
   compute_children_rects(cluster, 0, rects, gap_h, gap_v);
 
-  // Handle zen mode: override zen cell with centered rect
+  // Handle zen mode: override zen cell with centered rect (in global coordinates)
   if (cluster.zen_cell_index.has_value()) {
     int zen_idx = *cluster.zen_cell_index;
     if (cluster.tree.is_valid_index(zen_idx) && cluster.tree.is_leaf(zen_idx)) {
@@ -633,7 +634,8 @@ std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, 
       float zen_h = cluster.window_height * zen_percentage;
       float offset_x = (cluster.window_width - zen_w) / 2.0f;
       float offset_y = (cluster.window_height - zen_h) / 2.0f;
-      rects[static_cast<size_t>(zen_idx)] = Rect{offset_x, offset_y, zen_w, zen_h};
+      rects[static_cast<size_t>(zen_idx)] =
+          Rect{cluster.global_x + offset_x, cluster.global_y + offset_y, zen_w, zen_h};
     }
   }
 

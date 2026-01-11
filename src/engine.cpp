@@ -9,27 +9,6 @@ namespace wintiler {
 
 namespace {
 
-// Convert local geometries to global coordinates
-std::vector<std::vector<ctrl::Rect>>
-to_global_geometries(const ctrl::System& system,
-                     const std::vector<std::vector<ctrl::Rect>>& local_geometries) {
-  std::vector<std::vector<ctrl::Rect>> result;
-  result.reserve(system.clusters.size());
-
-  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
-    const auto& cluster = system.clusters[ci];
-    const auto& local_rects = local_geometries[ci];
-    std::vector<ctrl::Rect> global_rects;
-    global_rects.reserve(local_rects.size());
-
-    for (const auto& r : local_rects) {
-      global_rects.push_back({cluster.global_x + r.x, cluster.global_y + r.y, r.width, r.height});
-    }
-    result.push_back(std::move(global_rects));
-  }
-  return result;
-}
-
 // Find the cluster and cell index at a global point using precomputed geometries
 std::optional<std::pair<size_t, int>>
 find_cell_at_global_point(const ctrl::System& system,
@@ -78,12 +57,12 @@ void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
                                                                 float zen_pct) const {
-  std::vector<std::vector<ctrl::Rect>> local_geometries;
-  local_geometries.reserve(system.clusters.size());
+  std::vector<std::vector<ctrl::Rect>> geometries;
+  geometries.reserve(system.clusters.size());
   for (const auto& cluster : system.clusters) {
-    local_geometries.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
+    geometries.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
   }
-  return to_global_geometries(system, local_geometries);
+  return geometries;
 }
 
 HoverInfo
