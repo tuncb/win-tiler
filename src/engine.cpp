@@ -95,21 +95,22 @@ void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
   }
 }
 
-GeometryCache Engine::compute_geometries(float gap_h, float gap_v, float zen_pct) const {
-  GeometryCache cache;
-  cache.local.reserve(system.clusters.size());
+std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
+                                                                float zen_pct) const {
+  std::vector<std::vector<ctrl::Rect>> local_geometries;
+  local_geometries.reserve(system.clusters.size());
   for (const auto& cluster : system.clusters) {
-    cache.local.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
+    local_geometries.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
   }
-  cache.global = to_global_geometries(system, cache.local);
-  return cache;
+  return to_global_geometries(system, local_geometries);
 }
 
-void Engine::update_hover(float global_x, float global_y, const GeometryCache& geom) {
+void Engine::update_hover(float global_x, float global_y,
+                          const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
   // Always track which cluster the mouse is over (even if empty)
   hovered_cluster_index = find_cluster_at_global_point(system, global_x, global_y);
 
-  auto cell_at_mouse = find_cell_at_global_point(system, geom.global, global_x, global_y);
+  auto cell_at_mouse = find_cell_at_global_point(system, global_geometries, global_x, global_y);
   if (cell_at_mouse.has_value()) {
     auto [cluster_index, cell_index] = *cell_at_mouse;
 
@@ -143,25 +144,6 @@ void Engine::clear_stored_cell() {
   stored_cell.reset();
 }
 
-std::optional<ctrl::Rect> Engine::get_selected_rect(const GeometryCache& geom) const {
-  if (!system.selection.has_value()) {
-    return std::nullopt;
-  }
-
-  int ci = system.selection->cluster_index;
-  int cell_idx = system.selection->cell_index;
-
-  if (ci < 0 || static_cast<size_t>(ci) >= geom.global.size()) {
-    return std::nullopt;
-  }
-  if (cell_idx < 0 ||
-      static_cast<size_t>(cell_idx) >= geom.global[static_cast<size_t>(ci)].size()) {
-    return std::nullopt;
-  }
-
-  return geom.global[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
-}
-
 std::optional<int> Engine::get_selected_sibling_index() const {
   if (!system.selection.has_value()) {
     return std::nullopt;
@@ -176,48 +158,41 @@ std::optional<int> Engine::get_selected_sibling_index() const {
   return cluster.tree.get_sibling(cell_idx);
 }
 
-ActionResult Engine::process_action(HotkeyAction action, const GeometryCache& geom, float gap_h,
-                                    float gap_v, float zen_pct) {
+ActionResult Engine::process_action(HotkeyAction action,
+                                    const std::vector<std::vector<ctrl::Rect>>& global_geometries,
+                                    float gap_h, float gap_v, float zen_pct) {
   ActionResult result;
 
   switch (action) {
   case HotkeyAction::NavigateLeft:
     spdlog::info("NavigateLeft: moving selection to the left");
-    if (ctrl::move_selection(system, ctrl::Direction::Left, geom.global)) {
+    if (ctrl::move_selection(system, ctrl::Direction::Left, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
   case HotkeyAction::NavigateDown:
     spdlog::info("NavigateDown: moving selection downward");
-    if (ctrl::move_selection(system, ctrl::Direction::Down, geom.global)) {
+    if (ctrl::move_selection(system, ctrl::Direction::Down, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
   case HotkeyAction::NavigateUp:
     spdlog::info("NavigateUp: moving selection upward");
-    if (ctrl::move_selection(system, ctrl::Direction::Up, geom.global)) {
+    if (ctrl::move_selection(system, ctrl::Direction::Up, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
   case HotkeyAction::NavigateRight:
     spdlog::info("NavigateRight: moving selection to the right");
-    if (ctrl::move_selection(system, ctrl::Direction::Right, geom.global)) {
+    if (ctrl::move_selection(system, ctrl::Direction::Right, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
@@ -278,8 +253,6 @@ ActionResult Engine::process_action(HotkeyAction action, const GeometryCache& ge
     if (ctrl::adjust_selected_split_ratio(system, 0.05f)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
@@ -288,8 +261,6 @@ ActionResult Engine::process_action(HotkeyAction action, const GeometryCache& ge
     if (ctrl::adjust_selected_split_ratio(system, -0.05f)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 
@@ -301,8 +272,6 @@ ActionResult Engine::process_action(HotkeyAction action, const GeometryCache& ge
                              system.selection->cluster_index, *sibling_idx)) {
           result.success = true;
           result.selection_changed = true;
-          auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-          result.new_selection_rect = get_selected_rect(new_geom);
         }
       }
     }
@@ -330,8 +299,6 @@ ActionResult Engine::process_action(HotkeyAction action, const GeometryCache& ge
     if (ctrl::set_selected_split_ratio(system, 0.5f)) {
       result.success = true;
       result.selection_changed = true;
-      auto new_geom = compute_geometries(gap_h, gap_v, zen_pct);
-      result.new_selection_rect = get_selected_rect(new_geom);
     }
     break;
 

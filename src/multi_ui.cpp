@@ -278,20 +278,23 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     }
 
     // Compute geometries once per frame (after tree-modifying input)
-    auto geom = engine.compute_geometries(gap_h, gap_v, zen_pct);
+    auto global_geom = engine.compute_geometries(gap_h, gap_v, zen_pct);
 
     // Mouse hover selection
     Vector2 mouse_pos = GetMousePosition();
     float global_x, global_y;
     to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
-    engine.update_hover(global_x, global_y, geom);
+    engine.update_hover(global_x, global_y, global_geom);
 
     // Keyboard input (HotkeyAction enum actions)
     auto action = get_key_action();
     if (action.has_value()) {
-      auto result = engine.process_action(*action, geom, gap_h, gap_v, zen_pct);
-      if (result.new_selection_rect.has_value()) {
-        center_mouse_on_rect(vt, *result.new_selection_rect);
+      auto result = engine.process_action(*action, global_geom, gap_h, gap_v, zen_pct);
+      if (result.selection_changed && engine.system.selection.has_value()) {
+        int ci = engine.system.selection->cluster_index;
+        int cell_idx = engine.system.selection->cell_index;
+        const auto& rect = global_geom[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
+        center_mouse_on_rect(vt, rect);
       }
     }
 
@@ -314,7 +317,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
     for (size_t cluster_idx = 0; cluster_idx < engine.system.clusters.size(); ++cluster_idx) {
       const auto& cluster = engine.system.clusters[cluster_idx];
-      const auto& cluster_geom = geom.global[cluster_idx];
+      const auto& cluster_geom = global_geom[cluster_idx];
 
       for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
         if (!ctrl::is_leaf(cluster, i)) {
@@ -389,10 +392,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
       int zen_cell_index = *cluster.zen_cell_index;
 
       // Get zen display rect from precomputed geometry
-      const auto& zen_local_rect = geom.local[cluster_idx][static_cast<size_t>(zen_cell_index)];
-      ctrl::Rect zen_display_rect{cluster.global_x + zen_local_rect.x,
-                                  cluster.global_y + zen_local_rect.y, zen_local_rect.width,
-                                  zen_local_rect.height};
+      const auto& zen_display_rect = global_geom[cluster_idx][static_cast<size_t>(zen_cell_index)];
       Rectangle zen_screen_rect = to_screen_rect(vt, zen_display_rect);
 
       // Draw semi-transparent fill
