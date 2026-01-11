@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 win-tiler is a tiling windows manager for Windows OS.
+The project uses a visual studio project for project for project management.
 
 ## Build Commands
 
@@ -31,13 +32,13 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 
 ### Three-Layer Design
 
-1. **Cell Logic** (`cells` namespace in `src/multi_cells.h/cpp`)
-   - BSP tree implementation where each `Cell` is either a leaf or has two children
+1. **Cell Logic** (`ctrl` namespace in `src/controller.h/cpp`)
+   - BSP tree implementation using `BinaryTree<CellData>` where each node is either a leaf or has two children
    - Core operations: split, delete, toggle split direction, navigate
-   - `CellCluster` manages a tree of cells for one logical area
-   - `System` manages a list of `CellCluster`s.
+   - `Cluster` manages a tree of cells for one logical area
+   - `System` manages a list of `Cluster`s.
 2. `src/winapi.h/cpp` - Windows API wrapper for monitor/window enumeration
-3. `src/multi_cell_renderer.h/cpp` - Renders cells::System using the overlay unit
+3. `src/multi_cell_renderer.h/cpp` - Renders ctrl::System using the overlay unit
 4. `src/overlay.h/cpp` - Direct2D overlay rendering for visual feedback
 5. `src/multi_ui.h/cpp` - Raylib-based interactive visualization, used for test purposes.
 6. `src/loop.h/cpp` - Main loop mode with hotkey handling and window tiling.

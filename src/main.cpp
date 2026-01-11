@@ -14,7 +14,6 @@
 
 #include "argument_parser.h"
 #include "loop.h"
-#include "multi_cells.h"
 #include "multi_ui.h"
 #include "options.h"
 #include "track_windows.h"
