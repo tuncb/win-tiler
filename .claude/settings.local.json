@@ -42,7 +42,9 @@
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler & build-run.bat build --Test-Debug > build_output.txt 2>&1 & type build_output.txt\")",
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler && build-run.bat build --Debug\")",
       "Bash(cmd /c \"cd /d c:\\\\work\\\\win-tiler\\\\win-tiler && call build-run.bat build --Debug 2>&1\")",
-      "Bash(powershell -Command \"cd ''c:\\\\work\\\\win-tiler\\\\win-tiler''; & .\\\\build-run.bat build --Debug\")"
+      "Bash(powershell -Command \"cd ''c:\\\\work\\\\win-tiler\\\\win-tiler''; & .\\\\build-run.bat build --Debug\")",
+      "Bash(git -C \"c:\\\\work\\\\win-tiler\\\\win-tiler\" add src/version.h)",
+      "Bash(git -C \"c:\\\\work\\\\win-tiler\\\\win-tiler\" commit -m \"$\\(cat <<''EOF''\nbump version to 0.0.8-alpha\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   },
   "outputStyle": "Explanatory"

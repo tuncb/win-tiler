@@ -369,6 +369,10 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("Exit: exit action (not implemented in engine)");
     // Not implemented in engine
     break;
+
+  case HotkeyAction::TogglePause:
+    // Handled directly in loop.cpp before calling engine
+    break;
   }
 
   return result;

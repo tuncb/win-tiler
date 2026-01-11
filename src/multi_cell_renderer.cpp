@@ -123,9 +123,9 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
     for (const auto& monitor : monitors) {
       if (monitor.isPrimary) {
         // Position at bottom-right of work area with padding
-        // Estimate toast width: ~0.5x font size per character + 16px padding
+        // Estimate toast width: ~0.6x font size per character + 32px padding
         float estimated_width =
-            static_cast<float>(message->length()) * config.toast_font_size * 0.5f + 16.0f;
+            static_cast<float>(message->length()) * config.toast_font_size * 0.6f + 32.0f;
         float toast_height = config.toast_font_size * 1.5f; // Approximate height + padding
         float padding = 20.0f;
 

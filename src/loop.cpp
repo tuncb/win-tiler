@@ -426,6 +426,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
 
+  // Manual pause state (toggled by hotkey)
+  bool is_manually_paused = false;
+
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
@@ -436,6 +439,23 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       winapi::wait_for_session_active();
       spdlog::debug("Session resumed, continuing loop");
       continue; // Re-gather state after resume
+    }
+
+    // Check for manual pause (hotkey-toggled)
+    if (is_manually_paused) {
+      // Only check for unpause hotkey when manually paused
+      if (auto hotkey_id = winapi::check_keyboard_action()) {
+        auto action_opt = id_to_hotkey_action(*hotkey_id);
+        if (action_opt.has_value() && *action_opt == HotkeyAction::TogglePause) {
+          is_manually_paused = false;
+          spdlog::info("Manual pause deactivated");
+          toast.show("Resumed");
+          // Fall through to resume normal processing immediately
+        }
+      }
+      if (is_manually_paused) {
+        continue; // Still paused, skip this iteration
+      }
     }
 
     auto loop_start = std::chrono::high_resolution_clock::now();
@@ -526,6 +546,14 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         if (action == HotkeyAction::Exit) {
           spdlog::info("Exit hotkey pressed, shutting down...");
           break;
+        }
+
+        // Handle TogglePause - activates manual pause
+        if (action == HotkeyAction::TogglePause) {
+          is_manually_paused = true;
+          spdlog::info("Manual pause activated");
+          overlay::clear();
+          continue; // Skip rest of iteration
         }
 
         // Handle CycleSplitMode with toast
