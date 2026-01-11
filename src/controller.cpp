@@ -98,8 +98,8 @@ static std::optional<SplitResult> split_leaf(Cluster& cluster, int selected_inde
   // Link children to parent
   cluster.tree.set_children(selected_index, first_child_index, second_child_index);
 
-  // Return first child as new selection (matches original behavior)
-  return SplitResult{new_leaf_id, first_child_index};
+  // Return second child as new selection (the newly added window)
+  return SplitResult{new_leaf_id, second_child_index};
 }
 
 // Pre-create leaves in a cluster from initial cell IDs
@@ -1073,27 +1073,25 @@ bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_up
                           system.selection->cluster_index == static_cast<int>(cluster_idx) &&
                           system.selection->cell_index == cell_idx;
 
-      // Get sibling for selection update before deletion
-      auto sibling_opt = cluster.tree.get_sibling(cell_idx);
+      // Get parent before deletion (sibling will move here)
+      auto parent_opt = cluster.tree.get_parent(cell_idx);
 
       if (delete_leaf(cluster, cell_idx)) {
         updated = true;
 
         // Update selection if deleted cell was selected
         if (was_selected) {
-          // Try to select sibling (which took parent's place after deletion)
-          auto parent_opt = cluster.tree.get_parent(cell_idx);
           if (parent_opt.has_value()) {
-            // After deletion, parent took sibling's data
-            // So we can try to find any remaining leaf
+            // After deletion, sibling moved to parent's position
+            system.selection = CellIndicatorByIndex{static_cast<int>(cluster_idx), *parent_opt};
+          } else {
+            // Root was deleted, find any remaining leaf
             auto new_leaf = find_any_leaf(cluster);
             if (new_leaf.has_value()) {
               system.selection = CellIndicatorByIndex{static_cast<int>(cluster_idx), *new_leaf};
             } else {
               system.selection.reset();
             }
-          } else {
-            system.selection.reset();
           }
         }
       }
@@ -1132,6 +1130,7 @@ bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_up
       auto result_opt = split_leaf(cluster, current_selection, leaf_id, split_dir);
       if (result_opt.has_value()) {
         split_from_index = result_opt->new_selection_index;
+        system.selection = CellIndicatorByIndex{static_cast<int>(cluster_idx), split_from_index};
         updated = true;
       }
     }

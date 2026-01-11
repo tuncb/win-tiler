@@ -250,16 +250,6 @@ extract_window_state_from_input(const winapi::LoopInputState& input_state) {
   return result;
 }
 
-// Helper: Get all leaf_ids from the system
-std::vector<size_t> get_all_leaf_ids(const ctrl::System& system) {
-  std::vector<size_t> result;
-  for (const auto& cluster : system.clusters) {
-    auto ids = ctrl::get_cluster_leaf_ids(cluster);
-    result.insert(result.end(), ids.begin(), ids.end());
-  }
-  return result;
-}
-
 // Helper: Apply tile positions from geometries
 void apply_tile_positions(const ctrl::System& system,
                           const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -322,33 +312,6 @@ void update_selection_from_hover(Engine& engine,
         engine.system.selection->cluster_index != hover_info.cell->cluster_index ||
         engine.system.selection->cell_index != hover_info.cell->cell_index) {
       engine.system.selection = *hover_info.cell;
-    }
-  }
-}
-
-// Helper: Find center of first new window and move cursor there
-void move_cursor_to_new_window(const ctrl::System& system,
-                               const std::vector<std::vector<ctrl::Rect>>& geometries,
-                               const std::vector<size_t>& old_leaf_ids,
-                               const std::vector<size_t>& new_leaf_ids) {
-  // Find first new leaf_id (not in old_leaf_ids)
-  for (size_t new_id : new_leaf_ids) {
-    if (std::find(old_leaf_ids.begin(), old_leaf_ids.end(), new_id) == old_leaf_ids.end()) {
-      // Found a new window - find its geometry and move cursor
-      for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
-        const auto& cluster = system.clusters[ci];
-        auto cell_idx = ctrl::find_cell_by_leaf_id(cluster, new_id);
-        if (cell_idx.has_value() && ci < geometries.size() &&
-            static_cast<size_t>(*cell_idx) < geometries[ci].size()) {
-          const auto& rect = geometries[ci][static_cast<size_t>(*cell_idx)];
-          if (rect.width > 0.0f && rect.height > 0.0f) {
-            auto center = ctrl::get_rect_center(rect);
-            winapi::set_cursor_pos(center.x, center.y);
-            spdlog::debug("Moved cursor to center of new window at ({}, {})", center.x, center.y);
-            return;
-          }
-        }
-      }
     }
   }
 }
@@ -585,57 +548,26 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       }
     }
 
-    // Track current leaf_ids before update (for detecting new windows)
-    auto old_leaf_ids = get_all_leaf_ids(engine.system);
-
     // Extract window state from consolidated input
     auto current_state = extract_window_state_from_input(input_state);
 
-    // Update system state
+    // Update system state (selection updated inside ctrl::update)
     bool changed = engine.update(current_state);
 
     if (changed) {
       // Recompute geometries after update
       geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
 
-      // Get new leaf_ids and log changes
-      auto new_leaf_ids = get_all_leaf_ids(engine.system);
-
-      // Count added/deleted
-      std::vector<size_t> added_ids;
-      std::vector<size_t> deleted_ids;
-      for (size_t id : new_leaf_ids) {
-        if (std::find(old_leaf_ids.begin(), old_leaf_ids.end(), id) == old_leaf_ids.end()) {
-          added_ids.push_back(id);
-        }
+      // Move cursor to selected cell (which is now the new window if one was added)
+      if (auto center = engine.get_selected_center(geometries)) {
+        winapi::set_cursor_pos(center->x, center->y);
       }
-      for (size_t id : old_leaf_ids) {
-        if (std::find(new_leaf_ids.begin(), new_leaf_ids.end(), id) == new_leaf_ids.end()) {
-          deleted_ids.push_back(id);
-        }
-      }
-
-      if (!deleted_ids.empty() || !added_ids.empty()) {
-        spdlog::info("Window changes: +{} added, -{} removed", added_ids.size(),
-                     deleted_ids.size());
-        if (!added_ids.empty()) {
-          spdlog::debug("Added windows:");
-          for (size_t id : added_ids) {
-            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-            std::string title = winapi::get_window_info(hwnd).title;
-            spdlog::debug("  + \"{}\"", title);
-          }
-        }
-        spdlog::debug("=== Updated Tile Layout ===");
-        print_tile_layout(engine.system, geometries);
-      }
-
-      // Move cursor to center of new window (if any)
-      move_cursor_to_new_window(engine.system, geometries, old_leaf_ids, new_leaf_ids);
     }
 
-    // Update selection based on mouse hover position
-    update_selection_from_hover(engine, geometries, input_state);
+    // Update selection based on mouse hover position (skip if we just moved cursor)
+    if (!changed) {
+      update_selection_from_hover(engine, geometries, input_state);
+    }
 
     // Apply tile positions
     apply_tile_positions(engine.system, geometries);
