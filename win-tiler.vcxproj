@@ -216,6 +216,8 @@
     <ClCompile Include="src\options.cpp" />
     <ClCompile Include="src\test_arena_allocator.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
+    <ClCompile Include="src\test_controller.cpp" />
+    <ClCompile Include="src\test_engine.cpp" />
     <ClCompile Include="src\test_options.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\winapi.cpp" />

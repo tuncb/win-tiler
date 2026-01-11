@@ -272,29 +272,7 @@ bool swap_cells(System& system, int cluster_index1, int cell_index1, int cluster
       return true;
     }
 
-    auto parent1_opt = cluster1.tree.get_parent(cell_index1);
-    auto parent2_opt = cluster1.tree.get_parent(cell_index2);
-
-    // Check if siblings (same parent)
-    if (parent1_opt.has_value() && parent2_opt.has_value() && *parent1_opt == *parent2_opt) {
-      // Siblings: just swap children of parent
-      cluster1.tree.swap_children(*parent1_opt);
-
-      // Update selection if needed (swap cell indices)
-      if (system.selection.has_value()) {
-        auto& sel = *system.selection;
-        if (sel.cluster_index == cluster_index1) {
-          if (sel.cell_index == cell_index1) {
-            sel.cell_index = cell_index2;
-          } else if (sel.cell_index == cell_index2) {
-            sel.cell_index = cell_index1;
-          }
-        }
-      }
-      return true;
-    }
-
-    // Non-siblings in same cluster: swap leaf_ids
+    // Same cluster: swap leaf_ids (works for both siblings and non-siblings)
     std::swap(cluster1.tree[cell_index1].leaf_id, cluster1.tree[cell_index2].leaf_id);
 
     // No selection update needed - cell indices stay the same, just contents swapped
