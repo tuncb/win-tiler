@@ -115,9 +115,8 @@ struct DropMoveResult {
 [[nodiscard]] Point get_rect_center(const Rect& rect);
 
 // Compute geometry for all cells in a cluster (in global coordinates).
-// Returns vector where index = cell_index:
-// - Leaf cells: computed rectangle with gaps applied (global coordinates)
-// - Internal nodes: empty Rect (0,0,0,0)
+// Returns vector where index = cell_index with computed rectangles for all nodes.
+// Use cluster.tree.is_leaf(index) to distinguish leaf cells from internal nodes.
 // - Zen cell (if active): centered rect at zen_percentage of cluster size
 [[nodiscard]] std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h,
                                                          float gap_v, float zen_percentage = 0.85f);

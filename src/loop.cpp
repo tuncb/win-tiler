@@ -178,7 +178,7 @@ bool handle_window_resize(Engine& engine, const std::vector<std::vector<ctrl::Re
     return false; // Only moved, not resized
   }
 
-  // Update split ratio
+  // Update split ratio using the geometry (which now includes internal node rects)
   bool result = engine.handle_resize(cluster_index, leaf_id, actual_rect,
                                      geometries[static_cast<size_t>(cluster_index)]);
   if (result) {
@@ -279,11 +279,6 @@ void apply_tile_positions(const ctrl::System& system,
         continue;
       }
       const auto& r = rects[static_cast<size_t>(i)];
-
-      // Skip cells with invalid geometry
-      if (r.width <= 0.0f || r.height <= 0.0f) {
-        continue;
-      }
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
       winapi::WindowPosition pos{static_cast<int>(r.x), static_cast<int>(r.y),

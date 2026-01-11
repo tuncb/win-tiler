@@ -364,10 +364,6 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
         // Use precomputed geometry
         const auto& global_rect = cluster_geom[static_cast<size_t>(i)];
-        if (global_rect.width <= 0.0f || global_rect.height <= 0.0f) {
-          continue; // Skip non-leaf cells
-        }
-
         const auto& cell_data = cluster.tree[i];
         Rectangle screen_rect = to_screen_rect(vt, global_rect);
 

@@ -18,15 +18,16 @@ find_cell_at_global_point(const ctrl::System& system,
     if (cluster_idx >= global_geometries.size()) {
       continue;
     }
+    const auto& cluster = system.clusters[cluster_idx];
     const auto& rects = global_geometries[cluster_idx];
 
     for (int i = 0; i < static_cast<int>(rects.size()); ++i) {
-      const auto& r = rects[static_cast<size_t>(i)];
-      // Skip non-leaf cells (they have zero size in geometry)
-      if (r.width <= 0.0f || r.height <= 0.0f) {
+      // Skip non-leaf cells
+      if (!cluster.tree.is_leaf(i)) {
         continue;
       }
 
+      const auto& r = rects[static_cast<size_t>(i)];
       if (global_x >= r.x && global_x < r.x + r.width && global_y >= r.y &&
           global_y < r.y + r.height) {
         return std::make_pair(cluster_idx, i);
@@ -163,10 +164,6 @@ Engine::get_selected_center(const std::vector<std::vector<ctrl::Rect>>& geometri
   }
 
   const auto& rect = geometries[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
-  if (rect.width <= 0.0f || rect.height <= 0.0f) {
-    return std::nullopt;
-  }
-
   return ctrl::get_rect_center(rect);
 }
 

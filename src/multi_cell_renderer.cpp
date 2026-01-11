@@ -40,11 +40,6 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
       }
       const auto& rect = rects[static_cast<size_t>(i)];
 
-      // Skip cells with no geometry (shouldn't happen for leaves, but be safe)
-      if (rect.width <= 0.0f || rect.height <= 0.0f) {
-        continue;
-      }
-
       // Determine color based on selection/stored state
       overlay::Color color = config.normal_color;
 

@@ -1314,8 +1314,9 @@ TEST_SUITE("compute_cluster_geometry") {
     auto rects = compute_cluster_geometry(cluster, 10.0f, 10.0f);
     REQUIRE(rects.size() == 3);
 
-    // Internal node has empty rect
-    CHECK(rects[0].width == 0.0f);
+    // Internal node (root) has the full cluster rect (minus outer gaps)
+    CHECK(rects[0].width > 0.0f);
+    CHECK(rects[0].height > 0.0f);
 
     // Find leaf rects
     auto cell1 = find_cell_by_leaf_id(cluster, 1);
@@ -1415,15 +1416,17 @@ TEST_SUITE("compute_cluster_geometry") {
     CHECK(zen_rect.height == doctest::Approx(expected_h));
   }
 
-  TEST_CASE("internal nodes have empty rects") {
+  TEST_CASE("internal nodes have valid rects") {
     System system = create_test_system({{1, 2}});
     auto& cluster = system.clusters[0];
 
     auto rects = compute_cluster_geometry(cluster, 10.0f, 10.0f);
 
-    // Node 0 is internal
-    CHECK(rects[0].width == 0.0f);
-    CHECK(rects[0].height == 0.0f);
+    // Node 0 is internal - it should have a valid rect (the root bounds)
+    CHECK(rects[0].width > 0.0f);
+    CHECK(rects[0].height > 0.0f);
+    // Use is_leaf() to distinguish internal nodes from leaves
+    CHECK_FALSE(cluster.tree.is_leaf(0));
   }
 
   TEST_CASE("gap values applied correctly") {
@@ -1568,20 +1571,13 @@ TEST_SUITE("perform_drop_move") {
 // =============================================================================
 
 TEST_SUITE("update_split_ratio_from_resize") {
-  // Note: update_split_ratio_from_resize requires parent geometry in cluster_geometry,
-  // but compute_cluster_geometry clears internal node rects. For these tests to work,
-  // we provide custom geometry with valid parent rects.
-
   TEST_CASE("left edge resize updates ratio") {
     System system = create_test_system({{1, 2}});
     auto& cluster = system.clusters[0];
     cluster.tree[0].split_dir = SplitDir::Vertical;
     cluster.tree[0].split_ratio = 0.5f;
 
-    // Compute geometry and manually preserve parent rect
     auto geometry = compute_cluster_geometry(cluster, 10.0f, 10.0f);
-    // Set parent rect (node 0) to cluster bounds with gaps
-    geometry[0] = Rect{10.0f, 10.0f, 780.0f, 580.0f};
 
     auto cell2 = find_cell_by_leaf_id(cluster, 2);
     REQUIRE(cell2.has_value());
@@ -1603,7 +1599,6 @@ TEST_SUITE("update_split_ratio_from_resize") {
     cluster.tree[0].split_ratio = 0.5f;
 
     auto geometry = compute_cluster_geometry(cluster, 10.0f, 10.0f);
-    geometry[0] = Rect{10.0f, 10.0f, 780.0f, 580.0f};
 
     auto cell1 = find_cell_by_leaf_id(cluster, 1);
     REQUIRE(cell1.has_value());
@@ -1623,7 +1618,6 @@ TEST_SUITE("update_split_ratio_from_resize") {
     cluster.tree[0].split_ratio = 0.5f;
 
     auto geometry = compute_cluster_geometry(cluster, 10.0f, 10.0f);
-    geometry[0] = Rect{10.0f, 10.0f, 780.0f, 580.0f};
 
     auto cell2 = find_cell_by_leaf_id(cluster, 2);
     REQUIRE(cell2.has_value());
@@ -1644,7 +1638,6 @@ TEST_SUITE("update_split_ratio_from_resize") {
     cluster.tree[0].split_ratio = 0.5f;
 
     auto geometry = compute_cluster_geometry(cluster, 10.0f, 10.0f);
-    geometry[0] = Rect{10.0f, 10.0f, 780.0f, 580.0f};
 
     auto cell1 = find_cell_by_leaf_id(cluster, 1);
     REQUIRE(cell1.has_value());

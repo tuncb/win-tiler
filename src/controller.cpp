@@ -617,13 +617,6 @@ std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, 
     }
   }
 
-  // Clear internal node rects (only keep leaf rects)
-  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
-    if (!cluster.tree.is_leaf(i)) {
-      rects[static_cast<size_t>(i)] = Rect{0.0f, 0.0f, 0.0f, 0.0f};
-    }
-  }
-
   return rects;
 }
 
@@ -640,11 +633,6 @@ static std::optional<int> find_any_leaf(const Cluster& cluster) {
 // ============================================================================
 // Geometric Navigation Helpers
 // ============================================================================
-
-// Check if a rect is valid (non-empty)
-static bool is_valid_rect(const Rect& r) {
-  return r.width > 0.0f && r.height > 0.0f;
-}
 
 // Check if 'to' rect is in the given direction from 'from' rect
 static bool is_in_direction(const Rect& from, const Rect& to, Direction dir) {
@@ -723,11 +711,13 @@ move_selection(System& system, Direction dir,
     return std::nullopt;
   }
 
-  const Rect& current_rect =
-      cell_geometries[static_cast<size_t>(current_cluster)][static_cast<size_t>(current_cell)];
-  if (!is_valid_rect(current_rect)) {
+  // Selection must point to a leaf cell
+  if (!system.clusters[static_cast<size_t>(current_cluster)].tree.is_leaf(current_cell)) {
     return std::nullopt;
   }
+
+  const Rect& current_rect =
+      cell_geometries[static_cast<size_t>(current_cluster)][static_cast<size_t>(current_cell)];
 
   // Find best candidate using geometric navigation
   std::optional<CellIndicatorByIndex> best_candidate;
@@ -749,14 +739,11 @@ move_selection(System& system, Direction dir,
         continue;
       }
 
-      // Check if zen cell has valid geometry
+      // Check if zen cell index is valid
       if (zen_idx < 0 || static_cast<size_t>(zen_idx) >= cluster_rects.size()) {
         continue;
       }
       const Rect& zen_rect = cluster_rects[static_cast<size_t>(zen_idx)];
-      if (!is_valid_rect(zen_rect)) {
-        continue;
-      }
 
       // Check if in direction and score
       if (!is_in_direction(current_rect, zen_rect, dir)) {
@@ -773,15 +760,17 @@ move_selection(System& system, Direction dir,
 
     // No zen cell: search all leaves in this cluster
     for (size_t cell_idx = 0; cell_idx < cluster_rects.size(); ++cell_idx) {
+      // Skip non-leaf cells
+      if (!cluster.tree.is_leaf(static_cast<int>(cell_idx))) {
+        continue;
+      }
+
       // Skip current cell
       if (static_cast<int>(ci) == current_cluster && static_cast<int>(cell_idx) == current_cell) {
         continue;
       }
 
       const Rect& candidate_rect = cluster_rects[cell_idx];
-      if (!is_valid_rect(candidate_rect)) {
-        continue;
-      }
 
       if (!is_in_direction(current_rect, candidate_rect, dir)) {
         continue;
@@ -1345,9 +1334,6 @@ find_cell_at_point(const System& system, const std::vector<std::vector<Rect>>& g
         continue;
       }
       const auto& r = geometries[ci][static_cast<size_t>(i)];
-      if (r.width <= 0.0f || r.height <= 0.0f) {
-        continue;
-      }
       if (global_x >= r.x && global_x < r.x + r.width && global_y >= r.y &&
           global_y < r.y + r.height) {
         return std::make_pair(static_cast<int>(ci), i);
