@@ -13,6 +13,7 @@ namespace wintiler {
 struct ActionResult {
   bool success = false;
   bool selection_changed = false;
+  std::optional<ctrl::Point> new_cursor_pos; // New cursor position for navigation/ratio changes
 };
 
 // Information about what the mouse is hovering over
@@ -56,6 +57,22 @@ struct Engine {
 
   // Get the sibling index of the currently selected cell (if any)
   [[nodiscard]] std::optional<int> get_selected_sibling_index() const;
+
+  // Get the sibling leaf_id of the currently selected cell (if any)
+  [[nodiscard]] std::optional<size_t> get_selected_sibling_leaf_id() const;
+
+  // Perform a drag-drop move or exchange operation
+  [[nodiscard]] std::optional<ctrl::DropMoveResult>
+  perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
+                    const std::vector<std::vector<ctrl::Rect>>& geometries, bool do_exchange);
+
+  // Handle window resize to update split ratio
+  [[nodiscard]] bool handle_resize(int cluster_index, size_t leaf_id, const ctrl::Rect& actual_rect,
+                                   const std::vector<ctrl::Rect>& cluster_geometry);
+
+  // Get center of currently selected cell from geometries
+  [[nodiscard]] std::optional<ctrl::Point>
+  get_selected_center(const std::vector<std::vector<ctrl::Rect>>& geometries) const;
 };
 
 } // namespace wintiler

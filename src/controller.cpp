@@ -1317,4 +1317,317 @@ void debug_print_system(const System& system) {
   spdlog::debug("===== End System =====");
 }
 
+// ============================================================================
+// Additional Query Functions
+// ============================================================================
+
+bool has_leaf_id(const System& system, size_t leaf_id) {
+  for (const auto& cluster : system.clusters) {
+    if (find_cell_by_leaf_id(cluster, leaf_id).has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Point get_rect_center(const Rect& rect) {
+  return Point{static_cast<long>(rect.x + rect.width / 2.0f),
+               static_cast<long>(rect.y + rect.height / 2.0f)};
+}
+
+// ============================================================================
+// Drop Move Operation
+// ============================================================================
+
+// Find cell at global point using precomputed geometries
+static std::optional<std::pair<int, int>>
+find_cell_at_point(const System& system, const std::vector<std::vector<Rect>>& geometries,
+                   float global_x, float global_y) {
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+
+    // If cluster has zen cell, only check zen cell's rect
+    if (cluster.zen_cell_index.has_value()) {
+      int zen_idx = *cluster.zen_cell_index;
+      if (ci < geometries.size() && static_cast<size_t>(zen_idx) < geometries[ci].size()) {
+        const auto& r = geometries[ci][static_cast<size_t>(zen_idx)];
+        if (global_x >= r.x && global_x < r.x + r.width && global_y >= r.y &&
+            global_y < r.y + r.height) {
+          return std::make_pair(static_cast<int>(ci), zen_idx);
+        }
+      }
+      continue;
+    }
+
+    // Check all leaves in this cluster
+    if (ci >= geometries.size()) {
+      continue;
+    }
+    for (int i = 0; i < static_cast<int>(geometries[ci].size()); ++i) {
+      if (!cluster.tree.is_valid_index(i) || !cluster.tree.is_leaf(i)) {
+        continue;
+      }
+      const auto& r = geometries[ci][static_cast<size_t>(i)];
+      if (r.width <= 0.0f || r.height <= 0.0f) {
+        continue;
+      }
+      if (global_x >= r.x && global_x < r.x + r.width && global_y >= r.y &&
+          global_y < r.y + r.height) {
+        return std::make_pair(static_cast<int>(ci), i);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+// Find cluster index containing a leaf_id
+static std::optional<int> find_cluster_by_leaf_id(const System& system, size_t leaf_id) {
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    if (find_cell_by_leaf_id(system.clusters[ci], leaf_id).has_value()) {
+      return static_cast<int>(ci);
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<DropMoveResult> perform_drop_move(System& system, size_t source_leaf_id,
+                                                float cursor_x, float cursor_y,
+                                                const std::vector<std::vector<Rect>>& geometries,
+                                                bool do_exchange) {
+  // Check if source window is managed by the system
+  if (!has_leaf_id(system, source_leaf_id)) {
+    return std::nullopt;
+  }
+
+  // Find source cluster and cell
+  auto source_cluster_opt = find_cluster_by_leaf_id(system, source_leaf_id);
+  if (!source_cluster_opt.has_value()) {
+    return std::nullopt;
+  }
+  int source_cluster_index = *source_cluster_opt;
+  auto source_cell_opt = find_cell_by_leaf_id(
+      system.clusters[static_cast<size_t>(source_cluster_index)], source_leaf_id);
+  if (!source_cell_opt.has_value()) {
+    return std::nullopt;
+  }
+  int source_cell_index = *source_cell_opt;
+
+  // Find target cell at cursor position
+  auto target_opt = find_cell_at_point(system, geometries, cursor_x, cursor_y);
+  if (!target_opt.has_value()) {
+    return std::nullopt;
+  }
+  auto [target_cluster_index, target_cell_index] = *target_opt;
+
+  // Skip if target cluster has fullscreen app
+  if (system.clusters[static_cast<size_t>(target_cluster_index)].has_fullscreen_cell) {
+    return std::nullopt;
+  }
+
+  // Skip if dropping on same cell
+  if (source_cluster_index == target_cluster_index && source_cell_index == target_cell_index) {
+    return std::nullopt;
+  }
+
+  bool success = false;
+  if (do_exchange) {
+    success = swap_cells(system, source_cluster_index, source_cell_index, target_cluster_index,
+                         target_cell_index);
+  } else {
+    success = move_cell(system, source_cluster_index, source_cell_index, target_cluster_index,
+                        target_cell_index);
+  }
+
+  if (!success) {
+    return std::nullopt;
+  }
+
+  // Find the result cell's center (the source leaf_id is now at a new location)
+  auto new_cluster_opt = find_cluster_by_leaf_id(system, source_leaf_id);
+  if (!new_cluster_opt.has_value()) {
+    return std::nullopt;
+  }
+  int new_cluster = *new_cluster_opt;
+  auto new_cell_opt =
+      find_cell_by_leaf_id(system.clusters[static_cast<size_t>(new_cluster)], source_leaf_id);
+  if (!new_cell_opt.has_value()) {
+    return std::nullopt;
+  }
+  int new_cell = *new_cell_opt;
+
+  // Get the cell's rect from the geometry (need to recompute since tree changed)
+  // For now, use the target's rect as approximation
+  if (static_cast<size_t>(new_cluster) < geometries.size() &&
+      static_cast<size_t>(new_cell) < geometries[static_cast<size_t>(new_cluster)].size()) {
+    const auto& rect = geometries[static_cast<size_t>(new_cluster)][static_cast<size_t>(new_cell)];
+    return DropMoveResult{get_rect_center(rect), do_exchange};
+  }
+
+  // Fallback: return cursor position
+  return DropMoveResult{Point{static_cast<long>(cursor_x), static_cast<long>(cursor_y)},
+                        do_exchange};
+}
+
+// ============================================================================
+// Resize-based Split Ratio Update
+// ============================================================================
+
+// Edge types for resize detection
+enum class EdgeType { Left, Right, Top, Bottom };
+
+// Calculate new ratio based on edge position change
+static float calculate_new_ratio_from_edge(const Rect& parent_rect, EdgeType edge,
+                                           const Rect& actual_rect, float gap_h, float gap_v) {
+  if (edge == EdgeType::Left || edge == EdgeType::Right) {
+    float available = parent_rect.width - gap_h;
+    if (available <= 0.0f) {
+      return 0.5f;
+    }
+    if (edge == EdgeType::Left) {
+      float first_width = actual_rect.x - parent_rect.x;
+      return first_width / available;
+    } else {
+      float actual_right = actual_rect.x + actual_rect.width;
+      float parent_right = parent_rect.x + parent_rect.width;
+      float second_width = parent_right - actual_right;
+      return 1.0f - (second_width / available);
+    }
+  } else {
+    float available = parent_rect.height - gap_v;
+    if (available <= 0.0f) {
+      return 0.5f;
+    }
+    if (edge == EdgeType::Top) {
+      float first_height = actual_rect.y - parent_rect.y;
+      return first_height / available;
+    } else {
+      float actual_bottom = actual_rect.y + actual_rect.height;
+      float parent_bottom = parent_rect.y + parent_rect.height;
+      float second_height = parent_bottom - actual_bottom;
+      return 1.0f - (second_height / available);
+    }
+  }
+}
+
+// Update ratio for a single edge by finding the controlling ancestor
+static bool update_ratio_for_edge(Cluster& cluster, const std::vector<Rect>& cluster_geometry,
+                                  int start_cell_index, EdgeType edge, const Rect& actual_rect,
+                                  float gap_h, float gap_v) {
+  SplitDir required_dir = (edge == EdgeType::Left || edge == EdgeType::Right)
+                              ? SplitDir::Vertical
+                              : SplitDir::Horizontal;
+  bool need_from_second = (edge == EdgeType::Left || edge == EdgeType::Top);
+
+  int current_index = start_cell_index;
+  while (true) {
+    auto parent_opt = cluster.tree.get_parent(current_index);
+    if (!parent_opt.has_value()) {
+      return false;
+    }
+    int parent_index = *parent_opt;
+
+    if (!cluster.tree.is_valid_index(parent_index)) {
+      return false;
+    }
+
+    const CellData& parent_data = cluster.tree[parent_index];
+    auto first_child = cluster.tree.get_first_child(parent_index);
+    auto second_child = cluster.tree.get_second_child(parent_index);
+
+    if (!first_child.has_value() || !second_child.has_value()) {
+      return false;
+    }
+
+    bool is_second = *second_child == current_index;
+    bool is_first = *first_child == current_index;
+
+    if (parent_data.split_dir == required_dir) {
+      if ((need_from_second && is_second) || (!need_from_second && is_first)) {
+        // Found controlling ancestor
+        if (static_cast<size_t>(parent_index) >= cluster_geometry.size()) {
+          return false;
+        }
+        const Rect& parent_rect = cluster_geometry[static_cast<size_t>(parent_index)];
+        float new_ratio =
+            calculate_new_ratio_from_edge(parent_rect, edge, actual_rect, gap_h, gap_v);
+        float clamped = std::clamp(new_ratio, 0.1f, 0.9f);
+        cluster.tree[parent_index].split_ratio = clamped;
+        return true;
+      }
+    }
+    current_index = parent_index;
+  }
+}
+
+bool update_split_ratio_from_resize(System& system, int cluster_index, size_t leaf_id,
+                                    const Rect& actual_window_rect,
+                                    const std::vector<Rect>& cluster_geometry) {
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+  auto cell_index_opt = find_cell_by_leaf_id(cluster, leaf_id);
+  if (!cell_index_opt.has_value()) {
+    return false;
+  }
+  int cell_index = *cell_index_opt;
+
+  if (!cluster.tree.is_leaf(cell_index)) {
+    return false;
+  }
+
+  auto parent_opt = cluster.tree.get_parent(cell_index);
+  if (!parent_opt.has_value()) {
+    return false; // Root has no parent
+  }
+
+  if (static_cast<size_t>(cell_index) >= cluster_geometry.size()) {
+    return false;
+  }
+  const Rect& expected_rect = cluster_geometry[static_cast<size_t>(cell_index)];
+
+  // Detect which edges changed
+  constexpr float kEdgeTolerance = 2.0f;
+  bool left_changed = std::abs(actual_window_rect.x - expected_rect.x) > kEdgeTolerance;
+  bool right_changed = std::abs((actual_window_rect.x + actual_window_rect.width) -
+                                (expected_rect.x + expected_rect.width)) > kEdgeTolerance;
+  bool top_changed = std::abs(actual_window_rect.y - expected_rect.y) > kEdgeTolerance;
+  bool bottom_changed = std::abs((actual_window_rect.y + actual_window_rect.height) -
+                                 (expected_rect.y + expected_rect.height)) > kEdgeTolerance;
+
+  if (!left_changed && !right_changed && !top_changed && !bottom_changed) {
+    return false;
+  }
+
+  // Estimate gaps from geometry (root rect vs window dimensions)
+  float gap_h = 10.0f; // Default fallback
+  float gap_v = 10.0f;
+  if (!cluster_geometry.empty()) {
+    const Rect& root_rect = cluster_geometry[0];
+    gap_h = root_rect.x - cluster.global_x;
+    gap_v = root_rect.y - cluster.global_y;
+  }
+
+  bool any_updated = false;
+  if (left_changed) {
+    any_updated |= update_ratio_for_edge(cluster, cluster_geometry, cell_index, EdgeType::Left,
+                                         actual_window_rect, gap_h, gap_v);
+  }
+  if (right_changed) {
+    any_updated |= update_ratio_for_edge(cluster, cluster_geometry, cell_index, EdgeType::Right,
+                                         actual_window_rect, gap_h, gap_v);
+  }
+  if (top_changed) {
+    any_updated |= update_ratio_for_edge(cluster, cluster_geometry, cell_index, EdgeType::Top,
+                                         actual_window_rect, gap_h, gap_v);
+  }
+  if (bottom_changed) {
+    any_updated |= update_ratio_for_edge(cluster, cluster_geometry, cell_index, EdgeType::Bottom,
+                                         actual_window_rect, gap_h, gap_v);
+  }
+
+  return any_updated;
+}
+
 } // namespace wintiler::ctrl

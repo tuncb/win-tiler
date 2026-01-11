@@ -6,9 +6,10 @@
 #include <magic_enum/magic_enum.hpp>
 #include <vector>
 
+#include "controller.h"
+#include "engine.h"
 #include "model.h"
 #include "multi_cell_renderer.h"
-#include "multi_cells.h"
 #include "overlay.h"
 #include "winapi.h"
 
@@ -17,7 +18,7 @@ namespace wintiler {
 namespace {
 
 // Result type for action handlers - signals whether the main loop should continue or exit
-enum class ActionResult { Continue, Exit };
+enum class LoopActionResult { Continue, Exit };
 
 // Toast message display state
 struct ToastState {
@@ -83,196 +84,10 @@ const char* hotkey_action_to_string(HotkeyAction action) {
   return magic_enum::enum_name(action).data();
 }
 
-// Convert HotkeyAction to direction (for navigation actions)
-std::optional<cells::Direction> hotkey_action_to_direction(HotkeyAction action) {
-  switch (action) {
-  case HotkeyAction::NavigateLeft:
-    return cells::Direction::Left;
-  case HotkeyAction::NavigateDown:
-    return cells::Direction::Down;
-  case HotkeyAction::NavigateUp:
-    return cells::Direction::Up;
-  case HotkeyAction::NavigateRight:
-    return cells::Direction::Right;
-  case HotkeyAction::ToggleSplit:
-  case HotkeyAction::Exit:
-  case HotkeyAction::CycleSplitMode:
-  case HotkeyAction::StoreCell:
-  case HotkeyAction::ClearStored:
-  case HotkeyAction::Exchange:
-  case HotkeyAction::Move:
-  case HotkeyAction::SplitIncrease:
-  case HotkeyAction::SplitDecrease:
-  case HotkeyAction::ExchangeSiblings:
-  case HotkeyAction::ToggleZen:
-  case HotkeyAction::ResetSplitRatio:
-    return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-// Handle keyboard navigation: move selection, set foreground, move mouse to center
-void handle_keyboard_navigation(cells::System& system, cells::Direction dir) {
-  auto result = cells::move_selection(system, dir);
-  if (!result) {
-    spdlog::trace("Cannot move selection in direction");
-    return;
-  }
-
-  winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(result->leaf_id);
-  if (!winapi::set_foreground_window(hwnd)) {
-    spdlog::error("Failed to set foreground window");
-    return;
-  }
-
-  winapi::set_cursor_pos(result->center.x, result->center.y);
-}
-
-ActionResult handle_toggle_split(cells::System& system, float gap_horizontal, float gap_vertical) {
-  if (cells::toggle_selected_split_dir(system, gap_horizontal, gap_vertical)) {
-    spdlog::info("Toggled split direction");
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_exit() {
-  spdlog::info("Exit hotkey pressed, shutting down...");
-  return ActionResult::Exit;
-}
-
-ActionResult handle_cycle_split_mode(cells::System& system, std::string& out_message) {
-  if (!cells::cycle_split_mode(system)) {
-    spdlog::error("Failed to cycle split mode");
-  }
-  auto mode_str = magic_enum::enum_name(system.split_mode);
-  spdlog::info("Cycled split mode: {}", mode_str);
-  out_message = std::string("Split mode: ").append(mode_str);
-  return ActionResult::Continue;
-}
-
-ActionResult handle_store_cell(cells::System& system, std::optional<StoredCell>& stored_cell) {
-  if (system.selection.has_value()) {
-    const auto& pc = system.clusters[system.selection->cluster_index];
-    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-    if (cell.leaf_id.has_value()) {
-      stored_cell = StoredCell{system.selection->cluster_index, *cell.leaf_id};
-      spdlog::info("Stored cell for operation: cluster={}, leaf_id={}",
-                   system.selection->cluster_index, *cell.leaf_id);
-    }
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_clear_stored(std::optional<StoredCell>& stored_cell) {
-  stored_cell.reset();
-  spdlog::info("Cleared stored cell");
-  return ActionResult::Continue;
-}
-
-ActionResult handle_exchange(cells::System& system, std::optional<StoredCell>& stored_cell,
-                             float gap_horizontal, float gap_vertical) {
-  if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto& pc = system.clusters[system.selection->cluster_index];
-    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-    if (cell.leaf_id.has_value()) {
-      auto result = cells::swap_cells(system, system.selection->cluster_index, *cell.leaf_id,
-                                      stored_cell->cluster_index, stored_cell->leaf_id,
-                                      gap_horizontal, gap_vertical);
-      if (result.has_value()) {
-        stored_cell.reset();
-        spdlog::info("Exchanged cells successfully");
-      }
-    }
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_move(cells::System& system, std::optional<StoredCell>& stored_cell,
-                         float gap_horizontal, float gap_vertical) {
-  if (stored_cell.has_value() && system.selection.has_value()) {
-    const auto& pc = system.clusters[system.selection->cluster_index];
-    const auto& cell = pc.cluster.cells[static_cast<size_t>(system.selection->cell_index)];
-    if (cell.leaf_id.has_value()) {
-      auto result = cells::move_cell(system, stored_cell->cluster_index, stored_cell->leaf_id,
-                                     system.selection->cluster_index, *cell.leaf_id, gap_horizontal,
-                                     gap_vertical);
-      if (result.has_value()) {
-        stored_cell.reset();
-        spdlog::info("Moved cell successfully");
-      }
-    }
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_split_increase(cells::System& system, float gap_horizontal,
-                                   float gap_vertical) {
-  if (auto center =
-          cells::adjust_selected_split_ratio(system, 0.05f, gap_horizontal, gap_vertical)) {
-    spdlog::info("Increased split ratio");
-    winapi::set_cursor_pos(center->x, center->y);
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_split_decrease(cells::System& system, float gap_horizontal,
-                                   float gap_vertical) {
-  if (auto center =
-          cells::adjust_selected_split_ratio(system, -0.05f, gap_horizontal, gap_vertical)) {
-    spdlog::info("Decreased split ratio");
-    winapi::set_cursor_pos(center->x, center->y);
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_exchange_siblings(cells::System& system, float gap_horizontal,
-                                      float gap_vertical) {
-  if (!system.selection.has_value()) {
-    return ActionResult::Continue;
-  }
-
-  auto sibling_leaf_id = cells::get_selected_sibling_leaf_id(system);
-  if (!sibling_leaf_id.has_value()) {
-    return ActionResult::Continue;
-  }
-
-  const auto& sel = *system.selection;
-  const auto& cluster = system.clusters[sel.cluster_index].cluster;
-  auto selected_leaf_id = cluster.cells[static_cast<size_t>(sel.cell_index)].leaf_id;
-  if (!selected_leaf_id.has_value()) {
-    return ActionResult::Continue;
-  }
-
-  auto result = cells::swap_cells(system, sel.cluster_index, *selected_leaf_id, sel.cluster_index,
-                                  *sibling_leaf_id, gap_horizontal, gap_vertical);
-  if (result.has_value()) {
-    spdlog::info("Exchanged selected cell with sibling");
-    winapi::set_cursor_pos(result->x, result->y);
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_toggle_zen(cells::System& system) {
-  if (cells::toggle_selected_zen(system)) {
-    spdlog::info("Toggled zen mode");
-  }
-  return ActionResult::Continue;
-}
-
-ActionResult handle_reset_split_ratio(cells::System& system, float gap_horizontal,
-                                      float gap_vertical) {
-  if (auto center = cells::set_selected_split_ratio(system, 0.5f, gap_horizontal, gap_vertical)) {
-    spdlog::info("Reset split ratio to 50%%");
-    winapi::set_cursor_pos(center->x, center->y);
-  }
-  return ActionResult::Continue;
-}
-
 // Handle mouse drag-drop move operation
 // Returns true if an operation was performed
-bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
-                            const winapi::LoopInputState& input_state, float gap_horizontal,
-                            float gap_vertical) {
+bool handle_mouse_drop_move(Engine& engine, const std::vector<std::vector<ctrl::Rect>>& geometries,
+                            const winapi::LoopInputState& input_state) {
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
   }
@@ -291,8 +106,8 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
   float cursor_y = static_cast<float>(input_state.cursor_pos->y);
   bool do_exchange = input_state.is_ctrl_pressed;
 
-  auto result = cells::perform_drop_move(system, source_leaf_id, cursor_x, cursor_y, zen_percentage,
-                                         do_exchange, gap_horizontal, gap_vertical);
+  auto result =
+      engine.perform_drop_move(source_leaf_id, cursor_x, cursor_y, geometries, do_exchange);
   if (result.has_value()) {
     winapi::set_cursor_pos(result->cursor_pos.x, result->cursor_pos.y);
     return true;
@@ -303,8 +118,8 @@ bool handle_mouse_drop_move(cells::System& system, float zen_percentage,
 
 // Handle window resize operation to update split ratios
 // Returns true if a resize was performed, false otherwise
-bool handle_window_resize(cells::System& system, const winapi::LoopInputState& input_state,
-                          float gap_horizontal, float gap_vertical) {
+bool handle_window_resize(Engine& engine, const std::vector<std::vector<ctrl::Rect>>& geometries,
+                          const winapi::LoopInputState& input_state) {
   // Check if drag/resize just ended
   if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
     return false;
@@ -312,33 +127,27 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
 
   // Get the HWND and find corresponding cell
   size_t leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-  if (!cells::has_leaf_id(system, leaf_id)) {
+  if (!ctrl::has_leaf_id(engine.system, leaf_id)) {
     return false; // Not a managed window
   }
 
   // Find cluster and cell index
-  size_t cluster_index = 0;
-  int cell_index = -1;
-  bool found = false;
-  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
-    auto idx_opt = cells::find_cell_by_leaf_id(system.clusters[ci].cluster, leaf_id);
+  int cluster_index = -1;
+  for (size_t ci = 0; ci < engine.system.clusters.size(); ++ci) {
+    auto idx_opt = ctrl::find_cell_by_leaf_id(engine.system.clusters[ci], leaf_id);
     if (idx_opt.has_value()) {
-      cluster_index = ci;
-      cell_index = *idx_opt;
-      found = true;
+      cluster_index = static_cast<int>(ci);
       break;
     }
   }
 
-  if (!found || cell_index < 0) {
+  if (cluster_index < 0) {
     return false;
   }
 
   // Skip if fullscreen or zen mode active
-  if (system.clusters[cluster_index].cluster.has_fullscreen_cell) {
-    return false;
-  }
-  if (system.clusters[cluster_index].cluster.zen_cell_index.has_value()) {
+  const auto& cluster = engine.system.clusters[static_cast<size_t>(cluster_index)];
+  if (cluster.has_fullscreen_cell || cluster.zen_cell_index.has_value()) {
     return false;
   }
 
@@ -348,13 +157,19 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
     return false;
   }
 
-  // Convert winapi::WindowPosition to cells::Rect
-  cells::Rect actual_rect{
+  // Convert winapi::WindowPosition to ctrl::Rect
+  ctrl::Rect actual_rect{
       static_cast<float>(actual_rect_opt->x), static_cast<float>(actual_rect_opt->y),
       static_cast<float>(actual_rect_opt->width), static_cast<float>(actual_rect_opt->height)};
 
-  // Get expected cell rect
-  auto expected_rect = cells::get_cell_global_rect(system.clusters[cluster_index], cell_index);
+  // Get expected cell rect from geometries
+  auto cell_idx = ctrl::find_cell_by_leaf_id(cluster, leaf_id);
+  if (!cell_idx.has_value() ||
+      static_cast<size_t>(*cell_idx) >= geometries[static_cast<size_t>(cluster_index)].size()) {
+    return false;
+  }
+  const auto& expected_rect =
+      geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(*cell_idx)];
 
   // Position-only check: skip if size unchanged (with small tolerance for rounding)
   bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
@@ -364,8 +179,8 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
   }
 
   // Update split ratio
-  bool result = cells::update_split_ratio_from_resize(system, cluster_index, leaf_id, actual_rect,
-                                                      gap_horizontal, gap_vertical);
+  bool result = engine.handle_resize(cluster_index, leaf_id, actual_rect,
+                                     geometries[static_cast<size_t>(cluster_index)]);
   if (result) {
     spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
                  leaf_id);
@@ -373,63 +188,32 @@ bool handle_window_resize(cells::System& system, const winapi::LoopInputState& i
   return result;
 }
 
-ActionResult dispatch_hotkey_action(HotkeyAction action, cells::System& system,
-                                    std::optional<StoredCell>& stored_cell,
-                                    std::string& out_message, float gap_horizontal,
-                                    float gap_vertical) {
-  // Handle other actions
-  switch (action) {
-  case HotkeyAction::ToggleSplit:
-    return handle_toggle_split(system, gap_horizontal, gap_vertical);
-  case HotkeyAction::Exit:
-    return handle_exit();
-  case HotkeyAction::CycleSplitMode:
-    return handle_cycle_split_mode(system, out_message);
-  case HotkeyAction::StoreCell:
-    return handle_store_cell(system, stored_cell);
-  case HotkeyAction::ClearStored:
-    return handle_clear_stored(stored_cell);
-  case HotkeyAction::Exchange:
-    return handle_exchange(system, stored_cell, gap_horizontal, gap_vertical);
-  case HotkeyAction::Move:
-    return handle_move(system, stored_cell, gap_horizontal, gap_vertical);
-  case HotkeyAction::SplitIncrease:
-    return handle_split_increase(system, gap_horizontal, gap_vertical);
-  case HotkeyAction::SplitDecrease:
-    return handle_split_decrease(system, gap_horizontal, gap_vertical);
-  case HotkeyAction::ExchangeSiblings:
-    return handle_exchange_siblings(system, gap_horizontal, gap_vertical);
-  case HotkeyAction::ToggleZen:
-    return handle_toggle_zen(system);
-  case HotkeyAction::ResetSplitRatio:
-    return handle_reset_split_ratio(system, gap_horizontal, gap_vertical);
-  case HotkeyAction::NavigateLeft:
-  case HotkeyAction::NavigateDown:
-  case HotkeyAction::NavigateUp:
-  case HotkeyAction::NavigateRight: {
-    auto dir = hotkey_action_to_direction(action).value();
-    handle_keyboard_navigation(system, dir);
-    return ActionResult::Continue;
-  }
-  default:
-    return ActionResult::Continue;
-  }
-}
-
 // Helper: Print tile layout from a multi-cluster system
-void print_tile_layout(const cells::System& system) {
+void print_tile_layout(const ctrl::System& system,
+                       const std::vector<std::vector<ctrl::Rect>>& geometries) {
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
+    const auto& cluster = system.clusters[cluster_idx];
     spdlog::debug("--- Monitor {} ---", cluster_idx);
 
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
-      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
-      if (!cells::is_leaf(pc.cluster, i) || !cell.leaf_id.has_value()) {
+    if (cluster_idx >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[cluster_idx];
+
+    for (int i = 0; i < cluster.tree.size(); ++i) {
+      if (!cluster.tree.is_leaf(i)) {
+        continue;
+      }
+      const auto& cell_data = cluster.tree[i];
+      if (!cell_data.leaf_id.has_value()) {
         continue;
       }
 
-      size_t hwnd_value = *cell.leaf_id;
-      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
+      size_t hwnd_value = *cell_data.leaf_id;
+      if (static_cast<size_t>(i) >= rects.size()) {
+        continue;
+      }
+      const auto& global_rect = rects[static_cast<size_t>(i)];
 
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(hwnd_value);
       auto window_info = winapi::get_window_info(hwnd);
@@ -444,9 +228,9 @@ void print_tile_layout(const cells::System& system) {
 }
 
 // Helper: Extract ClusterCellUpdateInfo from consolidated input state
-std::vector<cells::ClusterCellUpdateInfo>
+std::vector<ctrl::ClusterCellUpdateInfo>
 extract_window_state_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<cells::ClusterCellUpdateInfo> result;
+  std::vector<ctrl::ClusterCellUpdateInfo> result;
 
   for (size_t monitor_index = 0; monitor_index < input_state.windows_per_monitor.size();
        ++monitor_index) {
@@ -460,50 +244,119 @@ extract_window_state_from_input(const winapi::LoopInputState& input_state) {
         has_fullscreen = true;
       }
     }
-    result.push_back({monitor_index, cell_ids, has_fullscreen});
+    result.push_back({cell_ids, has_fullscreen});
   }
 
   return result;
 }
 
-// Helper: Run system update and apply tile positions
-void run_update_and_apply_tiles(cells::System& system, const GlobalOptions& options,
-                                const winapi::LoopInputState& input_state) {
-  auto current_state = extract_window_state_from_input(input_state);
-
-  float cursor_x =
-      input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->x) : 0.0f;
-  float cursor_y =
-      input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
-  float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
-  size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
-  float gap_h = options.gapOptions.horizontal;
-  float gap_v = options.gapOptions.vertical;
-
-  auto result = cells::update(system, current_state, std::nullopt, {cursor_x, cursor_y},
-                              zen_percentage, fg_leaf_id, gap_h, gap_v);
-
-  // Apply foreground window change
-  if (result.selection_update.window_to_foreground.has_value()) {
-    winapi::HWND_T hwnd =
-        reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
-    if (!winapi::set_foreground_window(hwnd)) {
-      spdlog::error("Failed to set foreground window for HWND {}", hwnd);
-    }
+// Helper: Get all leaf_ids from the system
+std::vector<size_t> get_all_leaf_ids(const ctrl::System& system) {
+  std::vector<size_t> result;
+  for (const auto& cluster : system.clusters) {
+    auto ids = ctrl::get_cluster_leaf_ids(cluster);
+    result.insert(result.end(), ids.begin(), ids.end());
   }
+  return result;
+}
 
-  // Apply tile updates
-  for (const auto& upd : result.tile_updates) {
-    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
-    winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
-    winapi::TileInfo tile_info{hwnd, pos};
-    winapi::update_window_position(tile_info);
+// Helper: Apply tile positions from geometries
+void apply_tile_positions(const ctrl::System& system,
+                          const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+
+    // Skip clusters with fullscreen windows
+    if (cluster.has_fullscreen_cell) {
+      continue;
+    }
+
+    if (ci >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[ci];
+
+    for (int i = 0; i < cluster.tree.size(); ++i) {
+      if (!cluster.tree.is_leaf(i)) {
+        continue;
+      }
+      const auto& cell_data = cluster.tree[i];
+      if (!cell_data.leaf_id.has_value()) {
+        continue;
+      }
+
+      if (static_cast<size_t>(i) >= rects.size()) {
+        continue;
+      }
+      const auto& r = rects[static_cast<size_t>(i)];
+
+      // Skip cells with invalid geometry
+      if (r.width <= 0.0f || r.height <= 0.0f) {
+        continue;
+      }
+
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
+      winapi::WindowPosition pos{static_cast<int>(r.x), static_cast<int>(r.y),
+                                 static_cast<int>(r.width), static_cast<int>(r.height)};
+      winapi::TileInfo tile_info{hwnd, pos};
+      winapi::update_window_position(tile_info);
+    }
   }
 }
 
-cells::System create_initial_system_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
-                                                  const GlobalOptions& options) {
-  std::vector<cells::ClusterInitInfo> cluster_infos;
+// Helper: Update selection based on mouse hover position
+void update_selection_from_hover(Engine& engine,
+                                 const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                 const winapi::LoopInputState& input_state) {
+  if (!input_state.cursor_pos.has_value()) {
+    return;
+  }
+
+  float cursor_x = static_cast<float>(input_state.cursor_pos->x);
+  float cursor_y = static_cast<float>(input_state.cursor_pos->y);
+
+  auto hover_info = engine.get_hover_info(cursor_x, cursor_y, geometries);
+  if (hover_info.cell.has_value()) {
+    // Update selection if it's different
+    if (!engine.system.selection.has_value() ||
+        engine.system.selection->cluster_index != hover_info.cell->cluster_index ||
+        engine.system.selection->cell_index != hover_info.cell->cell_index) {
+      engine.system.selection = *hover_info.cell;
+    }
+  }
+}
+
+// Helper: Find center of first new window and move cursor there
+void move_cursor_to_new_window(const ctrl::System& system,
+                               const std::vector<std::vector<ctrl::Rect>>& geometries,
+                               const std::vector<size_t>& old_leaf_ids,
+                               const std::vector<size_t>& new_leaf_ids) {
+  // Find first new leaf_id (not in old_leaf_ids)
+  for (size_t new_id : new_leaf_ids) {
+    if (std::find(old_leaf_ids.begin(), old_leaf_ids.end(), new_id) == old_leaf_ids.end()) {
+      // Found a new window - find its geometry and move cursor
+      for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+        const auto& cluster = system.clusters[ci];
+        auto cell_idx = ctrl::find_cell_by_leaf_id(cluster, new_id);
+        if (cell_idx.has_value() && ci < geometries.size() &&
+            static_cast<size_t>(*cell_idx) < geometries[ci].size()) {
+          const auto& rect = geometries[ci][static_cast<size_t>(*cell_idx)];
+          if (rect.width > 0.0f && rect.height > 0.0f) {
+            auto center = ctrl::get_rect_center(rect);
+            winapi::set_cursor_pos(center.x, center.y);
+            spdlog::debug("Moved cursor to center of new window at ({}, {})", center.x, center.y);
+            return;
+          }
+        }
+      }
+    }
+  }
+}
+
+std::vector<ctrl::ClusterInitInfo>
+create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
+                                   const GlobalOptions& options) {
+  std::vector<ctrl::ClusterInitInfo> cluster_infos;
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
     // Workspace bounds (for tiling)
@@ -524,34 +377,31 @@ cells::System create_initial_system_from_monitors(const std::vector<winapi::Moni
     }
     cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids});
   }
-
-  return cells::create_system(cluster_infos, options.gapOptions.horizontal,
-                              options.gapOptions.vertical);
+  return cluster_infos;
 }
 
-cells::System create_initial_system(const GlobalOptions& options) {
-  auto monitors = winapi::get_monitors();
-  winapi::log_monitors(monitors);
-  return create_initial_system_from_monitors(monitors, options);
+void initialize_engine_from_monitors(Engine& engine,
+                                     const std::vector<winapi::MonitorInfo>& monitors,
+                                     const GlobalOptions& options) {
+  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
+  engine.init(cluster_infos);
 }
 
 // Handle config file hot-reload
-void handle_config_refresh(GlobalOptionsProvider& provider, cells::System& system,
-                           ToastState& toast) {
+void handle_config_refresh(GlobalOptionsProvider& provider, Engine& engine, ToastState& toast) {
   if (!provider.refresh()) {
     return;
   }
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
-  cells::recompute_rects(system, options.gapOptions.horizontal, options.gapOptions.vertical);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
 }
 
 // Handle monitor configuration changes, returns true if change occurred
 bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const GlobalOptions& options,
-                           cells::System& system, std::optional<StoredCell>& stored_cell) {
+                           Engine& engine) {
   auto current_monitors = winapi::get_monitors();
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
@@ -559,11 +409,10 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   spdlog::info("Monitor configuration changed, reinitializing system...");
   winapi::log_monitors(current_monitors);
   monitors = current_monitors;
-  system = create_initial_system_from_monitors(monitors, options);
-  stored_cell.reset();
+  initialize_engine_from_monitors(engine, monitors, options);
+  engine.clear_stored_cell();
   spdlog::info("=== Reinitialized Tile Layout ===");
-  print_tile_layout(system);
-  // Tile layout will be applied by the main loop's system.update() call
+  // Tile layout will be printed and applied by the main loop
   return true;
 }
 
@@ -572,19 +421,25 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
 void run_loop_mode(GlobalOptionsProvider& provider) {
   const auto& options = provider.options;
 
-  // Get initial monitor configuration and create system
+  // Get initial monitor configuration and create engine
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
-  auto system = create_initial_system_from_monitors(monitors, options);
 
-  // Print initial layout and apply via system.update()
+  Engine engine;
+  initialize_engine_from_monitors(engine, monitors, options);
+
+  // Get gap and zen settings
+  float gap_h = options.gapOptions.horizontal;
+  float gap_v = options.gapOptions.vertical;
+  float zen_pct = options.visualizationOptions.renderOptions.zen_percentage;
+
+  // Compute initial geometries and print layout
+  auto geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
   spdlog::info("=== Initial Tile Layout ===");
-  print_tile_layout(system);
+  print_tile_layout(engine.system, geometries);
 
-  {
-    auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
-    run_update_and_apply_tiles(system, options, input_state);
-  }
+  // Apply initial tile positions
+  apply_tile_positions(engine.system, geometries);
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -607,9 +462,6 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // 3. Enter monitoring loop
   spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
 
-  // Store cell for swap/move operations
-  std::optional<StoredCell> stored_cell;
-
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
 
@@ -630,10 +482,18 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Gather all Windows API input state in a single call
     auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
 
+    // Update gap and zen settings (in case config was reloaded)
+    gap_h = provider.options.gapOptions.horizontal;
+    gap_v = provider.options.gapOptions.vertical;
+    zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
+
+    // Compute geometries once per frame
+    geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+
     // Skip all processing while user is dragging a window - only render
     if (input_state.is_any_window_being_moved) {
-      renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
-                       toast.get_visible_message());
+      renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
+                       engine.stored_cell, toast.get_visible_message());
       auto loop_end = std::chrono::high_resolution_clock::now();
       spdlog::trace(
           "loop iteration total: {}us",
@@ -644,103 +504,145 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Check if a drag operation just completed
     if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
       // Try resize first (size changed = ratio update)
-      bool resized = handle_window_resize(system, input_state, options.gapOptions.horizontal,
-                                          options.gapOptions.vertical);
+      bool resized = handle_window_resize(engine, geometries, input_state);
 
       if (resized) {
-        // Resize performed - clear drag flag; layout applied by system.update() below
+        // Resize performed - clear drag flag; layout applied below
         winapi::clear_drag_ended();
       } else {
         // Try move/swap (clear_drag_ended called inside if successful)
-        handle_mouse_drop_move(system, options.visualizationOptions.renderOptions.zen_percentage,
-                               input_state, options.gapOptions.horizontal,
-                               options.gapOptions.vertical);
+        handle_mouse_drop_move(engine, geometries, input_state);
       }
+
+      // Recompute geometries after drag operation
+      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
     }
 
     // Check for config file changes and hot-reload
-    handle_config_refresh(provider, system, toast);
+    handle_config_refresh(provider, engine, toast);
 
-    // Check for monitor configuration changes (tile layout applied by system.update() below)
-    handle_monitor_change(monitors, options, system, stored_cell);
+    // Check for monitor configuration changes
+    if (handle_monitor_change(monitors, provider.options, engine)) {
+      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+      spdlog::debug("=== Updated Tile Layout After Monitor Change ===");
+      print_tile_layout(engine.system, geometries);
+    }
 
     // Check for keyboard hotkeys (kept separate - has side effects on message queue)
     if (auto hotkey_id = winapi::check_keyboard_action()) {
       auto action_opt = id_to_hotkey_action(*hotkey_id);
-      if (!action_opt.has_value()) {
-        continue; // Unknown hotkey ID
-      }
-      std::string action_message;
-      if (dispatch_hotkey_action(*action_opt, system, stored_cell, action_message,
-                                 options.gapOptions.horizontal,
-                                 options.gapOptions.vertical) == ActionResult::Exit) {
-        break;
-      }
-      if (!action_message.empty()) {
-        toast.show(action_message);
+      if (action_opt.has_value()) {
+        HotkeyAction action = *action_opt;
+
+        // Handle exit specially
+        if (action == HotkeyAction::Exit) {
+          spdlog::info("Exit hotkey pressed, shutting down...");
+          break;
+        }
+
+        // Handle CycleSplitMode with toast
+        if (action == HotkeyAction::CycleSplitMode) {
+          auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
+          if (result.success) {
+            auto mode_str = magic_enum::enum_name(engine.system.split_mode);
+            spdlog::info("Cycled split mode: {}", mode_str);
+            toast.show(std::string("Split mode: ").append(mode_str));
+          }
+        } else {
+          // Process other actions through engine
+          auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
+
+          // For navigation actions, set foreground window and move cursor
+          if (result.success && result.selection_changed && result.new_cursor_pos.has_value()) {
+            // Set foreground window for the selected cell
+            if (engine.system.selection.has_value()) {
+              int ci = engine.system.selection->cluster_index;
+              int cell_idx = engine.system.selection->cell_index;
+              if (ci >= 0 && static_cast<size_t>(ci) < engine.system.clusters.size()) {
+                const auto& cluster = engine.system.clusters[static_cast<size_t>(ci)];
+                if (cell_idx >= 0 && cell_idx < cluster.tree.size() &&
+                    cluster.tree.is_leaf(cell_idx)) {
+                  const auto& cell_data = cluster.tree[cell_idx];
+                  if (cell_data.leaf_id.has_value()) {
+                    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
+                    if (!winapi::set_foreground_window(hwnd)) {
+                      spdlog::error("Failed to set foreground window");
+                    }
+                  }
+                }
+              }
+            }
+            // Move cursor to the new position
+            winapi::set_cursor_pos(result.new_cursor_pos->x, result.new_cursor_pos->y);
+          } else if (result.success && result.new_cursor_pos.has_value()) {
+            // For split ratio changes, just move cursor
+            winapi::set_cursor_pos(result.new_cursor_pos->x, result.new_cursor_pos->y);
+          }
+        }
+
+        // Recompute geometries after any action
+        geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
       }
     }
+
+    // Track current leaf_ids before update (for detecting new windows)
+    auto old_leaf_ids = get_all_leaf_ids(engine.system);
 
     // Extract window state from consolidated input
     auto current_state = extract_window_state_from_input(input_state);
 
-    // Use update to sync - cursor position from consolidated state
-    float cursor_x =
-        input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->x) : 0.0f;
-    float cursor_y =
-        input_state.cursor_pos.has_value() ? static_cast<float>(input_state.cursor_pos->y) : 0.0f;
-    float zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
-    size_t fg_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
-    auto result =
-        cells::update(system, current_state, std::nullopt, {cursor_x, cursor_y}, zen_percentage,
-                      fg_leaf_id, options.gapOptions.horizontal, options.gapOptions.vertical);
+    // Update system state
+    bool changed = engine.update(current_state);
 
-    // Apply foreground window change (selection already updated inside update())
-    if (result.selection_update.window_to_foreground.has_value()) {
-      // Skip if a context menu is active to avoid stealing focus
-      if (!winapi::is_context_menu_active()) {
-        winapi::HWND_T hwnd =
-            reinterpret_cast<winapi::HWND_T>(*result.selection_update.window_to_foreground);
-        if (!winapi::set_foreground_window(hwnd)) {
-          spdlog::error("Failed to set foreground window for HWND {}", hwnd);
+    if (changed) {
+      // Recompute geometries after update
+      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+
+      // Get new leaf_ids and log changes
+      auto new_leaf_ids = get_all_leaf_ids(engine.system);
+
+      // Count added/deleted
+      std::vector<size_t> added_ids;
+      std::vector<size_t> deleted_ids;
+      for (size_t id : new_leaf_ids) {
+        if (std::find(old_leaf_ids.begin(), old_leaf_ids.end(), id) == old_leaf_ids.end()) {
+          added_ids.push_back(id);
         }
       }
-    }
-
-    // Log window changes
-    if (!result.deleted_leaf_ids.empty() || !result.added_leaf_ids.empty()) {
-      spdlog::info("Window changes: +{} added, -{} removed", result.added_leaf_ids.size(),
-                   result.deleted_leaf_ids.size());
-      if (!result.added_leaf_ids.empty()) {
-        spdlog::debug("Added windows:");
-        for (size_t id : result.added_leaf_ids) {
-          winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
-          std::string title = winapi::get_window_info(hwnd).title;
-          spdlog::debug("  + \"{}\"", title);
+      for (size_t id : old_leaf_ids) {
+        if (std::find(new_leaf_ids.begin(), new_leaf_ids.end(), id) == new_leaf_ids.end()) {
+          deleted_ids.push_back(id);
         }
       }
-      spdlog::debug("=== Updated Tile Layout ===");
-      print_tile_layout(system);
+
+      if (!deleted_ids.empty() || !added_ids.empty()) {
+        spdlog::info("Window changes: +{} added, -{} removed", added_ids.size(),
+                     deleted_ids.size());
+        if (!added_ids.empty()) {
+          spdlog::debug("Added windows:");
+          for (size_t id : added_ids) {
+            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(id);
+            std::string title = winapi::get_window_info(hwnd).title;
+            spdlog::debug("  + \"{}\"", title);
+          }
+        }
+        spdlog::debug("=== Updated Tile Layout ===");
+        print_tile_layout(engine.system, geometries);
+      }
+
+      // Move cursor to center of new window (if any)
+      move_cursor_to_new_window(engine.system, geometries, old_leaf_ids, new_leaf_ids);
     }
 
-    // Move cursor to center of new window (if any)
-    if (result.new_window_cursor_pos.has_value()) {
-      winapi::set_cursor_pos(result.new_window_cursor_pos->x, result.new_window_cursor_pos->y);
-      spdlog::debug("Moved cursor to center of new cell at ({}, {})",
-                    result.new_window_cursor_pos->x, result.new_window_cursor_pos->y);
-    }
+    // Update selection based on mouse hover position
+    update_selection_from_hover(engine, geometries, input_state);
 
-    // Apply tile updates
-    for (const auto& upd : result.tile_updates) {
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(upd.leaf_id);
-      winapi::WindowPosition pos{upd.x, upd.y, upd.width, upd.height};
-      winapi::TileInfo tile_info{hwnd, pos};
-      winapi::update_window_position(tile_info);
-    }
+    // Apply tile positions
+    apply_tile_positions(engine.system, geometries);
 
     // Render cell system overlay
-    renderer::render(system, options.visualizationOptions.renderOptions, stored_cell,
-                     toast.get_visible_message());
+    renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
+                     engine.stored_cell, toast.get_visible_message());
 
     auto loop_end = std::chrono::high_resolution_clock::now();
     spdlog::trace(
@@ -749,7 +651,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   }
 
   // Cleanup hotkeys, hooks, and overlay before exit
-  unregister_navigation_hotkeys(options.keyboardOptions);
+  unregister_navigation_hotkeys(provider.options.keyboardOptions);
   winapi::unregister_session_power_notifications();
   winapi::unregister_move_size_hook();
   overlay::shutdown();

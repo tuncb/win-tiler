@@ -5,51 +5,69 @@
 namespace wintiler {
 namespace renderer {
 
-void render(const cells::System& system, const RenderOptions& config,
-            std::optional<StoredCell> stored_cell, const std::optional<std::string>& message) {
+void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
+            const RenderOptions& config, std::optional<StoredCell> stored_cell,
+            const std::optional<std::string>& message) {
   // Begin frame
   overlay::begin_frame();
 
   // Draw all leaf cells (skip clusters with zen cells or fullscreen apps)
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
+    const auto& cluster = system.clusters[cluster_idx];
+
     // Skip this cluster if it has a zen cell (will be rendered in zen loop) or fullscreen app
-    if (pc.cluster.zen_cell_index.has_value() || pc.cluster.has_fullscreen_cell) {
+    if (cluster.zen_cell_index.has_value() || cluster.has_fullscreen_cell) {
       continue;
     }
 
-    for (int i = 0; i < static_cast<int>(pc.cluster.cells.size()); ++i) {
+    // Safety check for geometry bounds
+    if (cluster_idx >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[cluster_idx];
+
+    for (int i = 0; i < cluster.tree.size(); ++i) {
       // Skip non-leaf cells
-      if (!cells::is_leaf(pc.cluster, i)) {
+      if (!cluster.tree.is_leaf(i)) {
         continue;
       }
 
-      const auto& cell = pc.cluster.cells[static_cast<size_t>(i)];
+      const auto& cell_data = cluster.tree[i];
 
-      // Get global rect for this cell
-      cells::Rect global_rect = cells::get_cell_global_rect(pc, i);
+      // Get precomputed rect for this cell
+      if (static_cast<size_t>(i) >= rects.size()) {
+        continue;
+      }
+      const auto& rect = rects[static_cast<size_t>(i)];
+
+      // Skip cells with no geometry (shouldn't happen for leaves, but be safe)
+      if (rect.width <= 0.0f || rect.height <= 0.0f) {
+        continue;
+      }
 
       // Determine color based on selection/stored state
       overlay::Color color = config.normal_color;
 
-      // Check if this is the stored cell (operation) - prioritize over selection
+      // Check if this is the selected cell
+      if (system.selection.has_value() &&
+          static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
+          system.selection->cell_index == i) {
+        color = config.selected_color;
+      }
+
+      // Check if this is the stored cell (operation) - overrides selection color
       if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-        if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->leaf_id) {
+        if (cell_data.leaf_id.has_value() && cell_data.leaf_id.value() == stored_cell->leaf_id) {
           color = config.stored_color;
         }
-      }
-      // Check if this is the selected cell
-      else if (system.selection.has_value() && system.selection->cluster_index == cluster_idx &&
-               system.selection->cell_index == i) {
-        color = config.selected_color;
       }
 
       // Draw rectangle immediately
       overlay::draw_rect({
-          global_rect.x,
-          global_rect.y,
-          global_rect.width,
-          global_rect.height,
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height,
           color,
           config.border_width,
       });
@@ -58,38 +76,47 @@ void render(const cells::System& system, const RenderOptions& config,
 
   // Draw zen cell overlays for each cluster (skip fullscreen clusters)
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    const auto& pc = system.clusters[cluster_idx];
-    if (!pc.cluster.zen_cell_index.has_value() || pc.cluster.has_fullscreen_cell) {
+    const auto& cluster = system.clusters[cluster_idx];
+    if (!cluster.zen_cell_index.has_value() || cluster.has_fullscreen_cell) {
       continue;
     }
 
-    int zen_cell_index = *pc.cluster.zen_cell_index;
+    int zen_cell_index = *cluster.zen_cell_index;
 
-    // Get zen display rect (centered at percentage of cluster)
-    cells::Rect zen_display_rect =
-        cells::get_cell_display_rect(pc, zen_cell_index, true, config.zen_percentage);
+    // Safety check for geometry bounds
+    if (cluster_idx >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[cluster_idx];
+    if (static_cast<size_t>(zen_cell_index) >= rects.size()) {
+      continue;
+    }
+
+    // Get precomputed zen rect (already computed with zen_percentage in compute_cluster_geometry)
+    const auto& zen_rect = rects[static_cast<size_t>(zen_cell_index)];
 
     // Determine color based on selection state
     overlay::Color color = config.normal_color;
-    if (system.selection.has_value() && system.selection->cluster_index == cluster_idx &&
+    if (system.selection.has_value() &&
+        static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
         system.selection->cell_index == zen_cell_index) {
       color = config.selected_color;
     }
 
     // Check if zen cell is also the stored cell
     if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-      const auto& cell = pc.cluster.cells[static_cast<size_t>(zen_cell_index)];
-      if (cell.leaf_id.has_value() && cell.leaf_id.value() == stored_cell->leaf_id) {
+      const auto& cell_data = cluster.tree[zen_cell_index];
+      if (cell_data.leaf_id.has_value() && cell_data.leaf_id.value() == stored_cell->leaf_id) {
         color = config.stored_color;
       }
     }
 
     // Draw zen rectangle
     overlay::draw_rect({
-        zen_display_rect.x,
-        zen_display_rect.y,
-        zen_display_rect.width,
-        zen_display_rect.height,
+        zen_rect.x,
+        zen_rect.y,
+        zen_rect.width,
+        zen_rect.height,
         color,
         config.border_width,
     });

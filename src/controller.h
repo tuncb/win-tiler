@@ -15,6 +15,12 @@ struct Rect {
   float height = 0.0f;
 };
 
+// Integer point coordinates (for cursor positioning)
+struct Point {
+  long x = 0;
+  long y = 0;
+};
+
 // Split direction for binary space partitioning
 enum class SplitDir { Vertical, Horizontal };
 
@@ -83,6 +89,12 @@ struct ClusterCellUpdateInfo {
   bool has_fullscreen_cell = false;
 };
 
+// Result of a drop-move operation
+struct DropMoveResult {
+  Point cursor_pos;
+  bool was_exchange = false;
+};
+
 // ============================================================================
 // Query Functions
 // ============================================================================
@@ -95,6 +107,12 @@ struct ClusterCellUpdateInfo {
 
 // Get all leaf IDs from a cluster.
 [[nodiscard]] std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster);
+
+// Check if a leaf_id exists in any cluster of the system
+[[nodiscard]] bool has_leaf_id(const System& system, size_t leaf_id);
+
+// Get center point of a rectangle
+[[nodiscard]] Point get_rect_center(const Rect& rect);
 
 // Compute geometry for all cells in a cluster (in global coordinates).
 // Returns vector where index = cell_index:
@@ -132,6 +150,16 @@ struct ClusterCellUpdateInfo {
 // Handles zen mode (clears zen when source cell is in zen mode)
 [[nodiscard]] bool move_cell(System& system, int source_cluster_index, int source_cell_index,
                              int target_cluster_index, int target_cell_index);
+
+// Perform a drag-drop move or exchange operation
+// source_leaf_id: leaf_id of the window being dragged
+// cursor_x, cursor_y: drop location in global coordinates
+// geometries: precomputed geometries from compute_cluster_geometry for all clusters
+// do_exchange: if true, swap source and target; if false, move source to target
+// Returns cursor position at result cell center, or nullopt on failure
+[[nodiscard]] std::optional<DropMoveResult>
+perform_drop_move(System& system, size_t source_leaf_id, float cursor_x, float cursor_y,
+                  const std::vector<std::vector<Rect>>& geometries, bool do_exchange);
 
 // ============================================================================
 // Zen Mode
@@ -180,6 +208,14 @@ move_selection(System& system, Direction dir,
 // Adjust split ratio of selected cell's parent by delta
 // Delta is negated if selected cell is second child (so positive = grow selected cell)
 [[nodiscard]] bool adjust_selected_split_ratio(System& system, float delta);
+
+// Update split ratio based on window resize
+// actual_window_rect: the resized window's actual rect in global coordinates
+// cluster_geometry: precomputed geometry for the cluster containing the cell
+// Returns true if ratio was updated
+[[nodiscard]] bool update_split_ratio_from_resize(System& system, int cluster_index, size_t leaf_id,
+                                                  const Rect& actual_window_rect,
+                                                  const std::vector<Rect>& cluster_geometry);
 
 // ============================================================================
 // System State Updates
