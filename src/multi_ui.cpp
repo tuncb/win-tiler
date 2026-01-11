@@ -49,6 +49,20 @@ struct ViewTransform {
   float screen_height;
 };
 
+// Generic desktop state template - reusable across different systems
+template <typename ExtraData>
+struct DesktopState {
+  Engine engine;
+  ExtraData data; // System-specific data
+};
+
+// multi_ui-specific extra data
+struct MultiUiDesktopData {
+  std::vector<std::vector<size_t>> leaf_ids_per_cluster;
+};
+
+using MultiUiDesktop = DesktopState<MultiUiDesktopData>;
+
 ViewTransform compute_view_transform(const ctrl::System& system, float screen_w, float screen_h,
                                      float margin) {
   if (system.clusters.empty()) {
@@ -232,25 +246,88 @@ void delete_selected_process(Engine& engine,
   }
 }
 
+// Create a new empty desktop with same cluster layout (no cells)
+MultiUiDesktop create_empty_desktop(const std::vector<ctrl::ClusterInitInfo>& infos) {
+  MultiUiDesktop desktop;
+
+  // Create cluster infos with empty initial_cell_ids
+  std::vector<ctrl::ClusterInitInfo> empty_infos;
+  empty_infos.reserve(infos.size());
+  for (const auto& info : infos) {
+    ctrl::ClusterInitInfo empty_info = info;
+    empty_info.initial_cell_ids.clear();
+    empty_infos.push_back(empty_info);
+  }
+
+  desktop.engine.init(empty_infos);
+
+  // Initialize leaf_ids_per_cluster with empty vectors
+  desktop.data.leaf_ids_per_cluster.resize(infos.size());
+
+  return desktop;
+}
+
+// Handle desktop switching/creation keys
+// Returns true if a desktop key was handled
+bool handle_desktop_keys(std::vector<MultiUiDesktop>& desktops, size_t& current_desktop_index,
+                         const std::vector<ctrl::ClusterInitInfo>& infos) {
+  // N: Create new desktop
+  if (IsKeyPressed(KEY_N)) {
+    desktops.push_back(create_empty_desktop(infos));
+    current_desktop_index = desktops.size() - 1; // Switch to new desktop
+    spdlog::info("Created new desktop {} (total: {})", current_desktop_index + 1, desktops.size());
+    return true;
+  }
+
+  // TAB: Switch to next desktop
+  if (IsKeyPressed(KEY_TAB)) {
+    if (desktops.size() > 1) {
+      current_desktop_index = (current_desktop_index + 1) % desktops.size();
+      spdlog::info("Switched to desktop {}/{}", current_desktop_index + 1, desktops.size());
+    }
+    return true;
+  }
+
+  // GRAVE (`): Switch to previous desktop
+  if (IsKeyPressed(KEY_GRAVE)) {
+    if (desktops.size() > 1) {
+      current_desktop_index =
+          (current_desktop_index == 0) ? desktops.size() - 1 : current_desktop_index - 1;
+      spdlog::info("Switched to desktop {}/{}", current_desktop_index + 1, desktops.size());
+    }
+    return true;
+  }
+
+  return false;
+}
+
 } // namespace
 
 void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos,
                                  GlobalOptionsProvider& options_provider) {
   const auto& options = options_provider.options;
 
-  Engine engine;
-  engine.init(infos);
+  // Multi-desktop support: vector of desktops with current index
+  std::vector<MultiUiDesktop> desktops;
+  size_t current_desktop_index = 0;
 
-  // Initialize leaf_ids_per_cluster from infos
-  std::vector<std::vector<size_t>> leaf_ids_per_cluster;
-  leaf_ids_per_cluster.resize(infos.size());
-  for (size_t i = 0; i < infos.size(); ++i) {
-    leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+  // Initialize first desktop from infos
+  {
+    MultiUiDesktop first_desktop;
+    first_desktop.engine.init(infos);
+
+    // Initialize leaf_ids_per_cluster from infos
+    first_desktop.data.leaf_ids_per_cluster.resize(infos.size());
+    for (size_t i = 0; i < infos.size(); ++i) {
+      first_desktop.data.leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
+    }
+
+    desktops.push_back(std::move(first_desktop));
   }
 
-  // Initialize next_process_id to avoid collisions with existing leaf IDs
+  // Initialize next_process_id GLOBALLY to avoid collisions across all desktops
   size_t next_process_id = 10;
-  for (const auto& cluster : engine.system.clusters) {
+  for (const auto& cluster : desktops[0].engine.system.clusters) {
     for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
       const auto& cell_data = cluster.tree[i];
       if (ctrl::is_leaf(cluster, i) && cell_data.leaf_id.has_value()) {
@@ -265,8 +342,8 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
   InitWindow(screen_width, screen_height, "win-tiler multi-cluster");
 
-  ViewTransform vt =
-      compute_view_transform(engine.system, (float)screen_width, (float)screen_height, margin);
+  ViewTransform vt = compute_view_transform(desktops[current_desktop_index].engine.system,
+                                            (float)screen_width, (float)screen_height, margin);
 
   SetTargetFPS(60);
 
@@ -283,27 +360,38 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
       gap_v = options.gapOptions.vertical;
     }
 
+    // Get reference to current desktop for convenience
+    auto& current_desktop = desktops[current_desktop_index];
+
+    // Handle desktop switching/creation keys first
+    if (handle_desktop_keys(desktops, current_desktop_index, infos)) {
+      // Desktop changed, recompute view transform for the new desktop
+      vt = compute_view_transform(desktops[current_desktop_index].engine.system,
+                                  (float)screen_width, (float)screen_height, margin);
+    }
+
     // Process tree-modifying input BEFORE computing geometries
     if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process(engine, next_process_id, hovered_cluster_index, leaf_ids_per_cluster);
+      add_new_process(current_desktop.engine, next_process_id, hovered_cluster_index,
+                      current_desktop.data.leaf_ids_per_cluster);
     }
 
     if (IsKeyPressed(KEY_D)) {
-      delete_selected_process(engine, leaf_ids_per_cluster);
+      delete_selected_process(current_desktop.engine, current_desktop.data.leaf_ids_per_cluster);
     }
 
     if (IsKeyPressed(KEY_I)) {
-      ctrl::debug_print_system(engine.system);
+      ctrl::debug_print_system(current_desktop.engine.system);
     }
 
     if (IsKeyPressed(KEY_C)) {
-      if (!ctrl::validate_system(engine.system)) {
+      if (!ctrl::validate_system(current_desktop.engine.system)) {
         spdlog::error("System validation failed");
       }
     }
 
     // Compute geometries once per frame (after tree-modifying input)
-    auto global_geom = engine.compute_geometries(gap_h, gap_v, zen_pct);
+    auto global_geom = current_desktop.engine.compute_geometries(gap_h, gap_v, zen_pct);
 
     // Mouse hover selection
     Vector2 mouse_pos = GetMousePosition();
@@ -311,26 +399,27 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
 
     // Get hover info (pure query)
-    auto hover_info = engine.get_hover_info(global_x, global_y, global_geom);
+    auto hover_info = current_desktop.engine.get_hover_info(global_x, global_y, global_geom);
     hovered_cluster_index = hover_info.cluster_index;
 
     // Update selection if hovering over a cell
     if (hover_info.cell.has_value()) {
-      const auto& current_sel = engine.system.selection;
+      const auto& current_sel = current_desktop.engine.system.selection;
       if (!current_sel.has_value() ||
           current_sel->cluster_index != hover_info.cell->cluster_index ||
           current_sel->cell_index != hover_info.cell->cell_index) {
-        engine.system.selection = *hover_info.cell;
+        current_desktop.engine.system.selection = *hover_info.cell;
       }
     }
 
     // Keyboard input (HotkeyAction enum actions)
     auto action = get_key_action();
     if (action.has_value()) {
-      auto result = engine.process_action(*action, global_geom, gap_h, gap_v, zen_pct);
-      if (result.selection_changed && engine.system.selection.has_value()) {
-        int ci = engine.system.selection->cluster_index;
-        int cell_idx = engine.system.selection->cell_index;
+      auto result =
+          current_desktop.engine.process_action(*action, global_geom, gap_h, gap_v, zen_pct);
+      if (result.selection_changed && current_desktop.engine.system.selection.has_value()) {
+        int ci = current_desktop.engine.system.selection->cluster_index;
+        int cell_idx = current_desktop.engine.system.selection->cell_index;
         const auto& rect = global_geom[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
         center_mouse_on_rect(vt, rect);
       }
@@ -341,8 +430,9 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     ClearBackground(RAYWHITE);
 
     // Draw cluster backgrounds first
-    for (size_t cluster_idx = 0; cluster_idx < engine.system.clusters.size(); ++cluster_idx) {
-      const auto& cluster = engine.system.clusters[cluster_idx];
+    for (size_t cluster_idx = 0; cluster_idx < current_desktop.engine.system.clusters.size();
+         ++cluster_idx) {
+      const auto& cluster = current_desktop.engine.system.clusters[cluster_idx];
       ctrl::Rect cluster_global_rect{cluster.global_x, cluster.global_y, cluster.window_width,
                                      cluster.window_height};
       Rectangle screen_rect = to_screen_rect(vt, cluster_global_rect);
@@ -351,10 +441,11 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     }
 
     // Draw cells
-    const auto& selected_cell = engine.system.selection;
+    const auto& selected_cell = current_desktop.engine.system.selection;
 
-    for (size_t cluster_idx = 0; cluster_idx < engine.system.clusters.size(); ++cluster_idx) {
-      const auto& cluster = engine.system.clusters[cluster_idx];
+    for (size_t cluster_idx = 0; cluster_idx < current_desktop.engine.system.clusters.size();
+         ++cluster_idx) {
+      const auto& cluster = current_desktop.engine.system.clusters[cluster_idx];
       const auto& cluster_geom = global_geom[cluster_idx];
 
       for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
@@ -373,8 +464,10 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
         // Check if this cell is the stored cell
         bool is_stored_cell = false;
-        if (engine.stored_cell.has_value() && engine.stored_cell->cluster_index == cluster_idx) {
-          auto stored_idx = ctrl::find_cell_by_leaf_id(cluster, engine.stored_cell->leaf_id);
+        if (current_desktop.engine.stored_cell.has_value() &&
+            current_desktop.engine.stored_cell->cluster_index == cluster_idx) {
+          auto stored_idx =
+              ctrl::find_cell_by_leaf_id(cluster, current_desktop.engine.stored_cell->leaf_id);
           if (stored_idx.has_value() && *stored_idx == i) {
             is_stored_cell = true;
           }
@@ -417,8 +510,9 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     }
 
     // Draw zen cell overlays for each cluster
-    for (size_t cluster_idx = 0; cluster_idx < engine.system.clusters.size(); ++cluster_idx) {
-      const auto& cluster = engine.system.clusters[cluster_idx];
+    for (size_t cluster_idx = 0; cluster_idx < current_desktop.engine.system.clusters.size();
+         ++cluster_idx) {
+      const auto& cluster = current_desktop.engine.system.clusters[cluster_idx];
       if (!cluster.zen_cell_index.has_value()) {
         continue;
       }
@@ -455,6 +549,24 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
         int text_y = (int)(zen_screen_rect.y + (zen_screen_rect.height - font_size) / 2);
         DrawText(label.c_str(), text_x, text_y, (int)font_size, DARKGRAY);
       }
+    }
+
+    // Draw desktop indicator (top-left corner)
+    {
+      std::string desktop_label = "Desktop " + std::to_string(current_desktop_index + 1) + "/" +
+                                  std::to_string(desktops.size());
+      const int indicator_font_size = 20;
+      const int indicator_padding = 5;
+      int label_width = MeasureText(desktop_label.c_str(), indicator_font_size);
+
+      // Draw background rectangle
+      Rectangle indicator_bg = {0, 0, (float)(label_width + indicator_padding * 2),
+                                (float)(indicator_font_size + indicator_padding * 2)};
+      DrawRectangleRec(indicator_bg, Color{0, 0, 0, 180});
+
+      // Draw text
+      DrawText(desktop_label.c_str(), indicator_padding, indicator_padding, indicator_font_size,
+               WHITE);
     }
 
     EndDrawing();
