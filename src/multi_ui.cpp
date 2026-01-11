@@ -159,7 +159,7 @@ std::vector<ctrl::ClusterCellUpdateInfo> build_current_state(const Engine& engin
   return state;
 }
 
-void add_new_process(Engine& engine) {
+void add_new_process(Engine& engine, size_t& next_process_id) {
   // Determine target cluster:
   // 1. If hovering over an empty cluster, prioritize that cluster
   // 2. Otherwise use selection if available
@@ -188,7 +188,7 @@ void add_new_process(Engine& engine) {
   }
 
   // Add the new process ID to our stored list
-  size_t new_leaf_id = engine.next_process_id++;
+  size_t new_leaf_id = next_process_id++;
   engine.leaf_ids_per_cluster[*target_cluster_index].push_back(new_leaf_id);
 
   // Build state and update
@@ -236,6 +236,17 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
   Engine engine;
   engine.init(infos);
 
+  // Initialize next_process_id to avoid collisions with existing leaf IDs
+  size_t next_process_id = 10;
+  for (const auto& cluster : engine.system.clusters) {
+    for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
+      const auto& cell_data = cluster.tree[i];
+      if (ctrl::is_leaf(cluster, i) && cell_data.leaf_id.has_value()) {
+        next_process_id = std::max(next_process_id, *cell_data.leaf_id + 1);
+      }
+    }
+  }
+
   const int screen_width = 1600;
   const int screen_height = 900;
   const float margin = 20.0f;
@@ -260,7 +271,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
     // Process tree-modifying input BEFORE computing geometries
     if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process(engine);
+      add_new_process(engine, next_process_id);
     }
 
     if (IsKeyPressed(KEY_D)) {

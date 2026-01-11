@@ -9,8 +9,6 @@ namespace wintiler {
 
 namespace {
 
-const size_t CELL_ID_START = 10;
-
 // Convert local geometries to global coordinates
 std::vector<std::vector<ctrl::Rect>>
 to_global_geometries(const ctrl::System& system,
@@ -81,17 +79,6 @@ void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
   leaf_ids_per_cluster.resize(infos.size());
   for (size_t i = 0; i < infos.size(); ++i) {
     leaf_ids_per_cluster[i] = infos[i].initial_cell_ids;
-  }
-
-  // Set next_process_id to avoid collisions with any pre-existing leaf IDs
-  next_process_id = CELL_ID_START;
-  for (const auto& cluster : system.clusters) {
-    for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
-      const auto& cell_data = cluster.tree[i];
-      if (ctrl::is_leaf(cluster, i) && cell_data.leaf_id.has_value()) {
-        next_process_id = std::max(next_process_id, *cell_data.leaf_id + 1);
-      }
-    }
   }
 }
 

@@ -22,7 +22,6 @@ struct Engine {
   std::vector<std::vector<size_t>> leaf_ids_per_cluster;
   std::optional<size_t> hovered_cluster_index;
   std::optional<StoredCell> stored_cell;
-  size_t next_process_id = 10;
 
   // Initialize engine from cluster init info
   void init(const std::vector<ctrl::ClusterInitInfo>& infos);
