@@ -159,15 +159,16 @@ std::vector<ctrl::ClusterCellUpdateInfo> build_current_state(const Engine& engin
   return state;
 }
 
-void add_new_process(Engine& engine, size_t& next_process_id) {
+void add_new_process(Engine& engine, size_t& next_process_id,
+                     std::optional<size_t> hovered_cluster_index) {
   // Determine target cluster:
   // 1. If hovering over an empty cluster, prioritize that cluster
   // 2. Otherwise use selection if available
   // 3. Fall back to hovered cluster
   std::optional<size_t> target_cluster_index;
 
-  if (engine.hovered_cluster_index.has_value()) {
-    size_t hovered_idx = *engine.hovered_cluster_index;
+  if (hovered_cluster_index.has_value()) {
+    size_t hovered_idx = *hovered_cluster_index;
     const auto& hovered_cluster = engine.system.clusters[hovered_idx];
     if (hovered_cluster.tree.empty()) {
       // Hovering over empty cluster - prioritize it for new windows
@@ -179,8 +180,8 @@ void add_new_process(Engine& engine, size_t& next_process_id) {
     target_cluster_index = static_cast<size_t>(engine.system.selection->cluster_index);
   }
 
-  if (!target_cluster_index.has_value() && engine.hovered_cluster_index.has_value()) {
-    target_cluster_index = engine.hovered_cluster_index;
+  if (!target_cluster_index.has_value() && hovered_cluster_index.has_value()) {
+    target_cluster_index = hovered_cluster_index;
   }
 
   if (!target_cluster_index.has_value()) {
@@ -262,6 +263,8 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
   float gap_v = options.gapOptions.vertical;
   const float zen_pct = 0.85f;
 
+  std::optional<size_t> hovered_cluster_index;
+
   while (!WindowShouldClose()) {
     // Check for config changes and hot-reload
     if (options_provider.refresh()) {
@@ -271,7 +274,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
     // Process tree-modifying input BEFORE computing geometries
     if (IsKeyPressed(KEY_SPACE)) {
-      add_new_process(engine, next_process_id);
+      add_new_process(engine, next_process_id, hovered_cluster_index);
     }
 
     if (IsKeyPressed(KEY_D)) {
@@ -295,7 +298,20 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     Vector2 mouse_pos = GetMousePosition();
     float global_x, global_y;
     to_global_point(vt, mouse_pos.x, mouse_pos.y, global_x, global_y);
-    engine.update_hover(global_x, global_y, global_geom);
+
+    // Get hover info (pure query)
+    auto hover_info = engine.get_hover_info(global_x, global_y, global_geom);
+    hovered_cluster_index = hover_info.cluster_index;
+
+    // Update selection if hovering over a cell
+    if (hover_info.cell.has_value()) {
+      const auto& current_sel = engine.system.selection;
+      if (!current_sel.has_value() ||
+          current_sel->cluster_index != hover_info.cell->cluster_index ||
+          current_sel->cell_index != hover_info.cell->cell_index) {
+        engine.system.selection = *hover_info.cell;
+      }
+    }
 
     // Keyboard input (HotkeyAction enum actions)
     auto action = get_key_action();

@@ -15,12 +15,17 @@ struct ActionResult {
   bool selection_changed = false;
 };
 
+// Information about what the mouse is hovering over
+struct HoverInfo {
+  std::optional<size_t> cluster_index;            // Which cluster mouse is over (even if empty)
+  std::optional<ctrl::CellIndicatorByIndex> cell; // Specific cell if over a leaf
+};
+
 // Engine manages application state and processes actions
 // All members are public for easy access
 struct Engine {
   ctrl::System system;
   std::vector<std::vector<size_t>> leaf_ids_per_cluster;
-  std::optional<size_t> hovered_cluster_index;
   std::optional<StoredCell> stored_cell;
 
   // Initialize engine from cluster init info
@@ -30,9 +35,10 @@ struct Engine {
   [[nodiscard]] std::vector<std::vector<ctrl::Rect>> compute_geometries(float gap_h, float gap_v,
                                                                         float zen_pct) const;
 
-  // Update hover state and selection from global mouse position
-  void update_hover(float global_x, float global_y,
-                    const std::vector<std::vector<ctrl::Rect>>& global_geometries);
+  // Get hover info from global mouse position (does not modify state)
+  [[nodiscard]] HoverInfo
+  get_hover_info(float global_x, float global_y,
+                 const std::vector<std::vector<ctrl::Rect>>& global_geometries) const;
 
   // Update system state - wraps ctrl::update()
   [[nodiscard]] bool update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,

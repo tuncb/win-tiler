@@ -92,23 +92,18 @@ std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, flo
   return to_global_geometries(system, local_geometries);
 }
 
-void Engine::update_hover(float global_x, float global_y,
-                          const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
-  // Always track which cluster the mouse is over (even if empty)
-  hovered_cluster_index = find_cluster_at_global_point(system, global_x, global_y);
+HoverInfo
+Engine::get_hover_info(float global_x, float global_y,
+                       const std::vector<std::vector<ctrl::Rect>>& global_geometries) const {
+  HoverInfo info;
+  info.cluster_index = find_cluster_at_global_point(system, global_x, global_y);
 
   auto cell_at_mouse = find_cell_at_global_point(system, global_geometries, global_x, global_y);
   if (cell_at_mouse.has_value()) {
     auto [cluster_index, cell_index] = *cell_at_mouse;
-
-    // Update selection if different
-    const auto& current_sel = system.selection;
-    if (!current_sel.has_value() || current_sel->cluster_index != static_cast<int>(cluster_index) ||
-        current_sel->cell_index != cell_index) {
-      // Set new selection
-      system.selection = ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), cell_index};
-    }
+    info.cell = ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), cell_index};
   }
+  return info;
 }
 
 bool Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
