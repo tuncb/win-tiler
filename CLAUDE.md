@@ -12,9 +12,7 @@ build-run.bat build-run --Test-Debug  # Build and run unit tests
 ```
 
 For validation run unit tests and then build in debug mode.
-The development is going on windows OS, so use \\ for bash commands path separation.
-cd to the current folder and run build-run.bat directly.
-Ie. cmd //c "build-run.bat build --Debug"
+The development is going on windows OS, so use powershell for console commands.
 
 ## Running the Application
 
@@ -73,3 +71,4 @@ Win-tiler is a Windows window tiling manager using a binary space partition (BSP
 ## Syntax Rules
 
  - Do not use (void), log error for handling return statements from [[nodiscard]] functions.
+ - Do not use private members, all members should be public.

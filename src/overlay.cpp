@@ -681,6 +681,11 @@ void end_frame() {
   }
 }
 
+void clear() {
+  begin_frame();
+  end_frame();
+}
+
 bool is_initialized() {
   return g_initialized;
 }

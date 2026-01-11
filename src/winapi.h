@@ -108,6 +108,11 @@ void wait_for_session_active();
 // Check if session is currently paused (locked, sleeping, or display off)
 bool is_session_paused();
 
+// Virtual desktop management - pauses loop when on different desktop
+void register_virtual_desktop_notifications();
+void unregister_virtual_desktop_notifications();
+bool is_on_different_virtual_desktop();
+
 // Detect if a context menu is currently the foreground window
 bool is_context_menu_active();
 
@@ -144,6 +149,9 @@ struct LoopInputState {
 
   // Per-monitor managed windows (index matches monitors vector)
   std::vector<std::vector<ManagedWindowInfo>> windows_per_monitor;
+
+  // Virtual desktop ID (GUID as string, from first managed window)
+  std::optional<std::string> desktop_id;
 };
 
 // Gather all input state for the main loop in a single call

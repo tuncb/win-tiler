@@ -10,10 +10,14 @@
 #include "engine.h"
 #include "model.h"
 #include "multi_cell_renderer.h"
+#include "multi_engine.h"
 #include "overlay.h"
 #include "winapi.h"
 
 namespace wintiler {
+
+// Empty data struct for now - extension point for future per-desktop state
+struct LoopDesktopData {};
 
 namespace {
 
@@ -383,8 +387,14 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
 
-  Engine engine;
-  initialize_engine_from_monitors(engine, monitors, options);
+  // Use MultiEngine with single desktop (ID=0) for Phase 1
+  MultiEngine<LoopDesktopData> multi_engine;
+  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
+  multi_engine.create_desktop(0, cluster_infos);
+  multi_engine.switch_to(0);
+
+  // Convenience reference to current engine
+  auto& engine = multi_engine.current().engine;
 
   // Get gap and zen settings
   float gap_h = options.gapOptions.horizontal;
@@ -408,6 +418,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Register session/power notifications for pause on lock/sleep/display-off
   winapi::register_session_power_notifications();
 
+  // Initialize virtual desktop manager for desktop ID detection
+  winapi::register_virtual_desktop_notifications();
+
   // Initialize overlay for rendering
   overlay::init();
 
@@ -422,6 +435,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
+
+  // Virtual desktop tracking - first desktop we see becomes "ours"
+  std::optional<std::string> our_desktop_id;
 
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
@@ -439,6 +455,27 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Gather all Windows API input state in a single call
     auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
+
+    // Virtual desktop handling via desktop_id from managed windows
+    if (!input_state.desktop_id.has_value()) {
+      // No windows - skip iteration
+      spdlog::debug("No desktop ID (no windows), skipping iteration");
+      overlay::clear();
+      continue;
+    }
+
+    // Store first desktop ID as ours
+    if (!our_desktop_id.has_value()) {
+      our_desktop_id = input_state.desktop_id;
+      spdlog::info("Captured our desktop ID: {}", *our_desktop_id);
+    }
+
+    // Check if we're on our desktop
+    if (*input_state.desktop_id != *our_desktop_id) {
+      spdlog::info("On different desktop ({}), skipping", *input_state.desktop_id);
+      overlay::clear();
+      continue;
+    }
 
     // Update gap and zen settings (in case config was reloaded)
     gap_h = provider.options.gapOptions.horizontal;
@@ -591,6 +628,10 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Apply tile positions
     apply_tile_positions(engine.system, geometries);
 
+    // Debug: print current system state
+    spdlog::debug("=== Current System State ===");
+    print_tile_layout(engine.system, geometries);
+
     // Render cell system overlay
     renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
                      engine.stored_cell, toast.get_visible_message());
@@ -603,6 +644,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
   // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(provider.options.keyboardOptions);
+  winapi::unregister_virtual_desktop_notifications();
   winapi::unregister_session_power_notifications();
   winapi::unregister_move_size_hook();
   overlay::shutdown();

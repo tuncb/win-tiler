@@ -1,7 +1,9 @@
 #include "winapi.h"
 
 #include <dwmapi.h>
+#include <objbase.h>
 #include <psapi.h>
+#include <shobjidl.h>
 #include <spdlog/spdlog.h>
 #include <windows.h>
 #include <wtsapi32.h>
@@ -14,6 +16,7 @@
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "Dwmapi.lib")
 #pragma comment(lib, "Wtsapi32.lib")
+#pragma comment(lib, "Ole32.lib")
 
 namespace winapi {
 
@@ -919,6 +922,60 @@ bool is_session_paused() {
   return g_session_locked || g_system_suspended || g_display_off;
 }
 
+// ============================================================================
+// Virtual Desktop Detection
+// ============================================================================
+// Uses IVirtualDesktopManager COM interface to get desktop IDs from windows.
+// The desktop ID is returned in LoopInputState::desktop_id for comparison
+// in the main loop.
+
+// Global state for virtual desktop detection
+static IVirtualDesktopManager* g_vdm = nullptr;
+static bool g_com_initialized = false;
+
+void register_virtual_desktop_notifications() {
+  // Initialize COM on this thread
+  HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+    spdlog::error("Failed to initialize COM for virtual desktop detection, hr=0x{:08X}", hr);
+    return;
+  }
+  g_com_initialized = true;
+
+  // Create IVirtualDesktopManager instance
+  hr = CoCreateInstance(__uuidof(VirtualDesktopManager), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&g_vdm));
+  if (FAILED(hr) || !g_vdm) {
+    spdlog::error("Failed to create VirtualDesktopManager, hr=0x{:08X}", hr);
+    if (g_com_initialized) {
+      CoUninitialize();
+      g_com_initialized = false;
+    }
+    return;
+  }
+
+  spdlog::info("Initialized virtual desktop manager");
+}
+
+void unregister_virtual_desktop_notifications() {
+  if (g_vdm) {
+    g_vdm->Release();
+    g_vdm = nullptr;
+  }
+
+  if (g_com_initialized) {
+    CoUninitialize();
+    g_com_initialized = false;
+  }
+
+  spdlog::info("Unregistered virtual desktop notifications");
+}
+
+bool is_on_different_virtual_desktop() {
+  // No longer used - kept for API compatibility
+  // Virtual desktop detection now uses desktop_id from LoopInputState
+  return false;
+}
+
 bool is_context_menu_active() {
   // Check if the foreground thread has an active popup menu
   HWND foreground = GetForegroundWindow();
@@ -1033,6 +1090,22 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
   state.cursor_pos = get_cursor_pos();
   state.is_ctrl_pressed = is_ctrl_pressed();
   state.foreground_window = get_foreground_window();
+
+  // Get desktop ID from first managed window
+  if (g_vdm && !all_handles.empty()) {
+    GUID desktop_guid;
+    HRESULT hr = g_vdm->GetWindowDesktopId((HWND)all_handles[0], &desktop_guid);
+    if (SUCCEEDED(hr)) {
+      // Format GUID as string: {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
+      char guid_str[64];
+      snprintf(guid_str, sizeof(guid_str), "{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+               desktop_guid.Data1, desktop_guid.Data2, desktop_guid.Data3, desktop_guid.Data4[0],
+               desktop_guid.Data4[1], desktop_guid.Data4[2], desktop_guid.Data4[3],
+               desktop_guid.Data4[4], desktop_guid.Data4[5], desktop_guid.Data4[6],
+               desktop_guid.Data4[7]);
+      state.desktop_id = guid_str;
+    }
+  }
 
   return state;
 }

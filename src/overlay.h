@@ -47,6 +47,9 @@ void draw_toast(const Toast& toast);
 // End the frame and present. Call once at end of render cycle.
 void end_frame();
 
+// Present an empty transparent frame (clears any visible overlay content)
+void clear();
+
 // Check if overlay is initialized
 bool is_initialized();
 
