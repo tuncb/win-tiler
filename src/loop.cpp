@@ -387,27 +387,17 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   auto monitors = winapi::get_monitors();
   winapi::log_monitors(monitors);
 
-  // Use MultiEngine with single desktop (ID=0) for Phase 1
-  MultiEngine<LoopDesktopData> multi_engine;
-  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
-  multi_engine.create_desktop(0, cluster_infos);
-  multi_engine.switch_to(0);
+  // MultiEngine manages separate tiling state per virtual desktop
+  // Uses GUID strings as desktop identifiers
+  MultiEngine<LoopDesktopData, std::string> multi_engine;
 
-  // Convenience reference to current engine
-  auto& engine = multi_engine.current().engine;
-
-  // Get gap and zen settings
+  // Gap and zen settings (read per-frame from options in case of hot-reload)
   float gap_h = options.gapOptions.horizontal;
   float gap_v = options.gapOptions.vertical;
   float zen_pct = options.visualizationOptions.renderOptions.zen_percentage;
 
-  // Compute initial geometries and print layout
-  auto geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
-  spdlog::info("=== Initial Tile Layout ===");
-  print_tile_layout(engine.system, geometries);
-
-  // Apply initial tile positions
-  apply_tile_positions(engine.system, geometries);
+  // Geometries computed per-frame after desktop is determined
+  std::vector<std::vector<ctrl::Rect>> geometries;
 
   // Register keyboard hotkeys
   register_navigation_hotkeys(options.keyboardOptions);
@@ -436,9 +426,6 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
 
-  // Virtual desktop tracking - first desktop we see becomes "ours"
-  std::optional<std::string> our_desktop_id;
-
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
@@ -464,18 +451,24 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       continue;
     }
 
-    // Store first desktop ID as ours
-    if (!our_desktop_id.has_value()) {
-      our_desktop_id = input_state.desktop_id;
-      spdlog::info("Captured our desktop ID: {}", *our_desktop_id);
+    // Virtual desktop management - create new desktop on first encounter, switch as needed
+    const std::string& current_desktop_id = *input_state.desktop_id;
+
+    // Create desktop if this is a new virtual desktop
+    if (!multi_engine.has_desktop(current_desktop_id)) {
+      auto cluster_infos = create_cluster_infos_from_monitors(monitors, provider.options);
+      multi_engine.create_desktop(current_desktop_id, cluster_infos);
+      spdlog::info("Created new virtual desktop engine: {}", current_desktop_id);
     }
 
-    // Check if we're on our desktop
-    if (*input_state.desktop_id != *our_desktop_id) {
-      spdlog::info("On different desktop ({}), skipping", *input_state.desktop_id);
-      overlay::clear();
-      continue;
+    // Switch to current desktop if needed
+    if (!multi_engine.has_current() || *multi_engine.current_id != current_desktop_id) {
+      multi_engine.switch_to(current_desktop_id);
+      spdlog::info("Switched to virtual desktop: {}", current_desktop_id);
     }
+
+    // Get reference to current desktop's engine
+    auto& engine = multi_engine.current().engine;
 
     // Update gap and zen settings (in case config was reloaded)
     gap_h = provider.options.gapOptions.horizontal;

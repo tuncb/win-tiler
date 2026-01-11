@@ -108,13 +108,9 @@ void wait_for_session_active();
 // Check if session is currently paused (locked, sleeping, or display off)
 bool is_session_paused();
 
-// Virtual desktop management - pauses loop when on different desktop
+// Virtual desktop management - initializes COM interface for desktop ID detection
 void register_virtual_desktop_notifications();
 void unregister_virtual_desktop_notifications();
-bool is_on_different_virtual_desktop();
-
-// Detect if a context menu is currently the foreground window
-bool is_context_menu_active();
 
 // Drag operation tracking (for mouse-based window move operations)
 struct DragInfo {
