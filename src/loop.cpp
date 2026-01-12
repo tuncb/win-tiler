@@ -649,10 +649,6 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Apply tile positions
     apply_tile_positions(engine.system, geometries);
 
-    // Debug: print current system state
-    spdlog::debug("=== Current System State ===");
-    print_tile_layout(engine.system, geometries);
-
     // Render cell system overlay
     renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
                      engine.stored_cell, toast.get_visible_message());
