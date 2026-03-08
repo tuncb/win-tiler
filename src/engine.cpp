@@ -21,6 +21,21 @@ find_cell_at_global_point(const ctrl::System& system,
     const auto& cluster = system.clusters[cluster_idx];
     const auto& rects = global_geometries[cluster_idx];
 
+    if (cluster.zen_cell_index.has_value()) {
+      int zen_idx = *cluster.zen_cell_index;
+      if (!cluster.tree.is_valid_index(zen_idx) || !cluster.tree.is_leaf(zen_idx) ||
+          static_cast<size_t>(zen_idx) >= rects.size()) {
+        continue;
+      }
+
+      const auto& zen_rect = rects[static_cast<size_t>(zen_idx)];
+      if (global_x >= zen_rect.x && global_x < zen_rect.x + zen_rect.width &&
+          global_y >= zen_rect.y && global_y < zen_rect.y + zen_rect.height) {
+        return std::make_pair(cluster_idx, zen_idx);
+      }
+      continue;
+    }
+
     for (int i = 0; i < static_cast<int>(rects.size()); ++i) {
       // Skip non-leaf cells
       if (!cluster.tree.is_leaf(i)) {

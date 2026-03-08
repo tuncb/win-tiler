@@ -213,6 +213,35 @@ TEST_SUITE("Engine::get_hover_info") {
     CHECK(info.cluster_index.has_value());
     CHECK(*info.cluster_index == 1);
   }
+
+  TEST_CASE("zen hover prefers zen cell over overlapped background cell") {
+    Engine engine = create_two_window_engine();
+    auto geoms = engine.compute_geometries(10.0f, 10.0f, 0.85f);
+
+    engine.system.clusters[0].zen_cell_index = 1;
+
+    geoms = engine.compute_geometries(10.0f, 10.0f, 0.85f);
+
+    const Rect& zen_rect = geoms[0][1];
+    const Rect& other_rect = geoms[0][2];
+
+    float overlap_left = std::max(zen_rect.x, other_rect.x);
+    float overlap_top = std::max(zen_rect.y, other_rect.y);
+    float overlap_right = std::min(zen_rect.x + zen_rect.width, other_rect.x + other_rect.width);
+    float overlap_bottom = std::min(zen_rect.y + zen_rect.height, other_rect.y + other_rect.height);
+
+    REQUIRE(overlap_left < overlap_right);
+    REQUIRE(overlap_top < overlap_bottom);
+
+    float hover_x = overlap_left + (overlap_right - overlap_left) / 2.0f;
+    float hover_y = overlap_top + (overlap_bottom - overlap_top) / 2.0f;
+
+    HoverInfo info = engine.get_hover_info(hover_x, hover_y, geoms);
+
+    REQUIRE(info.cell.has_value());
+    CHECK(info.cell->cluster_index == 0);
+    CHECK(info.cell->cell_index == 1);
+  }
 }
 
 // =============================================================================
