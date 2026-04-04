@@ -161,7 +161,6 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Test-Debug|x64'">
@@ -179,7 +178,6 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -199,7 +197,6 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -214,12 +211,14 @@
     <ClCompile Include="src\multi_ui.cpp" />
     <ClCompile Include="src\overlay.cpp" />
     <ClCompile Include="src\options.cpp" />
+    <ClCompile Include="src\startup.cpp" />
     <ClCompile Include="src\test_argument_parser.cpp" />
     <ClCompile Include="src\test_arena_allocator.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_controller.cpp" />
     <ClCompile Include="src\test_engine.cpp" />
     <ClCompile Include="src\test_options.cpp" />
+    <ClCompile Include="src\test_startup.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\winapi.cpp" />
     <ClCompile Include="src\track_windows.cpp" />
@@ -236,6 +235,7 @@
     <ClInclude Include="src\multi_ui.h" />
     <ClInclude Include="src\overlay.h" />
     <ClInclude Include="src\options.h" />
+    <ClInclude Include="src\startup.h" />
     <ClInclude Include="src\winapi.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

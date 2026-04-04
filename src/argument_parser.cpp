@@ -138,6 +138,31 @@ ParseResult parse_args(int argc, char* argv[]) {
         ++i;
       }
       args.command = init_cmd;
+    } else if (cmd == "startup") {
+      if (i >= argc) {
+        return make_error("startup requires an action: enable, disable, or status");
+      }
+
+      std::string action = argv[i];
+      ++i;
+
+      StartupCommand startup_cmd;
+      if (action == "enable") {
+        startup_cmd.action = StartupAction::Enable;
+      } else if (action == "disable") {
+        startup_cmd.action = StartupAction::Disable;
+      } else if (action == "status") {
+        startup_cmd.action = StartupAction::Status;
+      } else {
+        return make_error("Unknown startup action: " + action +
+                          ". Valid actions: enable, disable, status");
+      }
+
+      if (i < argc) {
+        return make_error("startup does not accept extra arguments");
+      }
+
+      args.command = startup_cmd;
     } else {
       return make_error("Unknown command: " + cmd);
     }
@@ -166,12 +191,15 @@ void print_usage() {
             << "  track-windows           Track and log windows per monitor in a loop\n"
             << "  init-config [filepath]  Create default configuration TOML file\n"
             << "                          (defaults to win-tiler.toml next to executable)\n"
+            << "  startup <action>        Manage startup registration for the current user\n"
+            << "                          (actions: enable, disable, status)\n"
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
             << "  win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080\n"
             << "  win-tiler init-config config.toml\n"
-            << "  win-tiler --config config.toml loop\n";
+            << "  win-tiler --config config.toml loop\n"
+            << "  win-tiler startup enable\n";
 }
 
 } // namespace wintiler

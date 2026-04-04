@@ -16,20 +16,60 @@
 #include "loop.h"
 #include "multi_ui.h"
 #include "options.h"
+#include "startup.h"
 #include "track_windows.h"
 #include "version.h"
 #include "winapi.h"
 
 namespace {
 
+std::filesystem::path getExecutablePath() {
+  std::vector<wchar_t> buffer(MAX_PATH, L'\0');
+
+  while (true) {
+    DWORD path_length =
+        GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (path_length == 0) {
+      return {};
+    }
+
+    if (path_length < buffer.size()) {
+      return std::filesystem::path(std::wstring(buffer.data(), path_length));
+    }
+
+    buffer.resize(buffer.size() * 2, L'\0');
+  }
+}
+
 std::filesystem::path getExecutableDirectory() {
-  char path[MAX_PATH];
-  GetModuleFileNameA(nullptr, path, MAX_PATH);
-  return std::filesystem::path(path).parent_path();
+  auto executable_path = getExecutablePath();
+  return executable_path.parent_path();
 }
 
 std::filesystem::path getDefaultConfigPath() {
   return getExecutableDirectory() / "win-tiler.toml";
+}
+
+bool command_uses_options_provider(const wintiler::Command& command) {
+  return std::holds_alternative<wintiler::LoopCommand>(command) ||
+         std::holds_alternative<wintiler::UiTestMonitorCommand>(command) ||
+         std::holds_alternative<wintiler::UiTestMultiCommand>(command) ||
+         std::holds_alternative<wintiler::TrackWindowsCommand>(command);
+}
+
+tl::expected<std::optional<std::filesystem::path>, std::string>
+resolve_startup_config_path(const wintiler::CliOptions& options) {
+  if (!options.config_path.has_value()) {
+    return std::nullopt;
+  }
+
+  std::error_code ec;
+  auto absolute_path = std::filesystem::absolute(*options.config_path, ec);
+  if (ec) {
+    return tl::unexpected("Failed to resolve startup config path: " + ec.message());
+  }
+
+  return absolute_path.lexically_normal();
 }
 
 } // namespace
@@ -140,6 +180,8 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  Command command = result.args.command.value_or(Command{LoopCommand{}});
+
   // Apply log level if specified
   if (result.args.options.log_level) {
     applyLogLevel(*result.args.options.log_level);
@@ -148,45 +190,41 @@ int main(int argc, char* argv[]) {
   // Log version at startup
   spdlog::info("win-tiler v{}", get_version_string());
 
-  // Get default global options
-  auto globalOptions = get_default_global_options();
+  GlobalOptionsProvider optionsProvider;
+  if (command_uses_options_provider(command)) {
+    // Determine config path to load
+    std::filesystem::path configPath;
+    bool configExplicitlySpecified = false;
 
-  // Determine config path to load
-  std::filesystem::path configPath;
-  bool configExplicitlySpecified = false;
-
-  if (result.args.options.config_path) {
-    configPath = *result.args.options.config_path;
-    configExplicitlySpecified = true;
-  } else {
-    configPath = getDefaultConfigPath();
-  }
-
-  // Load config
-  if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
-    auto loaded = read_options_toml(configPath);
-    if (loaded.has_value()) {
-      globalOptions = loaded.value();
-      spdlog::info("Loaded config from: {}", configPath.string());
+    if (result.args.options.config_path) {
+      configPath = *result.args.options.config_path;
+      configExplicitlySpecified = true;
     } else {
-      if (configExplicitlySpecified) {
-        // Explicit config path failed - error out
-        spdlog::error("Failed to load config: {}", loaded.error());
-        return 1;
-      }
-      // Default config failed to load - just use defaults silently
-      spdlog::debug("Default config not loaded: {}", loaded.error());
+      configPath = getDefaultConfigPath();
     }
+
+    // Load config once here so explicit config errors are surfaced before entering the command
+    if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
+      auto loaded = read_options_toml(configPath);
+      if (!loaded.has_value()) {
+        if (configExplicitlySpecified) {
+          spdlog::error("Failed to load config: {}", loaded.error());
+          return 1;
+        }
+        spdlog::debug("Default config not loaded: {}", loaded.error());
+      } else {
+        spdlog::info("Loaded config from: {}", configPath.string());
+      }
+    }
+
+    std::optional<std::filesystem::path> providerPath;
+    if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
+      providerPath = configPath;
+    }
+    optionsProvider = GlobalOptionsProvider(providerPath);
   }
 
-  // Create GlobalOptionsProvider for commands that support hot-reload
-  std::optional<std::filesystem::path> providerPath;
-  if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
-    providerPath = configPath;
-  }
-  GlobalOptionsProvider optionsProvider(providerPath);
-
-  Command command = result.args.command.value_or(Command{LoopCommand{}});
+  int exitCode = 0;
   std::visit(overloaded{
                  [](const HelpCommand&) { print_usage(); },
                  [](const VersionCommand&) {
@@ -196,7 +234,7 @@ int main(int argc, char* argv[]) {
                  [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
                  [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
-                 [](const InitConfigCommand& cmd) {
+                 [&](const InitConfigCommand& cmd) {
                    auto targetPath =
                        cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
                    auto writeResult = write_options_toml(get_default_global_options(), targetPath);
@@ -204,11 +242,75 @@ int main(int argc, char* argv[]) {
                      spdlog::info("Config written to: {}", targetPath.string());
                    } else {
                      spdlog::error("Failed to write config: {}", writeResult.error());
+                     exitCode = 1;
+                   }
+                 },
+                 [&](const StartupCommand& cmd) {
+                   if (cmd.action == StartupAction::Enable) {
+                     auto executable_path = getExecutablePath();
+                     if (executable_path.empty()) {
+                       spdlog::error("Failed to determine executable path");
+                       exitCode = 1;
+                       return;
+                     }
+
+                     auto config_path = resolve_startup_config_path(result.args.options);
+                     if (!config_path.has_value()) {
+                       spdlog::error("{}", config_path.error());
+                       exitCode = 1;
+                       return;
+                     }
+
+                     auto enable_result =
+                         enable_startup_registration(executable_path, *config_path);
+                     if (!enable_result.has_value()) {
+                       spdlog::error("{}", enable_result.error());
+                       exitCode = 1;
+                       return;
+                     }
+
+                     spdlog::info("Enabled startup registration for the current user");
+                     spdlog::info("Startup command line: {}",
+                                  build_startup_command_line(executable_path, *config_path));
+                     return;
+                   }
+
+                   if (cmd.action == StartupAction::Disable) {
+                     auto disable_result = disable_startup_registration();
+                     if (!disable_result.has_value()) {
+                       spdlog::error("{}", disable_result.error());
+                       exitCode = 1;
+                       return;
+                     }
+
+                     if (*disable_result) {
+                       spdlog::info("Removed startup registration for the current user");
+                     } else {
+                       spdlog::info("Startup registration was already disabled");
+                     }
+                     return;
+                   }
+
+                   auto status_result = get_startup_registration_status();
+                   if (!status_result.has_value()) {
+                     spdlog::error("{}", status_result.error());
+                     exitCode = 1;
+                     return;
+                   }
+
+                   if (!status_result->enabled) {
+                     std::cout << "Startup registration: disabled" << std::endl;
+                     return;
+                   }
+
+                   std::cout << "Startup registration: enabled" << std::endl;
+                   if (status_result->command_line.has_value()) {
+                     std::cout << "Command line: " << *status_result->command_line << std::endl;
                    }
                  },
              },
              command);
-  return 0;
+  return exitCode;
 }
 
 #endif

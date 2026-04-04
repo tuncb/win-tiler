@@ -28,9 +28,16 @@ struct InitConfigCommand {
   std::optional<std::string> filepath; // Empty = use default (win-tiler.toml next to exe)
 };
 
+enum class StartupAction { Enable, Disable, Status };
+
+struct StartupCommand {
+  StartupAction action;
+};
+
 // Variant holding all possible commands
-using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, UiTestMonitorCommand,
-                             UiTestMultiCommand, TrackWindowsCommand, InitConfigCommand>;
+using Command =
+    std::variant<HelpCommand, VersionCommand, LoopCommand, UiTestMonitorCommand, UiTestMultiCommand,
+                 TrackWindowsCommand, InitConfigCommand, StartupCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

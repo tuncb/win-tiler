@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "argument_parser.h"
+#include "version.h"
 
 using namespace wintiler;
 
@@ -54,6 +55,53 @@ TEST_SUITE("argument_parser") {
     CHECK(result.success);
     REQUIRE(result.args.command.has_value());
     CHECK(std::holds_alternative<HelpCommand>(*result.args.command));
+  }
+
+  TEST_CASE("parses startup enable command") {
+    auto result = parse({"win-tiler", "startup", "enable"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<StartupCommand>(*result.args.command));
+    CHECK(std::get<StartupCommand>(*result.args.command).action == StartupAction::Enable);
+  }
+
+  TEST_CASE("parses startup disable command") {
+    auto result = parse({"win-tiler", "startup", "disable"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<StartupCommand>(*result.args.command));
+    CHECK(std::get<StartupCommand>(*result.args.command).action == StartupAction::Disable);
+  }
+
+  TEST_CASE("parses startup status command") {
+    auto result = parse({"win-tiler", "startup", "status"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<StartupCommand>(*result.args.command));
+    CHECK(std::get<StartupCommand>(*result.args.command).action == StartupAction::Status);
+  }
+
+  TEST_CASE("startup command requires an action") {
+    auto result = parse({"win-tiler", "startup"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "startup requires an action: enable, disable, or status");
+  }
+
+  TEST_CASE("startup command rejects extra arguments") {
+    auto result = parse({"win-tiler", "startup", "enable", "extra"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "startup does not accept extra arguments");
+  }
+}
+
+TEST_SUITE("version") {
+  TEST_CASE("version string includes current prerelease label") {
+    CHECK(get_version_string() == "0.2.0-alpha");
   }
 }
 
