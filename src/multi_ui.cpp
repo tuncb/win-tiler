@@ -358,7 +358,7 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
 
   float gap_h = options.gapOptions.horizontal;
   float gap_v = options.gapOptions.vertical;
-  const float zen_pct = 0.85f;
+  const float zen_pct = 0.90f;
 
   std::optional<size_t> hovered_cluster_index;
 
