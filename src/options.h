@@ -71,7 +71,7 @@ constexpr float kDefaultGapVertical = 10.0f;
 constexpr int kDefaultLoopIntervalMs = 100;
 
 // Default zen percentage (0.0-1.0 range, 1.0 = full cluster)
-constexpr float kDefaultZenPercentage = 0.85f;
+constexpr float kDefaultZenPercentage = 0.90f;
 
 // Default visualization options
 constexpr float kDefaultBorderWidth = 3.0f;

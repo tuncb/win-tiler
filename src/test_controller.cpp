@@ -53,7 +53,7 @@ System create_test_system(const std::vector<std::vector<size_t>>& cluster_leaf_i
 
 // Compute geometries for all clusters with default gaps
 std::vector<std::vector<Rect>> compute_test_geometries(const System& system, float gap_h = 10.0f,
-                                                       float gap_v = 10.0f, float zen_pct = 0.85f) {
+                                                       float gap_v = 10.0f, float zen_pct = 0.90f) {
   std::vector<std::vector<Rect>> geometries;
   for (const auto& cluster : system.clusters) {
     geometries.push_back(compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
@@ -1406,12 +1406,12 @@ TEST_SUITE("compute_cluster_geometry") {
     REQUIRE(cell.has_value());
     cluster.zen_cell_index = *cell;
 
-    auto rects = compute_cluster_geometry(cluster, 10.0f, 10.0f, 0.85f);
+    auto rects = compute_cluster_geometry(cluster, 10.0f, 10.0f, 0.90f);
 
     const Rect& zen_rect = rects[static_cast<size_t>(*cell)];
-    // Zen rect should be 85% of cluster size, centered
-    float expected_w = 800.0f * 0.85f;
-    float expected_h = 600.0f * 0.85f;
+    // Zen rect should be 90% of cluster size, centered
+    float expected_w = 800.0f * 0.90f;
+    float expected_h = 600.0f * 0.90f;
     CHECK(zen_rect.width == doctest::Approx(expected_w));
     CHECK(zen_rect.height == doctest::Approx(expected_h));
   }

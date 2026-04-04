@@ -216,11 +216,11 @@ TEST_SUITE("Engine::get_hover_info") {
 
   TEST_CASE("zen hover prefers zen cell over overlapped background cell") {
     Engine engine = create_two_window_engine();
-    auto geoms = engine.compute_geometries(10.0f, 10.0f, 0.85f);
+    auto geoms = engine.compute_geometries(10.0f, 10.0f, 0.90f);
 
     engine.system.clusters[0].zen_cell_index = 1;
 
-    geoms = engine.compute_geometries(10.0f, 10.0f, 0.85f);
+    geoms = engine.compute_geometries(10.0f, 10.0f, 0.90f);
 
     const Rect& zen_rect = geoms[0][1];
     const Rect& other_rect = geoms[0][2];
@@ -960,11 +960,11 @@ TEST_SUITE("Engine - Edge Cases") {
         engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
 
     // Recompute geometries with zen percentage
-    auto zen_geoms = engine.compute_geometries(10.0f, 10.0f, 0.85f);
+    auto zen_geoms = engine.compute_geometries(10.0f, 10.0f, 0.90f);
 
     // Navigation should still work (only zen cell is visible)
     ActionResult result =
-        engine.process_action(HotkeyAction::NavigateRight, zen_geoms, 10.0f, 10.0f, 0.85f);
+        engine.process_action(HotkeyAction::NavigateRight, zen_geoms, 10.0f, 10.0f, 0.90f);
     // May succeed or fail depending on geometry, but shouldn't crash
     (void)result;
   }

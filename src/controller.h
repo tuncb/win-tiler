@@ -119,7 +119,7 @@ struct DropMoveResult {
 // Use cluster.tree.is_leaf(index) to distinguish leaf cells from internal nodes.
 // - Zen cell (if active): centered rect at zen_percentage of cluster size
 [[nodiscard]] std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h,
-                                                         float gap_v, float zen_percentage = 0.85f);
+                                                         float gap_v, float zen_percentage = 0.90f);
 
 // ============================================================================
 // Initialization
