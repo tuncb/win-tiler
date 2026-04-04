@@ -141,6 +141,8 @@ ParseResult parse_args(int argc, char* argv[]) {
     } else {
       return make_error("Unknown command: " + cmd);
     }
+  } else {
+    args.command = LoopCommand{};
   }
 
   return make_success(args);
@@ -157,7 +159,7 @@ void print_usage() {
             << "\n"
             << "Commands:\n"
             << "  version                 Show version information\n"
-            << "  loop                    Run in loop mode (hotkey-driven)\n"
+            << "  loop                    Run in loop mode (hotkey-driven, default)\n"
             << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
             << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
             << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"

@@ -186,35 +186,28 @@ int main(int argc, char* argv[]) {
   }
   GlobalOptionsProvider optionsProvider(providerPath);
 
-  // Dispatch command
-  if (result.args.command) {
-    std::visit(overloaded{
-                   [](const HelpCommand&) { print_usage(); },
-                   [](const VersionCommand&) {
-                     std::cout << "win-tiler v" << get_version_string() << std::endl;
-                   },
-                   [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
-                   [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
-                   [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
-                   [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
-                   [](const InitConfigCommand& cmd) {
-                     auto targetPath = cmd.filepath ? std::filesystem::path(*cmd.filepath)
-                                                    : getDefaultConfigPath();
-                     auto writeResult =
-                         write_options_toml(get_default_global_options(), targetPath);
-                     if (writeResult.has_value()) {
-                       spdlog::info("Config written to: {}", targetPath.string());
-                     } else {
-                       spdlog::error("Failed to write config: {}", writeResult.error());
-                     }
-                   },
-               },
-               *result.args.command);
-    return 0;
-  }
-
-  // No command specified - show windows per monitor
-  winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
+  Command command = result.args.command.value_or(Command{LoopCommand{}});
+  std::visit(overloaded{
+                 [](const HelpCommand&) { print_usage(); },
+                 [](const VersionCommand&) {
+                   std::cout << "win-tiler v" << get_version_string() << std::endl;
+                 },
+                 [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
+                 [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
+                 [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
+                 [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
+                 [](const InitConfigCommand& cmd) {
+                   auto targetPath =
+                       cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
+                   auto writeResult = write_options_toml(get_default_global_options(), targetPath);
+                   if (writeResult.has_value()) {
+                     spdlog::info("Config written to: {}", targetPath.string());
+                   } else {
+                     spdlog::error("Failed to write config: {}", writeResult.error());
+                   }
+                 },
+             },
+             command);
   return 0;
 }
 

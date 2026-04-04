@@ -2,3 +2,5 @@ x64
 .vs
 vcpkg_installed
 .dll
+
+nul

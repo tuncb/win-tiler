@@ -214,6 +214,7 @@
     <ClCompile Include="src\multi_ui.cpp" />
     <ClCompile Include="src\overlay.cpp" />
     <ClCompile Include="src\options.cpp" />
+    <ClCompile Include="src\test_argument_parser.cpp" />
     <ClCompile Include="src\test_arena_allocator.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_controller.cpp" />

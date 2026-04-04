@@ -43,7 +43,7 @@ struct CliOptions {
 // ===== Parsed Arguments =====
 struct ParsedArgs {
   CliOptions options;
-  std::optional<Command> command; // nullopt if no command specified
+  std::optional<Command> command; // Defaults to LoopCommand when no command is specified
 };
 
 // ===== Parser Result =====
