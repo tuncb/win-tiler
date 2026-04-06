@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <magic_enum/magic_enum.hpp>
+#include <unordered_set>
 #include <vector>
 
 #include "controller.h"
@@ -17,7 +18,9 @@
 namespace wintiler {
 
 // Empty data struct for now - extension point for future per-desktop state
-struct LoopDesktopData {};
+struct LoopDesktopData {
+  MaximizeTrackingState maximize_tracking_state;
+};
 
 namespace {
 
@@ -86,6 +89,17 @@ void unregister_navigation_hotkeys(const KeyboardOptions& keyboard_options) {
 // Convert HotkeyAction to human-readable string
 const char* hotkey_action_to_string(HotkeyAction action) {
   return magic_enum::enum_name(action).data();
+}
+
+std::optional<ctrl::CellIndicatorByIndex> find_cell_by_leaf_id(const ctrl::System& system,
+                                                               size_t leaf_id) {
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    auto cell_index = ctrl::find_cell_by_leaf_id(system.clusters[cluster_index], leaf_id);
+    if (cell_index.has_value()) {
+      return ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), *cell_index};
+    }
+  }
+  return std::nullopt;
 }
 
 // Handle mouse drag-drop move operation
@@ -380,6 +394,77 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
 
 } // namespace
 
+namespace loop_detail {
+
+bool apply_zen_to_newly_maximized_windows(
+    ctrl::System& system,
+    const std::vector<std::vector<winapi::ManagedWindowInfo>>& windows_per_monitor,
+    MaximizeTrackingState& tracking_state) {
+  bool zen_changed = false;
+  std::unordered_set<size_t> current_leaf_ids;
+
+  for (const auto& monitor_windows : windows_per_monitor) {
+    for (const auto& window : monitor_windows) {
+      if (window.handle == nullptr) {
+        continue;
+      }
+
+      size_t leaf_id = reinterpret_cast<size_t>(window.handle);
+      current_leaf_ids.insert(leaf_id);
+
+      bool current_is_maximized = window.is_maximized && !window.is_fullscreen;
+      auto state_it = tracking_state.maximize_state_by_leaf_id.find(leaf_id);
+      if (state_it == tracking_state.maximize_state_by_leaf_id.end()) {
+        tracking_state.maximize_state_by_leaf_id.emplace(leaf_id, current_is_maximized);
+        continue;
+      }
+
+      bool was_maximized = state_it->second;
+      state_it->second = current_is_maximized;
+
+      if (was_maximized || !current_is_maximized) {
+        continue;
+      }
+
+      auto cell = find_cell_by_leaf_id(system, leaf_id);
+      if (!cell.has_value()) {
+        continue;
+      }
+
+      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
+      if (cluster.has_fullscreen_cell) {
+        continue;
+      }
+      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
+        ctrl::clear_zen(system, cell->cluster_index);
+        zen_changed = true;
+        continue;
+      }
+
+      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
+      if (!set_zen_result) {
+        spdlog::error("Failed to set zen for maximized window {}", leaf_id);
+        continue;
+      }
+
+      zen_changed = true;
+    }
+  }
+
+  for (auto it = tracking_state.maximize_state_by_leaf_id.begin();
+       it != tracking_state.maximize_state_by_leaf_id.end();) {
+    if (!current_leaf_ids.contains(it->first)) {
+      it = tracking_state.maximize_state_by_leaf_id.erase(it);
+      continue;
+    }
+    ++it;
+  }
+
+  return zen_changed;
+}
+
+} // namespace loop_detail
+
 void run_loop_mode(GlobalOptionsProvider& provider) {
   const auto& options = provider.options;
 
@@ -488,7 +573,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     }
 
     // Get reference to current desktop's engine
-    auto& engine = multi_engine.current().engine;
+    auto& current_desktop = multi_engine.current();
+    auto& engine = current_desktop.engine;
 
     // Update gap and zen settings (in case config was reloaded)
     gap_h = provider.options.gapOptions.horizontal;
@@ -630,14 +716,19 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Update system state with redirect (selection updated inside ctrl::update)
     bool changed = engine.update(current_state, redirect_cluster);
+    bool zen_changed = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, input_state.windows_per_monitor,
+        current_desktop.data.maximize_tracking_state);
 
-    if (changed) {
-      // Recompute geometries after update
+    if (changed || zen_changed) {
+      // Recompute geometries after update or zen transition
       geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
 
-      // Move cursor to selected cell (which is now the new window if one was added)
-      if (auto center = engine.get_selected_center(geometries)) {
-        winapi::set_cursor_pos(center->x, center->y);
+      if (changed) {
+        // Move cursor to selected cell (which is now the new window if one was added)
+        if (auto center = engine.get_selected_center(geometries)) {
+          winapi::set_cursor_pos(center->x, center->y);
+        }
       }
     }
 

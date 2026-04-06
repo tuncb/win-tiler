@@ -124,7 +124,8 @@ void clear_drag_ended();
 // Per-window data for consolidated queries
 struct ManagedWindowInfo {
   HWND_T handle;
-  bool is_fullscreen;
+  bool is_fullscreen = false;
+  bool is_maximized = false;
 };
 
 // Consolidated input state for the main loop

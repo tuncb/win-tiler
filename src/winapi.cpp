@@ -1029,6 +1029,7 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
         ManagedWindowInfo managed_info;
         managed_info.handle = hwnd;
         managed_info.is_fullscreen = is_window_fullscreen(hwnd);
+        managed_info.is_maximized = is_window_maximized(hwnd);
         monitor_windows.push_back(managed_info);
       }
     }

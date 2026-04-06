@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include "engine.h"
+#include "loop.h"
 
 using namespace wintiler;
 using namespace wintiler::ctrl;
@@ -850,6 +851,108 @@ TEST_SUITE("Engine::process_action - ToggleZen") {
     ActionResult result = engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
+}
+
+// =============================================================================
+// loop_detail::apply_zen_to_newly_maximized_windows Tests
+// =============================================================================
+
+TEST_SUITE("loop_detail::apply_zen_to_newly_maximized_windows") {
+  TEST_CASE("first observation of maximized window does not enable zen") {
+    Engine engine = create_two_window_engine();
+    MaximizeTrackingState tracking_state;
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> windows_per_monitor = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, true},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool zen_changed = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, windows_per_monitor, tracking_state);
+
+    CHECK_FALSE(zen_changed);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("normal to maximized transition enables zen") {
+    Engine engine = create_two_window_engine();
+    MaximizeTrackingState tracking_state;
+    auto cell = find_cell_by_leaf_id(engine.system.clusters[0], 1);
+    REQUIRE(cell.has_value());
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> normal_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, false},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool initial_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, normal_windows, tracking_state);
+    CHECK_FALSE(initial_result);
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> maximized_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, true},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool zen_changed = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, maximized_windows, tracking_state);
+
+    CHECK(zen_changed);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == *cell);
+  }
+
+  TEST_CASE("maximizing an already zen window toggles zen off") {
+    Engine engine = create_two_window_engine();
+    MaximizeTrackingState tracking_state;
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> normal_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, false},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool initial_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, normal_windows, tracking_state);
+    CHECK_FALSE(initial_result);
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> maximized_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, true},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool enable_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, maximized_windows, tracking_state);
+    CHECK(enable_result);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+
+    bool restore_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, normal_windows, tracking_state);
+    CHECK_FALSE(restore_result);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+
+    bool disable_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, maximized_windows, tracking_state);
+    CHECK(disable_result);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("fullscreen windows do not enable zen on maximize transition") {
+    Engine engine = create_two_window_engine();
+    MaximizeTrackingState tracking_state;
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> normal_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), false, false},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool initial_result = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, normal_windows, tracking_state);
+    CHECK_FALSE(initial_result);
+
+    std::vector<std::vector<winapi::ManagedWindowInfo>> fullscreen_windows = {
+        {{reinterpret_cast<winapi::HWND_T>(1), true, true},
+         {reinterpret_cast<winapi::HWND_T>(2), false, false}}};
+
+    bool zen_changed = loop_detail::apply_zen_to_newly_maximized_windows(
+        engine.system, fullscreen_windows, tracking_state);
+
+    CHECK_FALSE(zen_changed);
     CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
   }
 }
