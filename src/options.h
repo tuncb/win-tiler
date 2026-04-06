@@ -69,6 +69,7 @@ constexpr float kDefaultGapVertical = 10.0f;
 
 // Default loop interval
 constexpr int kDefaultLoopIntervalMs = 100;
+constexpr bool kDefaultToggleZenOnWindowMaximize = true;
 
 // Default zen percentage (0.0-1.0 range, 1.0 = full cluster)
 constexpr float kDefaultZenPercentage = 0.90f;
@@ -91,6 +92,7 @@ struct GapOptions {
 // Loop configuration
 struct LoopOptions {
   int intervalMs = kDefaultLoopIntervalMs;
+  bool toggle_zen_on_window_maximize = kDefaultToggleZenOnWindowMaximize;
 };
 
 // Render-specific options used by the renderer

@@ -442,6 +442,7 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
 }
 
 } // namespace
+
 void run_loop_mode(GlobalOptionsProvider& provider) {
   const auto& options = provider.options;
 
@@ -694,9 +695,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Update system state with redirect (selection updated inside ctrl::update)
     bool changed = engine.update(current_state, redirect_cluster);
-    bool zen_changed =
-        apply_zen_to_maximized_windows(engine.system, input_state.windows_per_monitor,
-                                       current_desktop.data.has_completed_initial_tile_pass);
+    bool zen_changed = false;
+    if (provider.options.loopOptions.toggle_zen_on_window_maximize) {
+      zen_changed =
+          apply_zen_to_maximized_windows(engine.system, input_state.windows_per_monitor,
+                                         current_desktop.data.has_completed_initial_tile_pass);
+    }
 
     if (changed || zen_changed) {
       // Recompute geometries after update or zen transition

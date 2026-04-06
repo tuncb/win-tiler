@@ -249,6 +249,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     // Build loop section
     toml::table loop;
     loop.insert("interval_ms", options.loopOptions.intervalMs);
+    loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
     root.insert("loop", loop);
 
     // Build visualization section with nested render
@@ -501,6 +502,9 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
     if (auto loop = tbl["loop"].as_table()) {
       if (auto intervalMs = (*loop)["interval_ms"].as_integer()) {
         options.loopOptions.intervalMs = static_cast<int>(intervalMs->get());
+      }
+      if (auto toggleZenOnWindowMaximize = (*loop)["toggle_zen_on_window_maximize"].as_boolean()) {
+        options.loopOptions.toggle_zen_on_window_maximize = toggleZenOnWindowMaximize->get();
       }
     }
 
