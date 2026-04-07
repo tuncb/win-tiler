@@ -1438,6 +1438,11 @@ std::optional<DropMoveResult> perform_drop_move(System& system, size_t source_le
 // Edge types for resize detection
 enum class EdgeType { Left, Right, Top, Bottom };
 
+static bool is_point_inside_monitor(const Cluster& cluster, float x, float y) {
+  return x >= cluster.monitor_x && x < cluster.monitor_x + cluster.monitor_width &&
+         y >= cluster.monitor_y && y < cluster.monitor_y + cluster.monitor_height;
+}
+
 // Calculate new ratio based on edge position change
 static float calculate_new_ratio_from_edge(const Rect& parent_rect, EdgeType edge,
                                            const Rect& actual_rect, float gap_h, float gap_v) {
@@ -1549,6 +1554,12 @@ bool update_split_ratio_from_resize(System& system, int cluster_index, size_t le
     return false;
   }
   const Rect& expected_rect = cluster_geometry[static_cast<size_t>(cell_index)];
+
+  float actual_center_x = actual_window_rect.x + actual_window_rect.width / 2.0f;
+  float actual_center_y = actual_window_rect.y + actual_window_rect.height / 2.0f;
+  if (!is_point_inside_monitor(cluster, actual_center_x, actual_center_y)) {
+    return false;
+  }
 
   // Detect which edges changed
   constexpr float kEdgeTolerance = 2.0f;

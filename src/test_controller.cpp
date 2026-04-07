@@ -1665,6 +1665,23 @@ TEST_SUITE("update_split_ratio_from_resize") {
     CHECK_FALSE(result);
   }
 
+  TEST_CASE("cross-monitor move does not update ratio") {
+    System system = create_test_system({{}, {1, 2, 3}});
+    auto& cluster = system.clusters[1];
+
+    auto geometries = compute_test_geometries(system);
+    auto cell3 = find_cell_by_leaf_id(cluster, 3);
+    REQUIRE(cell3.has_value());
+
+    Rect actual = geometries[1][static_cast<size_t>(*cell3)];
+    actual.x = 100.0f;
+    actual.width += 50.0f;
+
+    bool result = update_split_ratio_from_resize(system, 1, 3, actual, geometries[1]);
+    CHECK_FALSE(result);
+    CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.5f));
+  }
+
   TEST_CASE("invalid cluster fails") {
     System system = create_test_system({{1, 2}});
     Rect dummy{0, 0, 100, 100};
@@ -1713,6 +1730,46 @@ TEST_SUITE("update_split_ratio_from_resize") {
       CHECK(cluster.tree[0].split_ratio >= 0.1f);
       CHECK(cluster.tree[0].split_ratio <= 0.9f);
     }
+  }
+
+  TEST_CASE("cross-monitor move preserves source monitor layout") {
+    System system = create_test_system({{}, {1, 2, 3}});
+
+    auto initial_geometries = compute_test_geometries(system);
+    auto cell3 = find_cell_by_leaf_id(system.clusters[1], 3);
+    REQUIRE(cell3.has_value());
+
+    Rect actual = initial_geometries[1][static_cast<size_t>(*cell3)];
+    actual.x = 100.0f;
+    actual.width += 50.0f;
+
+    bool resize_result =
+        update_split_ratio_from_resize(system, 1, 3, actual, initial_geometries[1]);
+    CHECK_FALSE(resize_result);
+
+    std::vector<ClusterCellUpdateInfo> updates = {{.leaf_ids = {3}}, {.leaf_ids = {1, 2}}};
+    bool update_result = update(system, updates);
+
+    CHECK(update_result);
+    CHECK(system.clusters[1].tree[0].split_ratio == doctest::Approx(0.5f));
+
+    auto left_ids = get_cluster_leaf_ids(system.clusters[0]);
+    auto right_ids = get_cluster_leaf_ids(system.clusters[1]);
+    REQUIRE(left_ids.size() == 1);
+    CHECK(left_ids[0] == 3);
+    CHECK(right_ids.size() == 2);
+    CHECK(std::find(right_ids.begin(), right_ids.end(), 1) != right_ids.end());
+    CHECK(std::find(right_ids.begin(), right_ids.end(), 2) != right_ids.end());
+
+    auto updated_geometries = compute_test_geometries(system);
+    auto cell1 = find_cell_by_leaf_id(system.clusters[1], 1);
+    auto cell2 = find_cell_by_leaf_id(system.clusters[1], 2);
+    REQUIRE(cell1.has_value());
+    REQUIRE(cell2.has_value());
+
+    const Rect& r1 = updated_geometries[1][static_cast<size_t>(*cell1)];
+    const Rect& r2 = updated_geometries[1][static_cast<size_t>(*cell2)];
+    CHECK(r1.width == doctest::Approx(r2.width));
   }
 }
 
