@@ -188,6 +188,10 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
     return;
   }
 
+  if (output.apply_tiles) {
+    apply_tile_positions(system, output.geometries);
+  }
+
   if (output.focus_leaf_id.has_value()) {
     winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*output.focus_leaf_id);
     if (!winapi::set_foreground_window(hwnd)) {
@@ -197,10 +201,6 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
 
   if (output.cursor_pos.has_value()) {
     winapi::set_cursor_pos(output.cursor_pos->x, output.cursor_pos->y);
-  }
-
-  if (output.apply_tiles) {
-    apply_tile_positions(system, output.geometries);
   }
 }
 // Handle config file hot-reload

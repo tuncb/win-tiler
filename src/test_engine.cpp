@@ -756,6 +756,7 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.layout_changed == true);
     CHECK(output.apply_tiles == true);
     CHECK(output.has_completed_initial_tile_pass == true);
+    CHECK(output.focus_leaf_id == std::optional<size_t>{1});
     REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
     CHECK(*engine.system.clusters[0].zen_cell_index == 1);
   }
@@ -1208,6 +1209,12 @@ TEST_SUITE("Engine::process_action - ToggleZen") {
     CHECK(result.success == true);
     CHECK(result.layout_changed == true);
     CHECK(result.apply_tiles == true);
+    REQUIRE(result.focus_leaf_id.has_value());
+    REQUIRE(engine.system.selection.has_value());
+    const auto& selected_cluster =
+        engine.system.clusters[static_cast<size_t>(engine.system.selection->cluster_index)];
+    CHECK(*result.focus_leaf_id ==
+          *selected_cluster.tree[engine.system.selection->cell_index].leaf_id);
     CHECK(engine.system.clusters[0].zen_cell_index.has_value());
     CHECK(*engine.system.clusters[0].zen_cell_index == 1);
   }

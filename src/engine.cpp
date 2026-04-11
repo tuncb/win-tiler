@@ -1282,6 +1282,7 @@ struct AutoZenResult {
   bool layout_changed = false;
   bool apply_tiles = false;
   bool initial_tile_pass_completed = false;
+  std::optional<size_t> focus_leaf_id;
 };
 
 struct DragResult {
@@ -1449,6 +1450,7 @@ update_zen_for_maximized_windows(ctrl::System& system,
 
     if (zen_changed) {
       result.layout_changed = true;
+      result.focus_leaf_id = current_leaf_id;
     }
 
     previous_maximized_leaf_ids[cluster_index] = current_leaf_id;
@@ -1704,6 +1706,9 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     output.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
     output.layout_changed = output.layout_changed || zen_result.layout_changed;
     output.apply_tiles = output.apply_tiles || zen_result.apply_tiles;
+    if (!output.focus_leaf_id.has_value() && zen_result.focus_leaf_id.has_value()) {
+      output.focus_leaf_id = zen_result.focus_leaf_id;
+    }
     if (zen_result.layout_changed) {
       mark_geometries_dirty();
     }
@@ -1948,6 +1953,9 @@ ActionResult Engine::process_action(HotkeyAction action,
     result.success = ctrl::toggle_selected_zen(system);
     result.layout_changed = result.success;
     result.apply_tiles = result.success;
+    if (result.success) {
+      result.focus_leaf_id = get_selected_leaf_id(system);
+    }
     if (!result.success) {
       spdlog::error("ToggleZen: failed to toggle zen mode");
     }
