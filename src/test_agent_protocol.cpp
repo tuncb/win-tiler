@@ -2,6 +2,8 @@
 
 #include <doctest/doctest.h>
 
+#include <nlohmann/json.hpp>
+
 #include "agent_protocol.h"
 
 using namespace wintiler;
@@ -122,6 +124,8 @@ TEST_SUITE("agent_protocol") {
     AgentStateResponse state;
     state.desktop_id = "{desktop}";
     state.split_mode = "Zigzag";
+    AgentRect actual_rect{10, 20, 300, 400};
+    AgentRect layout_rect{12, 24, 296, 392};
     state.windows.push_back(AgentWindowSnapshot{
         .window_id = format_window_id(static_cast<size_t>(0x9999)),
         .pid = 42,
@@ -131,7 +135,9 @@ TEST_SUITE("agent_protocol") {
         .monitor_index = 0,
         .cluster_index = 1,
         .cell_index = 2,
-        .rect = AgentRect{10, 20, 300, 400},
+        .rect = actual_rect,
+        .actual_rect = actual_rect,
+        .layout_rect = layout_rect,
         .is_managed = true,
         .is_foreground = false,
         .is_maximized = false,
@@ -145,11 +151,20 @@ TEST_SUITE("agent_protocol") {
     response.payload = state;
 
     auto json = serialize_agent_response(response);
+    auto parsed_json = nlohmann::json::parse(json);
 
     CHECK(json.find("\"id\":\"5\"") != std::string::npos);
     CHECK(json.find("\"split_mode\":\"Zigzag\"") != std::string::npos);
     CHECK(json.find("\"window_id\":\"hwnd:") != std::string::npos);
     CHECK(json.find("\"monitor_index\":0") != std::string::npos);
+    CHECK(parsed_json["result"]["windows"][0]["actual_rect"]["x"] == 10);
+    CHECK(parsed_json["result"]["windows"][0]["actual_rect"]["y"] == 20);
+    CHECK(parsed_json["result"]["windows"][0]["actual_rect"]["width"] == 300);
+    CHECK(parsed_json["result"]["windows"][0]["actual_rect"]["height"] == 400);
+    CHECK(parsed_json["result"]["windows"][0]["layout_rect"]["x"] == 12);
+    CHECK(parsed_json["result"]["windows"][0]["layout_rect"]["y"] == 24);
+    CHECK(parsed_json["result"]["windows"][0]["layout_rect"]["width"] == 296);
+    CHECK(parsed_json["result"]["windows"][0]["layout_rect"]["height"] == 392);
   }
 
   TEST_CASE("serializes mutation response") {

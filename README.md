@@ -148,7 +148,7 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 
 `agent stdio` reads one JSON request per input line and writes one JSON response per output line. The default transport is also `stdio`, so `win-tiler agent` and `win-tiler agent stdio` are equivalent.
 
-Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. `move_window_to_monitor` supports empty target monitors; when the target already has managed windows, `anchor_window_id` can be used to choose the insertion point.
+Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. In state responses, `actual_rect` reports the live OS window rect when it is available, `layout_rect` reports the engine's computed tile geometry when `include_layout` is enabled, and `rect` is kept as a compatibility field that prefers the live OS rect and only falls back to `layout_rect` if the live rect cannot be queried. `move_window_to_monitor` supports empty target monitors; when the target already has managed windows, `anchor_window_id` can be used to choose the insertion point.
 
 Example session:
 

@@ -68,6 +68,8 @@ struct AgentWindowSnapshot {
   std::optional<int> cluster_index;
   std::optional<int> cell_index;
   AgentRect rect;
+  std::optional<AgentRect> actual_rect;
+  std::optional<AgentRect> layout_rect;
   bool is_managed = false;
   bool is_foreground = false;
   bool is_maximized = false;

@@ -10,6 +10,8 @@ Replace placeholder values such as `hwnd:REPLACE_WITH_WINDOW_ID` with real windo
 
 `move_window_to_monitor` can target an empty monitor without an anchor. When the target monitor already contains managed windows, supply `anchor_window_id` if you want to control where the moved window is inserted.
 
+When `get_state` uses `include_layout: true`, each window can report both the live OS rect (`rect` / `actual_rect`) and the engine's intended tile geometry (`layout_rect`).
+
 Example usage:
 
 ```powershell

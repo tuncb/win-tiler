@@ -74,6 +74,13 @@ json to_json_value(const AgentRect& rect) {
   return json{{"x", rect.x}, {"y", rect.y}, {"width", rect.width}, {"height", rect.height}};
 }
 
+json to_json_value(const std::optional<AgentRect>& rect) {
+  if (!rect.has_value()) {
+    return json(nullptr);
+  }
+  return to_json_value(*rect);
+}
+
 json to_json_value(const AgentWindowSnapshot& window) {
   json value = {
       {"window_id", window.window_id},
@@ -86,6 +93,8 @@ json to_json_value(const AgentWindowSnapshot& window) {
        window.cluster_index.has_value() ? json(*window.cluster_index) : json(nullptr)},
       {"cell_index", window.cell_index.has_value() ? json(*window.cell_index) : json(nullptr)},
       {"rect", to_json_value(window.rect)},
+      {"actual_rect", to_json_value(window.actual_rect)},
+      {"layout_rect", to_json_value(window.layout_rect)},
       {"is_managed", window.is_managed},
       {"is_foreground", window.is_foreground},
       {"is_maximized", window.is_maximized},

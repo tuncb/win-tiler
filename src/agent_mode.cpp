@@ -196,7 +196,12 @@ AgentStateResponse build_state_response(const AgentSyncSnapshot& snapshot,
       window_snapshot.title = std::move(info.title);
       window_snapshot.class_name = std::move(info.className);
 
-      bool used_layout_rect = false;
+      auto actual_rect = winapi::get_window_rect(managed_window.handle);
+      if (actual_rect.has_value()) {
+        window_snapshot.rect = make_agent_rect(*actual_rect);
+        window_snapshot.actual_rect = window_snapshot.rect;
+      }
+
       auto cell = snapshot.engine->find_leaf(leaf_id);
       if (cell.has_value()) {
         window_snapshot.is_managed = true;
@@ -209,10 +214,9 @@ AgentStateResponse build_state_response(const AgentSyncSnapshot& snapshot,
                 cell->cell_index >= 0 &&
                 static_cast<size_t>(cell->cell_index) <
                     geometries[static_cast<size_t>(cell->cluster_index)].size()) {
-              window_snapshot.rect =
+              window_snapshot.layout_rect =
                   make_agent_rect(geometries[static_cast<size_t>(cell->cluster_index)]
                                             [static_cast<size_t>(cell->cell_index)]);
-              used_layout_rect = true;
             }
           }
         }
@@ -222,11 +226,8 @@ AgentStateResponse build_state_response(const AgentSyncSnapshot& snapshot,
         continue;
       }
 
-      if (!used_layout_rect) {
-        auto rect = winapi::get_window_rect(managed_window.handle);
-        if (rect.has_value()) {
-          window_snapshot.rect = make_agent_rect(*rect);
-        }
+      if (!actual_rect.has_value() && window_snapshot.layout_rect.has_value()) {
+        window_snapshot.rect = *window_snapshot.layout_rect;
       }
 
       response.windows.push_back(std::move(window_snapshot));
