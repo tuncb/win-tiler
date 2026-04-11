@@ -101,7 +101,7 @@ TEST_SUITE("argument_parser") {
 
 TEST_SUITE("version") {
   TEST_CASE("version string includes current prerelease label") {
-    CHECK(get_version_string() == "0.3.1-alpha");
+    CHECK(get_version_string() == "0.4.0-alpha");
   }
 }
 
