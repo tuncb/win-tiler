@@ -799,6 +799,41 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.apply_tiles == true);
     CHECK(geometries_equal(output.geometries, expected_geometries));
   }
+
+  TEST_CASE("first frame requests initial tile apply") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == true);
+    CHECK(output.has_completed_initial_tile_pass == true);
+    CHECK(output.geometries.size() == engine.system.clusters.size());
+  }
+
+  TEST_CASE("steady frame after initial pass does not request tile apply") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == false);
+    CHECK(output.has_completed_initial_tile_pass == true);
+    CHECK(output.geometries.size() == engine.system.clusters.size());
+  }
 }
 
 // =============================================================================

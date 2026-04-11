@@ -254,6 +254,36 @@ void apply_tile_positions(const ctrl::System& system,
   }
 }
 
+void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
+                        ToastState& toast) {
+  if (output.clear_drag_ended) {
+    winapi::clear_drag_ended();
+  }
+
+  if (output.toast_message.has_value()) {
+    toast.show(*output.toast_message);
+  }
+
+  if (output.control != LoopControl::Continue) {
+    return;
+  }
+
+  if (output.focus_leaf_id.has_value()) {
+    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*output.focus_leaf_id);
+    if (!winapi::set_foreground_window(hwnd)) {
+      spdlog::error("Failed to set foreground window");
+    }
+  }
+
+  if (output.cursor_pos.has_value()) {
+    winapi::set_cursor_pos(output.cursor_pos->x, output.cursor_pos->y);
+  }
+
+  if (output.apply_tiles) {
+    apply_tile_positions(system, output.geometries);
+  }
+}
+
 std::vector<ctrl::ClusterInitInfo>
 create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
                                    const GlobalOptions& options) {
@@ -464,16 +494,7 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         provider.options.loopOptions.toggle_zen_on_window_maximize, poll_hotkey_action());
 
     EngineFrameOutput frame_output = engine.process_frame(frame_input);
-
-    if (frame_output.clear_drag_ended) {
-      winapi::clear_drag_ended();
-    }
-    current_desktop.data.has_completed_initial_tile_pass =
-        frame_output.has_completed_initial_tile_pass;
-
-    if (frame_output.toast_message.has_value()) {
-      toast.show(*frame_output.toast_message);
-    }
+    apply_frame_output(frame_output, engine.system, toast);
 
     if (frame_output.control == LoopControl::Exit) {
       spdlog::info("Exit hotkey pressed, shutting down...");
@@ -487,21 +508,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       continue;
     }
 
-    if (frame_output.focus_leaf_id.has_value()) {
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*frame_output.focus_leaf_id);
-      if (!winapi::set_foreground_window(hwnd)) {
-        spdlog::error("Failed to set foreground window");
-      }
-    }
-
-    if (frame_output.cursor_pos.has_value()) {
-      winapi::set_cursor_pos(frame_output.cursor_pos->x, frame_output.cursor_pos->y);
-    }
-
+    current_desktop.data.has_completed_initial_tile_pass =
+        frame_output.has_completed_initial_tile_pass;
     geometries = std::move(frame_output.geometries);
-
-    // Apply tile positions
-    apply_tile_positions(engine.system, geometries);
 
     // Render cell system overlay
     renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,

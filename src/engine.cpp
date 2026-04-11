@@ -181,6 +181,12 @@ Engine::update_selection_from_hover(float global_x, float global_y,
 EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   EngineFrameOutput output;
   output.has_completed_initial_tile_pass = input.has_completed_initial_tile_pass;
+
+  if (!input.has_completed_initial_tile_pass) {
+    output.apply_tiles = true;
+    output.has_completed_initial_tile_pass = true;
+  }
+
   std::vector<std::vector<ctrl::Rect>> geometries;
   bool has_geometries = false;
   bool geometries_dirty = false;
