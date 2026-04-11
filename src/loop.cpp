@@ -170,6 +170,51 @@ extract_managed_window_state_from_input(const winapi::LoopInputState& input_stat
   return result;
 }
 
+std::optional<HotkeyAction> poll_hotkey_action() {
+  auto hotkey_id = winapi::check_keyboard_action();
+  if (!hotkey_id.has_value()) {
+    return std::nullopt;
+  }
+  return id_to_hotkey_action(*hotkey_id);
+}
+
+EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_state,
+                                          const LoopDesktopData& desktop_data, float gap_h,
+                                          float gap_v, float zen_pct, bool auto_zen_on_maximize,
+                                          std::optional<HotkeyAction> hotkey_action) {
+  EngineFrameInput frame_input;
+  frame_input.cluster_updates = extract_window_state_from_input(input_state);
+  frame_input.managed_windows = extract_managed_window_state_from_input(input_state);
+  frame_input.hotkey_action = hotkey_action;
+  frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
+  frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
+  frame_input.gap_h = gap_h;
+  frame_input.gap_v = gap_v;
+  frame_input.zen_pct = zen_pct;
+
+  if (input_state.cursor_pos.has_value()) {
+    frame_input.cursor_pos = ctrl::Point{input_state.cursor_pos->x, input_state.cursor_pos->y};
+  }
+
+  if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
+    CompletedDragRequest drag_request;
+    drag_request.leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
+    drag_request.do_exchange = input_state.is_ctrl_pressed;
+    drag_request.cursor_pos = frame_input.cursor_pos;
+
+    auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
+    if (actual_rect_opt.has_value()) {
+      drag_request.actual_window_rect = ctrl::Rect{
+          static_cast<float>(actual_rect_opt->x), static_cast<float>(actual_rect_opt->y),
+          static_cast<float>(actual_rect_opt->width), static_cast<float>(actual_rect_opt->height)};
+    }
+
+    frame_input.completed_drag = drag_request;
+  }
+
+  return frame_input;
+}
+
 // Helper: Apply tile positions from geometries
 void apply_tile_positions(const ctrl::System& system,
                           const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -338,14 +383,12 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     // Check for manual pause (hotkey-toggled)
     if (is_manually_paused) {
       // Only check for unpause hotkey when manually paused
-      if (auto hotkey_id = winapi::check_keyboard_action()) {
-        auto action_opt = id_to_hotkey_action(*hotkey_id);
-        if (action_opt.has_value() && *action_opt == HotkeyAction::TogglePause) {
-          is_manually_paused = false;
-          spdlog::info("Manual pause deactivated");
-          toast.show("Resumed");
-          // Fall through to resume normal processing immediately
-        }
+      auto action_opt = poll_hotkey_action();
+      if (action_opt.has_value() && *action_opt == HotkeyAction::TogglePause) {
+        is_manually_paused = false;
+        spdlog::info("Manual pause deactivated");
+        toast.show("Resumed");
+        // Fall through to resume normal processing immediately
       }
       if (is_manually_paused) {
         continue; // Still paused, skip this iteration
@@ -390,10 +433,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     gap_v = provider.options.gapOptions.vertical;
     zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
 
-    // Compute geometries once per frame
-    geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
-
     // Skip all processing while user is dragging a window - only render
+    geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
     if (input_state.is_any_window_being_moved) {
       renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
                        engine.stored_cell, toast.get_visible_message());
@@ -404,36 +445,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       continue;
     }
 
-    // Check if a drag operation just completed
-    if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
-      CompletedDragRequest drag_request;
-      drag_request.leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-      drag_request.do_exchange = input_state.is_ctrl_pressed;
-      if (input_state.cursor_pos.has_value()) {
-        drag_request.cursor_pos = ctrl::Point{input_state.cursor_pos->x, input_state.cursor_pos->y};
-      }
-      auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
-      if (actual_rect_opt.has_value()) {
-        drag_request.actual_window_rect = ctrl::Rect{static_cast<float>(actual_rect_opt->x),
-                                                     static_cast<float>(actual_rect_opt->y),
-                                                     static_cast<float>(actual_rect_opt->width),
-                                                     static_cast<float>(actual_rect_opt->height)};
-      }
-
-      DragResult drag_result = engine.process_completed_drag(drag_request, geometries);
-      if (drag_result.clear_drag_ended) {
-        winapi::clear_drag_ended();
-      }
-      if (drag_result.cursor_pos.has_value()) {
-        winapi::set_cursor_pos(drag_result.cursor_pos->x, drag_result.cursor_pos->y);
-      }
-      if (drag_result.layout_changed) {
-        geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
-      }
-    }
-
     // Check for config file changes and hot-reload
     handle_config_refresh(provider, engine, toast);
+    gap_h = provider.options.gapOptions.horizontal;
+    gap_v = provider.options.gapOptions.vertical;
+    zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
 
     // Check for monitor configuration changes
     if (handle_monitor_change(monitors, provider.options, engine)) {
@@ -443,112 +459,46 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       print_tile_layout(engine.system, geometries);
     }
 
-    // Check for keyboard hotkeys (kept separate - has side effects on message queue)
-    if (auto hotkey_id = winapi::check_keyboard_action()) {
-      auto action_opt = id_to_hotkey_action(*hotkey_id);
-      if (action_opt.has_value()) {
-        HotkeyAction action = *action_opt;
+    EngineFrameInput frame_input = build_engine_frame_input(
+        input_state, current_desktop.data, gap_h, gap_v, zen_pct,
+        provider.options.loopOptions.toggle_zen_on_window_maximize, poll_hotkey_action());
 
-        // Handle exit specially
-        if (action == HotkeyAction::Exit) {
-          spdlog::info("Exit hotkey pressed, shutting down...");
-          break;
-        }
+    EngineFrameOutput frame_output = engine.process_frame(frame_input);
 
-        // Handle TogglePause - activates manual pause
-        if (action == HotkeyAction::TogglePause) {
-          is_manually_paused = true;
-          spdlog::info("Manual pause activated");
-          overlay::clear();
-          continue; // Skip rest of iteration
-        }
+    if (frame_output.clear_drag_ended) {
+      winapi::clear_drag_ended();
+    }
+    current_desktop.data.has_completed_initial_tile_pass =
+        frame_output.has_completed_initial_tile_pass;
 
-        // Handle CycleSplitMode with toast
-        if (action == HotkeyAction::CycleSplitMode) {
-          auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
-          if (result.success && result.toast_message.has_value()) {
-            toast.show(*result.toast_message);
-          }
-        } else {
-          // Process other actions through engine
-          auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
+    if (frame_output.toast_message.has_value()) {
+      toast.show(*frame_output.toast_message);
+    }
 
-          if (result.success && result.focus_leaf_id.has_value()) {
-            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*result.focus_leaf_id);
-            if (!winapi::set_foreground_window(hwnd)) {
-              spdlog::error("Failed to set foreground window");
-            }
-          }
+    if (frame_output.control == LoopControl::Exit) {
+      spdlog::info("Exit hotkey pressed, shutting down...");
+      break;
+    }
 
-          if (result.success && result.cursor_pos.has_value()) {
-            winapi::set_cursor_pos(result.cursor_pos->x, result.cursor_pos->y);
-          }
-        }
+    if (frame_output.control == LoopControl::EnterManualPause) {
+      is_manually_paused = true;
+      spdlog::info("Manual pause activated");
+      overlay::clear();
+      continue;
+    }
 
-        // Recompute geometries after any action
-        geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+    if (frame_output.focus_leaf_id.has_value()) {
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*frame_output.focus_leaf_id);
+      if (!winapi::set_foreground_window(hwnd)) {
+        spdlog::error("Failed to set foreground window");
       }
     }
 
-    // Extract window state from consolidated input
-    auto current_state = extract_window_state_from_input(input_state);
-
-    // Determine redirect cluster for new windows
-    std::optional<int> redirect_cluster;
-
-    // Check if mouse is over an empty cluster (priority)
-    if (input_state.cursor_pos.has_value()) {
-      float cursor_x = static_cast<float>(input_state.cursor_pos->x);
-      float cursor_y = static_cast<float>(input_state.cursor_pos->y);
-      auto hover_info = engine.get_hover_info(cursor_x, cursor_y, geometries);
-
-      if (hover_info.cluster_index.has_value()) {
-        size_t hover_idx = *hover_info.cluster_index;
-        if (hover_idx < engine.system.clusters.size() &&
-            ctrl::get_cluster_leaf_ids(engine.system.clusters[hover_idx]).empty()) {
-          // Empty cluster under mouse - redirect new windows here
-          redirect_cluster = static_cast<int>(hover_idx);
-        }
-      }
+    if (frame_output.cursor_pos.has_value()) {
+      winapi::set_cursor_pos(frame_output.cursor_pos->x, frame_output.cursor_pos->y);
     }
 
-    // If no empty cluster redirect, use selection's cluster
-    if (!redirect_cluster.has_value() && engine.system.selection.has_value()) {
-      redirect_cluster = engine.system.selection->cluster_index;
-    }
-
-    // Update system state with redirect (selection updated inside ctrl::update)
-    UpdateResult update_result = engine.update(current_state, redirect_cluster);
-    bool changed = update_result.topology_changed;
-    bool zen_changed = false;
-    if (provider.options.loopOptions.toggle_zen_on_window_maximize) {
-      AutoZenResult zen_result = engine.update_zen_for_maximized_windows(
-          extract_managed_window_state_from_input(input_state),
-          current_desktop.data.has_completed_initial_tile_pass);
-      current_desktop.data.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
-      zen_changed = zen_result.layout_changed;
-    }
-
-    if (changed || zen_changed) {
-      // Recompute geometries after update or zen transition
-      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
-
-      if (changed) {
-        // Move cursor to selected cell (which is now the new window if one was added)
-        if (update_result.cursor_pos.has_value()) {
-          winapi::set_cursor_pos(update_result.cursor_pos->x, update_result.cursor_pos->y);
-        } else if (auto center = engine.get_selected_center(geometries)) {
-          winapi::set_cursor_pos(center->x, center->y);
-        }
-      }
-    }
-
-    // Update selection based on mouse hover position (skip if we just moved cursor)
-    if (!changed && input_state.cursor_pos.has_value()) {
-      [[maybe_unused]] HoverSelectionResult hover_result = engine.update_selection_from_hover(
-          static_cast<float>(input_state.cursor_pos->x),
-          static_cast<float>(input_state.cursor_pos->y), geometries);
-    }
+    geometries = std::move(frame_output.geometries);
 
     // Apply tile positions
     apply_tile_positions(engine.system, geometries);

@@ -178,6 +178,103 @@ Engine::update_selection_from_hover(float global_x, float global_y,
   return result;
 }
 
+EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
+  EngineFrameOutput output;
+  output.has_completed_initial_tile_pass = input.has_completed_initial_tile_pass;
+  output.geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+
+  if (input.completed_drag.has_value()) {
+    DragResult drag_result = process_completed_drag(*input.completed_drag, output.geometries);
+    output.clear_drag_ended = drag_result.clear_drag_ended;
+    output.selection_changed = output.selection_changed || drag_result.selection_changed;
+    output.layout_changed = output.layout_changed || drag_result.layout_changed;
+    output.apply_tiles = output.apply_tiles || drag_result.apply_tiles;
+    if (drag_result.cursor_pos.has_value()) {
+      output.cursor_pos = drag_result.cursor_pos;
+    }
+    if (drag_result.layout_changed) {
+      output.geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+    }
+  }
+
+  if (input.hotkey_action.has_value()) {
+    ActionResult action_result = process_action(*input.hotkey_action, output.geometries,
+                                                input.gap_h, input.gap_v, input.zen_pct);
+    output.control = action_result.control;
+    output.selection_changed = output.selection_changed || action_result.selection_changed;
+    output.layout_changed = output.layout_changed || action_result.layout_changed;
+    output.apply_tiles = output.apply_tiles || action_result.apply_tiles;
+    if (action_result.focus_leaf_id.has_value()) {
+      output.focus_leaf_id = action_result.focus_leaf_id;
+    }
+    if (action_result.cursor_pos.has_value()) {
+      output.cursor_pos = action_result.cursor_pos;
+    }
+    if (action_result.toast_message.has_value()) {
+      output.toast_message = action_result.toast_message;
+    }
+    if (action_result.layout_changed) {
+      output.geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+    }
+    if (output.control != LoopControl::Continue) {
+      return output;
+    }
+  }
+
+  std::optional<int> redirect_cluster_index;
+  if (input.cursor_pos.has_value()) {
+    auto hover_info = get_hover_info(static_cast<float>(input.cursor_pos->x),
+                                     static_cast<float>(input.cursor_pos->y), output.geometries);
+    if (hover_info.cluster_index.has_value()) {
+      size_t hover_idx = *hover_info.cluster_index;
+      if (hover_idx < system.clusters.size() &&
+          ctrl::get_cluster_leaf_ids(system.clusters[hover_idx]).empty()) {
+        redirect_cluster_index = static_cast<int>(hover_idx);
+      }
+    }
+  }
+  if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
+    redirect_cluster_index = system.selection->cluster_index;
+  }
+
+  UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index);
+  output.topology_changed = output.topology_changed || update_result.topology_changed;
+  output.selection_changed = output.selection_changed || update_result.selection_changed;
+  output.layout_changed = output.layout_changed || update_result.layout_changed;
+  output.apply_tiles = output.apply_tiles || update_result.apply_tiles;
+  if (update_result.layout_changed) {
+    output.geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+  }
+  if (update_result.topology_changed) {
+    if (update_result.cursor_pos.has_value()) {
+      output.cursor_pos = update_result.cursor_pos;
+    } else if (auto center = get_selected_center(output.geometries)) {
+      output.cursor_pos = center;
+    }
+  }
+
+  if (input.auto_zen_on_maximize) {
+    AutoZenResult zen_result = update_zen_for_maximized_windows(
+        input.managed_windows, input.has_completed_initial_tile_pass);
+    output.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
+    output.layout_changed = output.layout_changed || zen_result.layout_changed;
+    output.apply_tiles = output.apply_tiles || zen_result.apply_tiles;
+    if (zen_result.layout_changed) {
+      output.geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+    }
+  }
+
+  if (input.update_hover_selection && input.cursor_pos.has_value() && !output.selection_changed &&
+      !output.cursor_pos.has_value()) {
+    HoverSelectionResult hover_result =
+        update_selection_from_hover(static_cast<float>(input.cursor_pos->x),
+                                    static_cast<float>(input.cursor_pos->y), output.geometries);
+    output.selection_changed = output.selection_changed || hover_result.selection_changed;
+  }
+
+  return output;
+}
+
 AutoZenResult Engine::update_zen_for_maximized_windows(
     const std::vector<std::vector<ManagedWindowState>>& windows,
     bool has_completed_initial_tile_pass) {

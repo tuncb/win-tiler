@@ -69,6 +69,34 @@ struct DragResult {
   std::optional<ctrl::Point> cursor_pos;
 };
 
+struct EngineFrameInput {
+  std::vector<ctrl::ClusterCellUpdateInfo> cluster_updates;
+  std::vector<std::vector<ManagedWindowState>> managed_windows;
+  std::optional<HotkeyAction> hotkey_action;
+  std::optional<ctrl::Point> cursor_pos;
+  std::optional<CompletedDragRequest> completed_drag;
+  bool auto_zen_on_maximize = false;
+  bool update_hover_selection = true;
+  bool has_completed_initial_tile_pass = false;
+  float gap_h = 0.0f;
+  float gap_v = 0.0f;
+  float zen_pct = 0.0f;
+};
+
+struct EngineFrameOutput {
+  LoopControl control = LoopControl::Continue;
+  bool topology_changed = false;
+  bool selection_changed = false;
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  bool clear_drag_ended = false;
+  bool has_completed_initial_tile_pass = false;
+  std::optional<size_t> focus_leaf_id;
+  std::optional<ctrl::Point> cursor_pos;
+  std::optional<std::string> toast_message;
+  std::vector<std::vector<ctrl::Rect>> geometries;
+};
+
 // Information about what the mouse is hovering over
 struct HoverInfo {
   std::optional<size_t> cluster_index;            // Which cluster mouse is over (even if empty)
@@ -101,6 +129,9 @@ struct Engine {
   [[nodiscard]] HoverSelectionResult
   update_selection_from_hover(float global_x, float global_y,
                               const std::vector<std::vector<ctrl::Rect>>& global_geometries);
+
+  // Process a full frame of input and return explicit output for the loop to apply
+  [[nodiscard]] EngineFrameOutput process_frame(const EngineFrameInput& input);
 
   // Update zen state from maximized managed windows
   [[nodiscard]] AutoZenResult

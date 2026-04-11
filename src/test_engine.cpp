@@ -52,6 +52,15 @@ std::vector<std::vector<Rect>> compute_default_geometries(const Engine& engine) 
   return engine.compute_geometries(10.0f, 10.0f, 0.0f);
 }
 
+std::vector<ClusterCellUpdateInfo> build_current_cluster_updates(const Engine& engine) {
+  std::vector<ClusterCellUpdateInfo> updates;
+  updates.reserve(engine.system.clusters.size());
+  for (const auto& cluster : engine.system.clusters) {
+    updates.push_back({get_cluster_leaf_ids(cluster), cluster.has_fullscreen_cell});
+  }
+  return updates;
+}
+
 // Helper to set selection on a system
 void set_selection(Engine& engine, int cluster_index, int cell_index) {
   engine.system.selection = CellIndicatorByIndex{cluster_index, cell_index};
@@ -641,6 +650,106 @@ TEST_SUITE("Engine::process_completed_drag") {
     CHECK(result.handled == false);
     CHECK(result.layout_changed == false);
     CHECK(result.apply_tiles == false);
+  }
+}
+
+// =============================================================================
+// Engine::process_frame Tests
+// =============================================================================
+
+TEST_SUITE("Engine::process_frame") {
+  TEST_CASE("exit hotkey returns loop control and final geometries") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.hotkey_action = HotkeyAction::Exit;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Exit);
+    CHECK(output.geometries.size() == engine.system.clusters.size());
+  }
+
+  TEST_CASE("topology update returns final geometry and cursor position") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2, 4}, false}, {{3}, false}};
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.topology_changed == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(output.cursor_pos.has_value());
+    REQUIRE(output.geometries.size() == 2);
+    CHECK(output.geometries[0].size() ==
+          static_cast<size_t>(engine.system.clusters[0].tree.size()));
+  }
+
+  TEST_CASE("navigation hotkey returns focus and cursor from single frame call") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.hotkey_action = HotkeyAction::NavigateRight;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.selection_changed == true);
+    CHECK(output.focus_leaf_id.has_value());
+    CHECK(output.cursor_pos.has_value());
+  }
+
+  TEST_CASE("hover selection happens inside process_frame") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+    auto geoms = compute_default_geometries(engine);
+    const auto& target_rect = geoms[0][2];
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.cursor_pos = ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                                   static_cast<long>(target_rect.y + target_rect.height / 2.0f)};
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.selection_changed == true);
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cell_index == 2);
+  }
+
+  TEST_CASE("auto zen is applied inside process_frame") {
+    Engine engine = create_two_window_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{{1, false, true}}};
+    input.auto_zen_on_maximize = true;
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.zen_pct = 0.90f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(output.has_completed_initial_tile_pass == true);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
   }
 }
 
