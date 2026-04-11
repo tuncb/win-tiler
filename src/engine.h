@@ -93,6 +93,7 @@ struct HoverInfo {
 struct Engine {
   ctrl::System system;
   std::optional<StoredCell> stored_cell;
+  std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
 
   // Initialize engine from cluster init info
   void init(const std::vector<ctrl::ClusterInitInfo>& infos);

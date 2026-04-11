@@ -92,6 +92,38 @@ void set_selection(Engine& engine, int cluster_index, int cell_index) {
   engine.system.selection = CellIndicatorByIndex{cluster_index, cell_index};
 }
 
+std::optional<CellIndicatorByIndex> find_cell_for_leaf_id(const Engine& engine, size_t leaf_id) {
+  for (size_t cluster_index = 0; cluster_index < engine.system.clusters.size(); ++cluster_index) {
+    auto cell_index = find_cell_by_leaf_id(engine.system.clusters[cluster_index], leaf_id);
+    if (cell_index.has_value()) {
+      return CellIndicatorByIndex{static_cast<int>(cluster_index), *cell_index};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Point>
+get_leaf_center_from_geometries(const Engine& engine,
+                                const std::vector<std::vector<Rect>>& geometries, size_t leaf_id) {
+  auto cell = find_cell_for_leaf_id(engine, leaf_id);
+  if (!cell.has_value()) {
+    return std::nullopt;
+  }
+
+  int cluster_index = cell->cluster_index;
+  int cell_index = cell->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= geometries.size()) {
+    return std::nullopt;
+  }
+  if (cell_index < 0 ||
+      static_cast<size_t>(cell_index) >= geometries[static_cast<size_t>(cluster_index)].size()) {
+    return std::nullopt;
+  }
+
+  return get_rect_center(
+      geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)]);
+}
+
 } // namespace
 
 // =============================================================================
@@ -481,7 +513,12 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.clear_drag_ended == true);
     CHECK(output.layout_changed == true);
     CHECK(output.apply_tiles == true);
-    CHECK(output.cursor_pos.has_value());
+    REQUIRE(output.cursor_pos.has_value());
+    auto expected_center =
+        get_leaf_center_from_geometries(engine, output.geometries, source_leaf_id);
+    REQUIRE(expected_center.has_value());
+    CHECK(output.cursor_pos->x == expected_center->x);
+    CHECK(output.cursor_pos->y == expected_center->y);
   }
 
   TEST_CASE("completed drag resize is handled inside process_frame") {
@@ -545,6 +582,13 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.layout_changed == false);
     CHECK(output.apply_tiles == true);
     CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+
+    input.has_completed_initial_tile_pass = true;
+    EngineFrameOutput steady_output = engine.process_frame(input);
+
+    CHECK(steady_output.layout_changed == false);
+    CHECK(steady_output.apply_tiles == false);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
   }
 
   TEST_CASE("auto zen is applied inside process_frame") {
@@ -566,6 +610,72 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.has_completed_initial_tile_pass == true);
     REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
     CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+  }
+
+  TEST_CASE("auto zen remains after tiling clears the maximized flag on the next frame") {
+    Engine engine = create_two_window_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{{1, false, true}}};
+    input.auto_zen_on_maximize = true;
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.zen_pct = 0.90f;
+
+    EngineFrameOutput first_output = engine.process_frame(input);
+
+    CHECK(first_output.layout_changed == true);
+    CHECK(first_output.apply_tiles == true);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+
+    input.managed_windows = {{{1, false, false}}};
+
+    EngineFrameOutput second_output = engine.process_frame(input);
+
+    CHECK(second_output.layout_changed == false);
+    CHECK(second_output.apply_tiles == false);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+  }
+
+  TEST_CASE("a new maximize edge toggles zen back off") {
+    Engine engine = create_two_window_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{{1, false, true}}};
+    input.auto_zen_on_maximize = true;
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.zen_pct = 0.90f;
+
+    EngineFrameOutput maximized_output = engine.process_frame(input);
+
+    CHECK(maximized_output.layout_changed == true);
+    CHECK(maximized_output.apply_tiles == true);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+
+    // Simulate the real loop: tiling restores the maximized window to normal state.
+    input.managed_windows = {{{1, false, false}}};
+    EngineFrameOutput steady_output = engine.process_frame(input);
+
+    CHECK(steady_output.layout_changed == false);
+    CHECK(steady_output.apply_tiles == false);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+
+    // A later maximize of the same window is a fresh edge and toggles zen back off.
+    input.managed_windows = {{{1, false, true}}};
+    EngineFrameOutput toggled_off_output = engine.process_frame(input);
+
+    CHECK(toggled_off_output.layout_changed == true);
+    CHECK(toggled_off_output.apply_tiles == true);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
   }
 
   TEST_CASE("returned geometries match final engine state after multiple layout mutations") {

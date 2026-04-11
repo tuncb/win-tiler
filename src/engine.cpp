@@ -119,7 +119,7 @@ struct DragResult {
   bool layout_changed = false;
   bool apply_tiles = false;
   bool clear_drag_ended = false;
-  std::optional<ctrl::Point> cursor_pos;
+  std::optional<size_t> cursor_leaf_id;
 };
 
 void store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& stored_cell) {
@@ -181,19 +181,50 @@ get_selected_center(const ctrl::System& system,
   return ctrl::get_rect_center(rect);
 }
 
+std::optional<ctrl::Point> get_leaf_center(const ctrl::System& system, size_t leaf_id,
+                                           const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  auto cell = find_cell_by_leaf_id(system, leaf_id);
+  if (!cell.has_value()) {
+    return std::nullopt;
+  }
+
+  int cluster_index = cell->cluster_index;
+  int cell_index = cell->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= geometries.size()) {
+    return std::nullopt;
+  }
+  if (cell_index < 0 ||
+      static_cast<size_t>(cell_index) >= geometries[static_cast<size_t>(cluster_index)].size()) {
+    return std::nullopt;
+  }
+
+  return ctrl::get_rect_center(
+      geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)]);
+}
+
+void ensure_maximized_tracking_size(std::vector<std::optional<size_t>>& previous_maximized_leaf_ids,
+                                    size_t cluster_count) {
+  previous_maximized_leaf_ids.resize(cluster_count);
+}
+
 AutoZenResult
 update_zen_for_maximized_windows(ctrl::System& system,
+                                 std::vector<std::optional<size_t>>& previous_maximized_leaf_ids,
                                  const std::vector<std::vector<ManagedWindowState>>& windows,
                                  bool has_completed_initial_tile_pass) {
   AutoZenResult result;
   result.initial_tile_pass_completed = true;
+  ensure_maximized_tracking_size(previous_maximized_leaf_ids, system.clusters.size());
 
-  if (!has_completed_initial_tile_pass) {
-    return result;
-  }
+  std::vector<std::optional<size_t>> current_maximized_leaf_ids(system.clusters.size());
+  size_t cluster_count = std::min(system.clusters.size(), windows.size());
+  for (size_t cluster_index = 0; cluster_index < cluster_count; ++cluster_index) {
+    const auto& cluster = system.clusters[cluster_index];
+    if (cluster.has_fullscreen_cell) {
+      continue;
+    }
 
-  for (const auto& monitor_windows : windows) {
-    for (const auto& window : monitor_windows) {
+    for (const auto& window : windows[cluster_index]) {
       if (window.leaf_id == 0) {
         continue;
       }
@@ -201,29 +232,55 @@ update_zen_for_maximized_windows(ctrl::System& system,
         continue;
       }
 
-      auto cell = find_cell_by_leaf_id(system, window.leaf_id);
-      if (!cell.has_value()) {
-        continue;
-      }
+      current_maximized_leaf_ids[cluster_index] = window.leaf_id;
+      break;
+    }
+  }
 
-      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
-      if (cluster.has_fullscreen_cell) {
-        continue;
-      }
-      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
-        ctrl::clear_zen(system, cell->cluster_index);
-        result.layout_changed = true;
-        continue;
-      }
+  if (!has_completed_initial_tile_pass) {
+    previous_maximized_leaf_ids = std::move(current_maximized_leaf_ids);
+    return result;
+  }
 
-      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    auto& cluster = system.clusters[cluster_index];
+    std::optional<size_t> current_leaf_id = current_maximized_leaf_ids[cluster_index];
+    if (!current_leaf_id.has_value()) {
+      previous_maximized_leaf_ids[cluster_index].reset();
+      continue;
+    }
+
+    if (previous_maximized_leaf_ids[cluster_index].has_value() &&
+        *previous_maximized_leaf_ids[cluster_index] == *current_leaf_id) {
+      continue;
+    }
+
+    auto target_cell_index = ctrl::find_cell_by_leaf_id(cluster, *current_leaf_id);
+    if (!target_cell_index.has_value()) {
+      previous_maximized_leaf_ids[cluster_index] = current_leaf_id;
+      continue;
+    }
+
+    bool zen_changed = false;
+    if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == *target_cell_index) {
+      ctrl::clear_zen(system, static_cast<int>(cluster_index));
+      zen_changed = true;
+    } else {
+      bool set_zen_result =
+          ctrl::set_zen(system, static_cast<int>(cluster_index), *target_cell_index);
       if (!set_zen_result) {
-        spdlog::error("Failed to set zen for maximized window {}", window.leaf_id);
+        spdlog::error("Failed to set zen for maximized window {}", *current_leaf_id);
+        previous_maximized_leaf_ids[cluster_index] = current_leaf_id;
         continue;
       }
+      zen_changed = true;
+    }
 
+    if (zen_changed) {
       result.layout_changed = true;
     }
+
+    previous_maximized_leaf_ids[cluster_index] = current_leaf_id;
   }
 
   result.apply_tiles = result.layout_changed;
@@ -296,7 +353,7 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
   result.selection_changed = !selections_equal(previous_selection, system.selection);
   result.layout_changed = true;
   result.apply_tiles = true;
-  result.cursor_pos = drop_result->cursor_pos;
+  result.cursor_leaf_id = request.leaf_id;
   return result;
 }
 
@@ -304,6 +361,7 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
   system = ctrl::create_system(infos);
+  previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
 }
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
@@ -383,6 +441,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   std::vector<std::vector<ctrl::Rect>> geometries;
   bool has_geometries = false;
   bool geometries_dirty = false;
+  std::optional<size_t> drag_cursor_leaf_id;
 
   auto ensure_geometries = [&]() -> const std::vector<std::vector<ctrl::Rect>>& {
     if (!has_geometries || geometries_dirty) {
@@ -402,8 +461,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     output.selection_changed = output.selection_changed || drag_result.selection_changed;
     output.layout_changed = output.layout_changed || drag_result.layout_changed;
     output.apply_tiles = output.apply_tiles || drag_result.apply_tiles;
-    if (drag_result.cursor_pos.has_value()) {
-      output.cursor_pos = drag_result.cursor_pos;
+    if (drag_result.cursor_leaf_id.has_value()) {
+      drag_cursor_leaf_id = drag_result.cursor_leaf_id;
     }
     if (drag_result.layout_changed) {
       mark_geometries_dirty();
@@ -468,8 +527,9 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   if (input.auto_zen_on_maximize) {
-    AutoZenResult zen_result = update_zen_for_maximized_windows(
-        system, input.managed_windows, input.has_completed_initial_tile_pass);
+    AutoZenResult zen_result =
+        update_zen_for_maximized_windows(system, previous_maximized_leaf_ids, input.managed_windows,
+                                         input.has_completed_initial_tile_pass);
     output.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
     output.layout_changed = output.layout_changed || zen_result.layout_changed;
     output.apply_tiles = output.apply_tiles || zen_result.apply_tiles;
@@ -484,6 +544,10 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
         update_selection_from_hover(static_cast<float>(input.cursor_pos->x),
                                     static_cast<float>(input.cursor_pos->y), ensure_geometries());
     output.selection_changed = output.selection_changed || hover_result.selection_changed;
+  }
+
+  if (!output.cursor_pos.has_value() && drag_cursor_leaf_id.has_value()) {
+    output.cursor_pos = get_leaf_center(system, *drag_cursor_leaf_id, ensure_geometries());
   }
 
   output.geometries = ensure_geometries();
