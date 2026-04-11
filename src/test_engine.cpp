@@ -381,305 +381,6 @@ TEST_SUITE("Engine::update") {
 }
 
 // =============================================================================
-// Engine::update_zen_for_maximized_windows Tests
-// =============================================================================
-
-TEST_SUITE("Engine::update_zen_for_maximized_windows") {
-  TEST_CASE("initial pass only marks tile pass complete") {
-    Engine engine = create_two_window_engine();
-
-    AutoZenResult result = engine.update_zen_for_maximized_windows({{{1, false, true}}}, false);
-
-    CHECK(result.initial_tile_pass_completed == true);
-    CHECK(result.layout_changed == false);
-    CHECK(result.apply_tiles == false);
-    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
-  }
-
-  TEST_CASE("maximized managed window updates zen state after initial pass") {
-    Engine engine = create_two_window_engine();
-    set_selection(engine, 0, 1);
-
-    AutoZenResult result = engine.update_zen_for_maximized_windows({{{1, false, true}}}, true);
-
-    CHECK(result.initial_tile_pass_completed == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
-    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
-  }
-}
-
-// =============================================================================
-// Engine::store_selected_cell and clear_stored_cell Tests
-// =============================================================================
-
-TEST_SUITE("Engine::store_selected_cell and clear_stored_cell") {
-  TEST_CASE("stores selected leaf cell") {
-    Engine engine = create_test_engine();
-
-    // Select leaf cell in cluster 0 (cell index 1 or 2 are leaves)
-    set_selection(engine, 0, 1);
-    engine.store_selected_cell();
-
-    CHECK(engine.stored_cell.has_value());
-    CHECK(engine.stored_cell->cluster_index == 0);
-    // leaf_id should be from the selected cell
-    CHECK(engine.stored_cell->leaf_id > 0);
-  }
-
-  TEST_CASE("does nothing when no selection") {
-    Engine engine = create_empty_engine();
-
-    engine.store_selected_cell();
-
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-
-  TEST_CASE("does nothing for non-leaf selection") {
-    Engine engine = create_test_engine();
-
-    // Select parent node (cell index 0 in a 2-window cluster is the parent)
-    set_selection(engine, 0, 0);
-    engine.store_selected_cell();
-
-    // Parent nodes don't have leaf_id, so stored_cell should remain empty
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-
-  TEST_CASE("clear_stored_cell resets stored_cell") {
-    Engine engine = create_test_engine();
-
-    set_selection(engine, 0, 1);
-    engine.store_selected_cell();
-    CHECK(engine.stored_cell.has_value());
-
-    engine.clear_stored_cell();
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-
-  TEST_CASE("clear on already-empty is safe") {
-    Engine engine = create_test_engine();
-
-    CHECK_FALSE(engine.stored_cell.has_value());
-    engine.clear_stored_cell();
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-}
-
-// =============================================================================
-// Engine::get_selected_sibling_index Tests
-// =============================================================================
-
-TEST_SUITE("Engine::get_selected_sibling_index") {
-  TEST_CASE("returns nullopt when no selection") {
-    Engine engine = create_empty_engine();
-
-    auto sibling = engine.get_selected_sibling_index();
-    CHECK_FALSE(sibling.has_value());
-  }
-
-  TEST_CASE("returns sibling index for leaf with sibling") {
-    Engine engine = create_two_window_engine();
-
-    // Select first leaf (cell index 1)
-    set_selection(engine, 0, 1);
-
-    auto sibling = engine.get_selected_sibling_index();
-    CHECK(sibling.has_value());
-    CHECK(*sibling == 2); // Sibling is at index 2
-  }
-
-  TEST_CASE("returns nullopt for root node") {
-    Engine engine = create_single_cluster_engine();
-
-    // Select root (only node in single-window cluster)
-    set_selection(engine, 0, 0);
-
-    auto sibling = engine.get_selected_sibling_index();
-    CHECK_FALSE(sibling.has_value());
-  }
-
-  TEST_CASE("handles invalid cluster_index") {
-    Engine engine = create_test_engine();
-
-    // Set invalid cluster index
-    engine.system.selection = CellIndicatorByIndex{99, 0};
-
-    auto sibling = engine.get_selected_sibling_index();
-    CHECK_FALSE(sibling.has_value());
-  }
-}
-
-// =============================================================================
-// Engine::get_selected_sibling_leaf_id Tests
-// =============================================================================
-
-TEST_SUITE("Engine::get_selected_sibling_leaf_id") {
-  TEST_CASE("returns nullopt when no selection") {
-    Engine engine = create_empty_engine();
-
-    auto leaf_id = engine.get_selected_sibling_leaf_id();
-    CHECK_FALSE(leaf_id.has_value());
-  }
-
-  TEST_CASE("returns leaf_id when sibling is leaf") {
-    Engine engine = create_two_window_engine();
-
-    // Select first leaf (cell index 1)
-    set_selection(engine, 0, 1);
-
-    auto leaf_id = engine.get_selected_sibling_leaf_id();
-    CHECK(leaf_id.has_value());
-    // Sibling should have leaf_id 2 (assuming initial order preserved)
-    CHECK(*leaf_id > 0);
-  }
-
-  TEST_CASE("returns nullopt when no sibling") {
-    Engine engine = create_single_cluster_engine();
-
-    set_selection(engine, 0, 0);
-
-    auto leaf_id = engine.get_selected_sibling_leaf_id();
-    CHECK_FALSE(leaf_id.has_value());
-  }
-}
-
-// =============================================================================
-// Engine::perform_drop_move Tests
-// =============================================================================
-
-TEST_SUITE("Engine::perform_drop_move") {
-  TEST_CASE("move within same cluster") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    // Get leaf_id from cluster 0, cell 1
-    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-
-    // Drop on cluster 0, cell 2
-    const auto& target_rect = geoms[0][2];
-    float drop_x = target_rect.x + target_rect.width / 2;
-    float drop_y = target_rect.y + target_rect.height / 2;
-
-    auto result = engine.perform_drop_move(source_leaf_id, drop_x, drop_y, geoms, false);
-
-    CHECK(result.has_value());
-    CHECK(result->was_exchange == false);
-  }
-
-  TEST_CASE("exchange mode swaps cells") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-
-    const auto& target_rect = geoms[0][2];
-    float drop_x = target_rect.x + target_rect.width / 2;
-    float drop_y = target_rect.y + target_rect.height / 2;
-
-    auto result = engine.perform_drop_move(source_leaf_id, drop_x, drop_y, geoms, true);
-
-    CHECK(result.has_value());
-    CHECK(result->was_exchange == true);
-  }
-
-  TEST_CASE("returns nullopt for cursor outside all cells") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-
-    // Cursor way outside
-    auto result = engine.perform_drop_move(source_leaf_id, -1000.0f, -1000.0f, geoms, false);
-
-    CHECK_FALSE(result.has_value());
-  }
-}
-
-// =============================================================================
-// Engine::handle_resize Tests
-// =============================================================================
-
-TEST_SUITE("Engine::handle_resize") {
-  TEST_CASE("returns false when no change needed") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    // Use same rect as computed - no change
-    size_t leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-
-    bool changed = engine.handle_resize(0, leaf_id, geoms[0][1], geoms[0]);
-    // Ratio shouldn't change if window matches expected size
-    CHECK(changed == false);
-  }
-}
-
-// =============================================================================
-// Engine::process_completed_drag Tests
-// =============================================================================
-
-TEST_SUITE("Engine::process_completed_drag") {
-  TEST_CASE("move drag updates layout and requests cursor move") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-    const auto& target_rect = geoms[0][2];
-    ctrl::Point cursor_pos{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
-                           static_cast<long>(target_rect.y + target_rect.height / 2.0f)};
-
-    CompletedDragRequest request;
-    request.leaf_id = source_leaf_id;
-    request.cursor_pos = cursor_pos;
-
-    DragResult result = engine.process_completed_drag(request, geoms);
-
-    CHECK(result.clear_drag_ended == true);
-    CHECK(result.handled == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    CHECK(result.cursor_pos.has_value());
-  }
-
-  TEST_CASE("resize drag updates split ratio") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
-    float original_ratio = engine.system.clusters[0].tree[0].split_ratio;
-
-    CompletedDragRequest request;
-    request.leaf_id = source_leaf_id;
-    request.actual_window_rect = geoms[0][1];
-    request.actual_window_rect->width += 30.0f;
-
-    DragResult result = engine.process_completed_drag(request, geoms);
-
-    CHECK(result.clear_drag_ended == true);
-    CHECK(result.handled == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    CHECK(engine.system.clusters[0].tree[0].split_ratio != original_ratio);
-  }
-
-  TEST_CASE("unmanaged drag still requests drag flag clear") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    CompletedDragRequest request;
-    request.leaf_id = 999;
-
-    DragResult result = engine.process_completed_drag(request, geoms);
-
-    CHECK(result.clear_drag_ended == true);
-    CHECK(result.handled == false);
-    CHECK(result.layout_changed == false);
-    CHECK(result.apply_tiles == false);
-  }
-}
-
-// =============================================================================
 // Engine::process_frame Tests
 // =============================================================================
 
@@ -755,6 +456,95 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.selection_changed == true);
     REQUIRE(engine.system.selection.has_value());
     CHECK(engine.system.selection->cell_index == 2);
+  }
+
+  TEST_CASE("completed drag move is handled inside process_frame") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
+    const auto& target_rect = geoms[0][2];
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.completed_drag = CompletedDragRequest{
+        source_leaf_id,
+        ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                    static_cast<long>(target_rect.y + target_rect.height / 2.0f)},
+        std::nullopt, false};
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(output.cursor_pos.has_value());
+  }
+
+  TEST_CASE("completed drag resize is handled inside process_frame") {
+    Engine engine = create_two_window_engine();
+    auto geoms = compute_default_geometries(engine);
+    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
+    float original_ratio = engine.system.clusters[0].tree[0].split_ratio;
+
+    CompletedDragRequest request;
+    request.leaf_id = source_leaf_id;
+    request.actual_window_rect = geoms[0][1];
+    request.actual_window_rect->width += 30.0f;
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.completed_drag = request;
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio != original_ratio);
+  }
+
+  TEST_CASE("unmanaged completed drag still clears drag state") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.completed_drag = CompletedDragRequest{999, std::nullopt, std::nullopt, false};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == false);
+  }
+
+  TEST_CASE("auto zen waits for initial tile pass inside process_frame") {
+    Engine engine = create_two_window_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{{1, false, true}}};
+    input.auto_zen_on_maximize = true;
+    input.has_completed_initial_tile_pass = false;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.zen_pct = 0.90f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.has_completed_initial_tile_pass == true);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == true);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
   }
 
   TEST_CASE("auto zen is applied inside process_frame") {
@@ -833,58 +623,6 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.apply_tiles == false);
     CHECK(output.has_completed_initial_tile_pass == true);
     CHECK(output.geometries.size() == engine.system.clusters.size());
-  }
-}
-
-// =============================================================================
-// Engine::get_selected_center Tests
-// =============================================================================
-
-TEST_SUITE("Engine::get_selected_center") {
-  TEST_CASE("returns nullopt when no selection") {
-    Engine engine = create_empty_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    auto center = engine.get_selected_center(geoms);
-    CHECK_FALSE(center.has_value());
-  }
-
-  TEST_CASE("returns center of selected cell") {
-    Engine engine = create_single_cluster_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 0);
-
-    auto center = engine.get_selected_center(geoms);
-    CHECK(center.has_value());
-
-    // Center should be roughly in the middle of the cell
-    const auto& rect = geoms[0][0];
-    long expected_x = static_cast<long>(rect.x + rect.width / 2);
-    long expected_y = static_cast<long>(rect.y + rect.height / 2);
-
-    CHECK(center->x == expected_x);
-    CHECK(center->y == expected_y);
-  }
-
-  TEST_CASE("handles invalid cluster index") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    engine.system.selection = CellIndicatorByIndex{99, 0};
-
-    auto center = engine.get_selected_center(geoms);
-    CHECK_FALSE(center.has_value());
-  }
-
-  TEST_CASE("handles invalid cell index") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    engine.system.selection = CellIndicatorByIndex{0, 99};
-
-    auto center = engine.get_selected_center(geoms);
-    CHECK_FALSE(center.has_value());
   }
 }
 
@@ -1014,7 +752,9 @@ TEST_SUITE("Engine::process_action - StoreCell/ClearStored") {
 
     // First store a cell
     set_selection(engine, 0, 1);
-    engine.store_selected_cell();
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    CHECK(store_result.success == true);
     CHECK(engine.stored_cell.has_value());
 
     // Clear it
@@ -1061,7 +801,9 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
 
     // Store first cell
     set_selection(engine, 0, 1);
-    engine.store_selected_cell();
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    CHECK(store_result.success == true);
     size_t stored_leaf_id = engine.stored_cell->leaf_id;
 
     // Select second cell
@@ -1086,7 +828,9 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
     auto geoms = compute_default_geometries(engine);
 
     set_selection(engine, 0, 1);
-    engine.store_selected_cell();
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    CHECK(store_result.success == true);
     set_selection(engine, 0, 2);
 
     ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
@@ -1376,16 +1120,6 @@ TEST_SUITE("Engine - Edge Cases") {
     CHECK(info.cluster_index.has_value());
     // But no cell (no geometry to hit)
     CHECK_FALSE(info.cell.has_value());
-  }
-
-  TEST_CASE("get_selected_center with mismatched geometries") {
-    Engine engine = create_test_engine();
-    std::vector<std::vector<Rect>> small_geoms = {{{0, 0, 100, 100}}}; // Only 1 cell
-
-    set_selection(engine, 0, 2); // Cell index 2 doesn't exist in small_geoms
-
-    auto center = engine.get_selected_center(small_geoms);
-    CHECK_FALSE(center.has_value());
   }
 }
 

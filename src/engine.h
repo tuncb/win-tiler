@@ -47,26 +47,11 @@ struct ManagedWindowState {
   bool is_maximized = false;
 };
 
-struct AutoZenResult {
-  bool layout_changed = false;
-  bool apply_tiles = false;
-  bool initial_tile_pass_completed = false;
-};
-
 struct CompletedDragRequest {
   size_t leaf_id = 0;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<ctrl::Rect> actual_window_rect;
   bool do_exchange = false;
-};
-
-struct DragResult {
-  bool handled = false;
-  bool selection_changed = false;
-  bool layout_changed = false;
-  bool apply_tiles = false;
-  bool clear_drag_ended = false;
-  std::optional<ctrl::Point> cursor_pos;
 };
 
 struct EngineFrameInput {
@@ -133,45 +118,13 @@ struct Engine {
   // Process a full frame of input and return explicit output for the loop to apply
   [[nodiscard]] EngineFrameOutput process_frame(const EngineFrameInput& input);
 
-  // Update zen state from maximized managed windows
-  [[nodiscard]] AutoZenResult
-  update_zen_for_maximized_windows(const std::vector<std::vector<ManagedWindowState>>& windows,
-                                   bool has_completed_initial_tile_pass);
-
-  // Interpret a completed drag operation as resize or move/exchange
-  [[nodiscard]] DragResult
-  process_completed_drag(const CompletedDragRequest& request,
-                         const std::vector<std::vector<ctrl::Rect>>& geometries);
-
   // Process a hotkey action
   [[nodiscard]] ActionResult
   process_action(HotkeyAction action, const std::vector<std::vector<ctrl::Rect>>& global_geometries,
                  float gap_h, float gap_v, float zen_pct);
 
-  // Store the currently selected cell for swap/move operations
-  void store_selected_cell();
-
   // Clear the stored cell reference
   void clear_stored_cell();
-
-  // Get the sibling index of the currently selected cell (if any)
-  [[nodiscard]] std::optional<int> get_selected_sibling_index() const;
-
-  // Get the sibling leaf_id of the currently selected cell (if any)
-  [[nodiscard]] std::optional<size_t> get_selected_sibling_leaf_id() const;
-
-  // Perform a drag-drop move or exchange operation
-  [[nodiscard]] std::optional<ctrl::DropMoveResult>
-  perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
-                    const std::vector<std::vector<ctrl::Rect>>& geometries, bool do_exchange);
-
-  // Handle window resize to update split ratio
-  [[nodiscard]] bool handle_resize(int cluster_index, size_t leaf_id, const ctrl::Rect& actual_rect,
-                                   const std::vector<ctrl::Rect>& cluster_geometry);
-
-  // Get center of currently selected cell from geometries
-  [[nodiscard]] std::optional<ctrl::Point>
-  get_selected_center(const std::vector<std::vector<ctrl::Rect>>& geometries) const;
 };
 
 } // namespace wintiler

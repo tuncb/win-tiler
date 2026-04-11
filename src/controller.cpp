@@ -49,7 +49,6 @@ static SplitDir determine_split_dir(const Cluster& cluster, int selected_index, 
 
 // Split result returned by split_leaf
 struct SplitResult {
-  size_t new_leaf_id;
   int new_selection_index;
 };
 
@@ -65,7 +64,7 @@ static std::optional<SplitResult> split_leaf(Cluster& cluster, int selected_inde
     root_data.leaf_id = new_leaf_id;
 
     int index = cluster.tree.add_node(root_data);
-    return SplitResult{new_leaf_id, index};
+    return SplitResult{index};
   }
 
   // Validate: must be a valid leaf
@@ -99,7 +98,7 @@ static std::optional<SplitResult> split_leaf(Cluster& cluster, int selected_inde
   cluster.tree.set_children(selected_index, first_child_index, second_child_index);
 
   // Return second child as new selection (the newly added window)
-  return SplitResult{new_leaf_id, second_child_index};
+  return SplitResult{second_child_index};
 }
 
 // Pre-create leaves in a cluster from initial cell IDs
@@ -176,7 +175,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos) {
 // Cell Operations
 // ============================================================================
 
-bool delete_leaf(Cluster& cluster, int cell_index) {
+static bool delete_leaf(Cluster& cluster, int cell_index) {
   // Must be a valid leaf
   if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
     return false;
@@ -493,12 +492,6 @@ bool set_zen(System& system, int cluster_index, int cell_index) {
 void clear_zen(System& system, int cluster_index) {
   assert(cluster_index >= 0 && static_cast<size_t>(cluster_index) < system.clusters.size());
   system.clusters[static_cast<size_t>(cluster_index)].zen_cell_index.reset();
-}
-
-bool is_cell_zen(const System& system, int cluster_index, int cell_index) {
-  assert(cluster_index >= 0 && static_cast<size_t>(cluster_index) < system.clusters.size());
-  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
-  return cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell_index;
 }
 
 bool toggle_selected_zen(System& system) {

@@ -1,6 +1,10 @@
 # Task compilation requirements
 
 - If the task changes behavior add a unit test.
+- Run pre-commit hooks, all hooks should pass
+```
+pre-commit run --all-files         # Run all pre-commit hooks
+```
 - Compile and run unit tests, all tests should pass. Compilation should be successful and not have warnings
 ```
 build-run.bat build-run --Test-Debug  # Build and run unit tests
@@ -8,10 +12,6 @@ build-run.bat build-run --Test-Debug  # Build and run unit tests
 - Compile the application itself, compilation should be successful and not have warnings
 ```
 build-run.bat build --Debug           # Build debug version
-```
-- Run pre-commit hooks, all hooks should pass
-```
-pre-commit run --all-files         # Run all pre-commit hooks
 ```
 
 # Coding Rules

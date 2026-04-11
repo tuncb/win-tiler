@@ -107,6 +107,199 @@ std::optional<ctrl::CellIndicatorByIndex> find_cell_by_leaf_id(const ctrl::Syste
   return std::nullopt;
 }
 
+struct AutoZenResult {
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  bool initial_tile_pass_completed = false;
+};
+
+struct DragResult {
+  bool handled = false;
+  bool selection_changed = false;
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  bool clear_drag_ended = false;
+  std::optional<ctrl::Point> cursor_pos;
+};
+
+void store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& stored_cell) {
+  if (!system.selection.has_value()) {
+    return;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+  if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
+    return;
+  }
+
+  const auto& cell_data = cluster.tree[cell_index];
+  if (cell_data.leaf_id.has_value()) {
+    stored_cell = StoredCell{static_cast<size_t>(cluster_index), *cell_data.leaf_id};
+  }
+}
+
+std::optional<int> get_selected_sibling_index(const ctrl::System& system) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return std::nullopt;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+  return cluster.tree.get_sibling(cell_index);
+}
+
+std::optional<ctrl::Point>
+get_selected_center(const ctrl::System& system,
+                    const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= geometries.size()) {
+    return std::nullopt;
+  }
+  if (cell_index < 0 ||
+      static_cast<size_t>(cell_index) >= geometries[static_cast<size_t>(cluster_index)].size()) {
+    return std::nullopt;
+  }
+
+  const auto& rect =
+      geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)];
+  return ctrl::get_rect_center(rect);
+}
+
+AutoZenResult
+update_zen_for_maximized_windows(ctrl::System& system,
+                                 const std::vector<std::vector<ManagedWindowState>>& windows,
+                                 bool has_completed_initial_tile_pass) {
+  AutoZenResult result;
+  result.initial_tile_pass_completed = true;
+
+  if (!has_completed_initial_tile_pass) {
+    return result;
+  }
+
+  for (const auto& monitor_windows : windows) {
+    for (const auto& window : monitor_windows) {
+      if (window.leaf_id == 0) {
+        continue;
+      }
+      if (!window.is_maximized || window.is_fullscreen) {
+        continue;
+      }
+
+      auto cell = find_cell_by_leaf_id(system, window.leaf_id);
+      if (!cell.has_value()) {
+        continue;
+      }
+
+      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
+      if (cluster.has_fullscreen_cell) {
+        continue;
+      }
+      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
+        ctrl::clear_zen(system, cell->cluster_index);
+        result.layout_changed = true;
+        continue;
+      }
+
+      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
+      if (!set_zen_result) {
+        spdlog::error("Failed to set zen for maximized window {}", window.leaf_id);
+        continue;
+      }
+
+      result.layout_changed = true;
+    }
+  }
+
+  result.apply_tiles = result.layout_changed;
+  return result;
+}
+
+DragResult process_completed_drag(ctrl::System& system, const CompletedDragRequest& request,
+                                  const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  DragResult result;
+  result.clear_drag_ended = true;
+
+  auto previous_selection = system.selection;
+  if (!ctrl::has_leaf_id(system, request.leaf_id)) {
+    return result;
+  }
+
+  auto cell = find_cell_by_leaf_id(system, request.leaf_id);
+  if (!cell.has_value()) {
+    return result;
+  }
+
+  int cluster_index = cell->cluster_index;
+  int cell_index = cell->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return result;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+
+  bool can_try_resize =
+      request.actual_window_rect.has_value() && !cluster.has_fullscreen_cell &&
+      !cluster.zen_cell_index.has_value() &&
+      static_cast<size_t>(cluster_index) < geometries.size() &&
+      static_cast<size_t>(cell_index) < geometries[static_cast<size_t>(cluster_index)].size();
+
+  if (can_try_resize) {
+    const auto& expected_rect =
+        geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)];
+    const auto& actual_rect = *request.actual_window_rect;
+    bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
+                         std::abs(actual_rect.height - expected_rect.height) > 2.0f);
+    if (size_changed) {
+      result.handled =
+          ctrl::update_split_ratio_from_resize(system, cluster_index, request.leaf_id, actual_rect,
+                                               geometries[static_cast<size_t>(cluster_index)]);
+      if (result.handled) {
+        result.layout_changed = true;
+        result.apply_tiles = true;
+        spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
+                     request.leaf_id);
+        result.selection_changed = !selections_equal(previous_selection, system.selection);
+        return result;
+      }
+    }
+  }
+
+  if (!request.cursor_pos.has_value()) {
+    return result;
+  }
+
+  auto drop_result = ctrl::perform_drop_move(
+      system, request.leaf_id, static_cast<float>(request.cursor_pos->x),
+      static_cast<float>(request.cursor_pos->y), geometries, request.do_exchange);
+  if (!drop_result.has_value()) {
+    result.selection_changed = !selections_equal(previous_selection, system.selection);
+    return result;
+  }
+
+  result.handled = true;
+  result.selection_changed = !selections_equal(previous_selection, system.selection);
+  result.layout_changed = true;
+  result.apply_tiles = true;
+  result.cursor_pos = drop_result->cursor_pos;
+  return result;
+}
+
 } // namespace
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
@@ -203,7 +396,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   auto mark_geometries_dirty = [&]() { geometries_dirty = true; };
 
   if (input.completed_drag.has_value()) {
-    DragResult drag_result = process_completed_drag(*input.completed_drag, ensure_geometries());
+    DragResult drag_result =
+        process_completed_drag(system, *input.completed_drag, ensure_geometries());
     output.clear_drag_ended = drag_result.clear_drag_ended;
     output.selection_changed = output.selection_changed || drag_result.selection_changed;
     output.layout_changed = output.layout_changed || drag_result.layout_changed;
@@ -268,14 +462,14 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   if (update_result.topology_changed) {
     if (update_result.cursor_pos.has_value()) {
       output.cursor_pos = update_result.cursor_pos;
-    } else if (auto center = get_selected_center(ensure_geometries())) {
+    } else if (auto center = get_selected_center(system, ensure_geometries())) {
       output.cursor_pos = center;
     }
   }
 
   if (input.auto_zen_on_maximize) {
     AutoZenResult zen_result = update_zen_for_maximized_windows(
-        input.managed_windows, input.has_completed_initial_tile_pass);
+        system, input.managed_windows, input.has_completed_initial_tile_pass);
     output.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
     output.layout_changed = output.layout_changed || zen_result.layout_changed;
     output.apply_tiles = output.apply_tiles || zen_result.apply_tiles;
@@ -296,204 +490,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   return output;
 }
 
-AutoZenResult Engine::update_zen_for_maximized_windows(
-    const std::vector<std::vector<ManagedWindowState>>& windows,
-    bool has_completed_initial_tile_pass) {
-  AutoZenResult result;
-  result.initial_tile_pass_completed = true;
-
-  if (!has_completed_initial_tile_pass) {
-    return result;
-  }
-
-  for (const auto& monitor_windows : windows) {
-    for (const auto& window : monitor_windows) {
-      if (window.leaf_id == 0) {
-        continue;
-      }
-      if (!window.is_maximized || window.is_fullscreen) {
-        continue;
-      }
-
-      auto cell = find_cell_by_leaf_id(system, window.leaf_id);
-      if (!cell.has_value()) {
-        continue;
-      }
-
-      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
-      if (cluster.has_fullscreen_cell) {
-        continue;
-      }
-      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
-        ctrl::clear_zen(system, cell->cluster_index);
-        result.layout_changed = true;
-        continue;
-      }
-
-      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
-      if (!set_zen_result) {
-        spdlog::error("Failed to set zen for maximized window {}", window.leaf_id);
-        continue;
-      }
-
-      result.layout_changed = true;
-    }
-  }
-
-  result.apply_tiles = result.layout_changed;
-  return result;
-}
-
-void Engine::store_selected_cell() {
-  if (system.selection.has_value()) {
-    const auto& cluster = system.clusters[static_cast<size_t>(system.selection->cluster_index)];
-    const auto& cell_data = cluster.tree[system.selection->cell_index];
-    if (cell_data.leaf_id.has_value()) {
-      stored_cell =
-          StoredCell{static_cast<size_t>(system.selection->cluster_index), *cell_data.leaf_id};
-    }
-  }
-}
-
 void Engine::clear_stored_cell() {
   stored_cell.reset();
-}
-
-std::optional<int> Engine::get_selected_sibling_index() const {
-  if (!system.selection.has_value()) {
-    return std::nullopt;
-  }
-  int ci = system.selection->cluster_index;
-  int cell_idx = system.selection->cell_index;
-  if (ci < 0 || static_cast<size_t>(ci) >= system.clusters.size()) {
-    return std::nullopt;
-  }
-
-  const auto& cluster = system.clusters[static_cast<size_t>(ci)];
-  return cluster.tree.get_sibling(cell_idx);
-}
-
-std::optional<size_t> Engine::get_selected_sibling_leaf_id() const {
-  auto sibling_idx = get_selected_sibling_index();
-  if (!sibling_idx.has_value() || !system.selection.has_value()) {
-    return std::nullopt;
-  }
-
-  int ci = system.selection->cluster_index;
-  if (ci < 0 || static_cast<size_t>(ci) >= system.clusters.size()) {
-    return std::nullopt;
-  }
-
-  const auto& cluster = system.clusters[static_cast<size_t>(ci)];
-  if (!cluster.tree.is_leaf(*sibling_idx)) {
-    return std::nullopt;
-  }
-
-  return cluster.tree[*sibling_idx].leaf_id;
-}
-
-std::optional<ctrl::DropMoveResult>
-Engine::perform_drop_move(size_t source_leaf_id, float cursor_x, float cursor_y,
-                          const std::vector<std::vector<ctrl::Rect>>& geometries,
-                          bool do_exchange) {
-  return ctrl::perform_drop_move(system, source_leaf_id, cursor_x, cursor_y, geometries,
-                                 do_exchange);
-}
-
-bool Engine::handle_resize(int cluster_index, size_t leaf_id, const ctrl::Rect& actual_rect,
-                           const std::vector<ctrl::Rect>& cluster_geometry) {
-  return ctrl::update_split_ratio_from_resize(system, cluster_index, leaf_id, actual_rect,
-                                              cluster_geometry);
-}
-
-DragResult Engine::process_completed_drag(const CompletedDragRequest& request,
-                                          const std::vector<std::vector<ctrl::Rect>>& geometries) {
-  DragResult result;
-  result.clear_drag_ended = true;
-
-  auto previous_selection = system.selection;
-  if (!ctrl::has_leaf_id(system, request.leaf_id)) {
-    return result;
-  }
-
-  auto cell = find_cell_by_leaf_id(system, request.leaf_id);
-  if (!cell.has_value()) {
-    return result;
-  }
-
-  int cluster_index = cell->cluster_index;
-  int cell_index = cell->cell_index;
-  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
-    return result;
-  }
-
-  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
-
-  bool can_try_resize =
-      request.actual_window_rect.has_value() && !cluster.has_fullscreen_cell &&
-      !cluster.zen_cell_index.has_value() &&
-      static_cast<size_t>(cluster_index) < geometries.size() &&
-      static_cast<size_t>(cell_index) < geometries[static_cast<size_t>(cluster_index)].size();
-
-  if (can_try_resize) {
-    const auto& expected_rect =
-        geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)];
-    const auto& actual_rect = *request.actual_window_rect;
-    bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
-                         std::abs(actual_rect.height - expected_rect.height) > 2.0f);
-    if (size_changed) {
-      result.handled =
-          ctrl::update_split_ratio_from_resize(system, cluster_index, request.leaf_id, actual_rect,
-                                               geometries[static_cast<size_t>(cluster_index)]);
-      if (result.handled) {
-        result.layout_changed = true;
-        result.apply_tiles = true;
-        spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
-                     request.leaf_id);
-        result.selection_changed = !selections_equal(previous_selection, system.selection);
-        return result;
-      }
-    }
-  }
-
-  if (!request.cursor_pos.has_value()) {
-    return result;
-  }
-
-  auto drop_result = ctrl::perform_drop_move(
-      system, request.leaf_id, static_cast<float>(request.cursor_pos->x),
-      static_cast<float>(request.cursor_pos->y), geometries, request.do_exchange);
-  if (!drop_result.has_value()) {
-    result.selection_changed = !selections_equal(previous_selection, system.selection);
-    return result;
-  }
-
-  result.handled = true;
-  result.selection_changed = !selections_equal(previous_selection, system.selection);
-  result.layout_changed = true;
-  result.apply_tiles = true;
-  result.cursor_pos = drop_result->cursor_pos;
-  return result;
-}
-
-std::optional<ctrl::Point>
-Engine::get_selected_center(const std::vector<std::vector<ctrl::Rect>>& geometries) const {
-  if (!system.selection.has_value()) {
-    return std::nullopt;
-  }
-
-  int ci = system.selection->cluster_index;
-  int cell_idx = system.selection->cell_index;
-
-  if (ci < 0 || static_cast<size_t>(ci) >= geometries.size()) {
-    return std::nullopt;
-  }
-  if (cell_idx < 0 || static_cast<size_t>(cell_idx) >= geometries[static_cast<size_t>(ci)].size()) {
-    return std::nullopt;
-  }
-
-  const auto& rect = geometries[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
-  return ctrl::get_rect_center(rect);
 }
 
 ActionResult Engine::process_action(HotkeyAction action,
@@ -507,7 +505,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Left, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(system, global_geometries);
     }
     break;
 
@@ -516,7 +514,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Down, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(system, global_geometries);
     }
     break;
 
@@ -525,7 +523,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Up, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(system, global_geometries);
     }
     break;
 
@@ -534,7 +532,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Right, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(system, global_geometries);
     }
     break;
 
@@ -550,7 +548,7 @@ ActionResult Engine::process_action(HotkeyAction action,
 
   case HotkeyAction::StoreCell:
     spdlog::info("StoreCell: storing current cell for swap/move operation");
-    store_selected_cell();
+    store_selected_cell(system, stored_cell);
     result.success = stored_cell.has_value();
     break;
 
@@ -643,7 +641,7 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::ExchangeSiblings:
     spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
     if (system.selection.has_value()) {
-      if (auto sibling_idx = get_selected_sibling_index()) {
+      if (auto sibling_idx = get_selected_sibling_index(system)) {
         if (ctrl::swap_cells(system, system.selection->cluster_index, system.selection->cell_index,
                              system.selection->cluster_index, *sibling_idx)) {
           result.success = true;

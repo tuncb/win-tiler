@@ -132,10 +132,6 @@ struct DropMoveResult {
 // Cell Operations
 // ============================================================================
 
-// Delete a leaf cell and promote its sibling
-// Returns true on success, false if cell is not a valid leaf or is root with no sibling
-[[nodiscard]] bool delete_leaf(Cluster& cluster, int cell_index);
-
 // Swap two cells (exchange positions or leaf_ids)
 // Returns true on success, false on failure (invalid indices, not leaves)
 // Updates selection to follow the swapped cell if selected
@@ -169,9 +165,6 @@ perform_drop_move(System& system, size_t source_leaf_id, float cursor_x, float c
 
 // Clear zen mode for a cluster
 void clear_zen(System& system, int cluster_index);
-
-// Check if a cell is in zen mode
-[[nodiscard]] bool is_cell_zen(const System& system, int cluster_index, int cell_index);
 
 // Toggle zen mode for selected cell
 [[nodiscard]] bool toggle_selected_zen(System& system);
