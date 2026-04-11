@@ -97,6 +97,20 @@ TEST_SUITE("argument_parser") {
     CHECK_FALSE(result.success);
     CHECK(result.error == "startup does not accept extra arguments");
   }
+
+  TEST_CASE("ui-test-monitor command is no longer supported") {
+    auto result = parse({"win-tiler", "ui-test-monitor"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "Unknown command: ui-test-monitor");
+  }
+
+  TEST_CASE("ui-test-multi command is no longer supported") {
+    auto result = parse({"win-tiler", "ui-test-multi", "0", "0", "1920", "1080"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "Unknown command: ui-test-multi");
+  }
 }
 
 TEST_SUITE("version") {

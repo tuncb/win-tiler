@@ -33,9 +33,6 @@
     <ClCompile Include="src\multi_cells.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\multi_ui.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\test_options.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -66,9 +63,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\multi_cells.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\multi_ui.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\argument_parser.h">

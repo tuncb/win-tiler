@@ -2,7 +2,7 @@
 
 ## App Definition
 
-`win-tiler` is a hotkey-driven tiling window manager for Windows. It watches the windows on your desktop, groups them by monitor, and arranges them with a binary space partitioning layout. The main runtime mode is designed for everyday use, and the repository also includes UI and diagnostic commands for testing layouts, inspecting discovered windows, generating a config file, and managing startup registration.
+`win-tiler` is a hotkey-driven tiling window manager for Windows. It watches the windows on your desktop, groups them by monitor, and arranges them with a binary space partitioning layout. The main runtime mode is designed for everyday use, and the repository also includes diagnostic commands for inspecting discovered windows, generating a config file, and managing startup registration.
 
 ## Feature Summary
 
@@ -15,12 +15,12 @@
 - Config hot-reload while supported runtime modes are active.
 - Ignore filters for processes, window titles, process/title pairs, child windows, and very small windows.
 - Overlay and visualization support for understanding the current layout and selection state.
-- Diagnostic commands for live monitor visualization, synthetic cluster visualization, and window tracking.
+- Diagnostic support for logging discovered windows and inspecting runtime behavior.
 - Per-user startup registration through the Windows `Run` registry entry.
 
 ## Configuration
 
-`win-tiler` reads configuration from a TOML file. Use `--config <filepath>` to load a specific file, or place `win-tiler.toml` next to the executable for runtime commands such as `loop`, `ui-test-monitor`, `ui-test-multi`, and `track-windows`. You can generate a starter file with `win-tiler init-config [filepath]`.
+`win-tiler` reads configuration from a TOML file. Use `--config <filepath>` to load a specific file, or place `win-tiler.toml` next to the executable for runtime commands such as `loop` and `track-windows`. You can generate a starter file with `win-tiler init-config [filepath]`.
 
 Every configuration field is optional. Missing values fall back to built-in defaults. Keyboard bindings are merged with the default bindings when an action is omitted, and the ignore lists can either merge with or replace the built-in defaults through the `merge_*_with_defaults` flags. Invalid numeric values fall back to defaults; `visualization.render.zen_percentage` is clamped to the `0.1` to `1.0` range.
 
@@ -130,8 +130,6 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 | --- | --- |
 | `loop` | Start the main tiling loop. This mode registers hotkeys, tracks monitor and window changes, applies tiling, and renders the overlay. This is the default command. |
 | `version` | Print version information. This is the command form of `--version`. |
-| `ui-test-monitor` | Launch the UI visualizer using the current monitor work areas and the windows discovered on each monitor. |
-| `ui-test-multi [x y width height]...` | Launch the UI visualizer with custom cluster rectangles. Arguments must be passed in groups of four numbers. If no cluster definitions are provided, the command uses two default `1920x1080` clusters side by side. |
 | `track-windows` | Log the windows found on each monitor once per second until the configured exit hotkey is pressed. |
 | `init-config [filepath]` | Write a default TOML config file. If `filepath` is omitted, the file is written as `win-tiler.toml` next to the executable. |
 | `startup <action>` | Manage startup registration for the current user. Supported actions are `enable`, `disable`, and `status`. |
@@ -150,8 +148,6 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 win-tiler
 win-tiler --logmode debug
 win-tiler --config C:\work\win-tiler\win-tiler.toml loop
-win-tiler ui-test-monitor
-win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080
 win-tiler track-windows
 win-tiler init-config
 win-tiler init-config C:\work\win-tiler\custom-config.toml

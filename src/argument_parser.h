@@ -3,7 +3,6 @@
 #include <optional>
 #include <string>
 #include <variant>
-#include <vector>
 
 namespace wintiler {
 
@@ -12,15 +11,6 @@ struct HelpCommand {};    // --help or -h
 struct VersionCommand {}; // --version or version
 
 struct LoopCommand {};
-
-struct UiTestMonitorCommand {};
-
-struct UiTestMultiCommand {
-  struct ClusterDef {
-    float x, y, width, height;
-  };
-  std::vector<ClusterDef> clusters; // Empty = use defaults
-};
 
 struct TrackWindowsCommand {};
 
@@ -35,9 +25,8 @@ struct StartupCommand {
 };
 
 // Variant holding all possible commands
-using Command =
-    std::variant<HelpCommand, VersionCommand, LoopCommand, UiTestMonitorCommand, UiTestMultiCommand,
-                 TrackWindowsCommand, InitConfigCommand, StartupCommand>;
+using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, TrackWindowsCommand,
+                             InitConfigCommand, StartupCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

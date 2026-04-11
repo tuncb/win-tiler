@@ -208,7 +208,6 @@
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\loop.cpp" />
     <ClCompile Include="src\multi_cell_renderer.cpp" />
-    <ClCompile Include="src\multi_ui.cpp" />
     <ClCompile Include="src\overlay.cpp" />
     <ClCompile Include="src\options.cpp" />
     <ClCompile Include="src\startup.cpp" />
@@ -232,7 +231,6 @@
     <ClInclude Include="src\track_windows.h" />
     <ClInclude Include="src\loop.h" />
     <ClInclude Include="src\multi_cell_renderer.h" />
-    <ClInclude Include="src\multi_ui.h" />
     <ClInclude Include="src\overlay.h" />
     <ClInclude Include="src\options.h" />
     <ClInclude Include="src\startup.h" />

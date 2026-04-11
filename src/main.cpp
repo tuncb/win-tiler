@@ -14,12 +14,10 @@
 
 #include "argument_parser.h"
 #include "loop.h"
-#include "multi_ui.h"
 #include "options.h"
 #include "startup.h"
 #include "track_windows.h"
 #include "version.h"
-#include "winapi.h"
 
 namespace {
 
@@ -52,8 +50,6 @@ std::filesystem::path getDefaultConfigPath() {
 
 bool command_uses_options_provider(const wintiler::Command& command) {
   return std::holds_alternative<wintiler::LoopCommand>(command) ||
-         std::holds_alternative<wintiler::UiTestMonitorCommand>(command) ||
-         std::holds_alternative<wintiler::UiTestMultiCommand>(command) ||
          std::holds_alternative<wintiler::TrackWindowsCommand>(command);
 }
 
@@ -84,8 +80,6 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 using namespace wintiler;
 
-const size_t CELL_ID_START = 10;
-
 void applyLogLevel(LogLevel level) {
   switch (level) {
   case LogLevel::Trace:
@@ -107,63 +101,6 @@ void applyLogLevel(LogLevel level) {
     spdlog::set_level(spdlog::level::off);
     break;
   }
-}
-
-void runUiTestMonitor(GlobalOptionsProvider& optionsProvider) {
-  const auto& globalOptions = optionsProvider.options;
-  auto monitors = winapi::get_monitors();
-  std::vector<ctrl::ClusterInitInfo> infos;
-
-  for (size_t monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-    const auto& monitor = monitors[monitorIndex];
-
-    // Workspace bounds (for tiling)
-    float x = static_cast<float>(monitor.workArea.left);
-    float y = static_cast<float>(monitor.workArea.top);
-    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
-    // Full monitor bounds (for pointer detection)
-    float mx = static_cast<float>(monitor.rect.left);
-    float my = static_cast<float>(monitor.rect.top);
-    float mw = static_cast<float>(monitor.rect.right - monitor.rect.left);
-    float mh = static_cast<float>(monitor.rect.bottom - monitor.rect.top);
-
-    auto hwnds = winapi::get_hwnds_for_monitor(monitorIndex, globalOptions.ignoreOptions);
-    std::vector<size_t> cellIds;
-    for (auto hwnd : hwnds) {
-      cellIds.push_back(reinterpret_cast<size_t>(hwnd));
-    }
-
-    infos.push_back({x, y, w, h, mx, my, mw, mh, cellIds});
-  }
-
-  winapi::log_windows_per_monitor(globalOptions.ignoreOptions);
-  run_raylib_ui_multi_cluster(infos, optionsProvider);
-}
-
-void runUiTestMulti(const UiTestMultiCommand& cmd, GlobalOptionsProvider& optionsProvider) {
-  std::vector<ctrl::ClusterInitInfo> infos;
-
-  if (cmd.clusters.empty()) {
-    // Default: two monitors side by side (monitor bounds = workspace bounds for UI test)
-    infos.push_back({0.0f, 0.0f, 1920.0f, 1080.0f, 0.0f, 0.0f, 1920.0f, 1080.0f, {}});
-    infos.push_back({1920.0f, 0.0f, 1920.0f, 1080.0f, 1920.0f, 0.0f, 1920.0f, 1080.0f, {}});
-  } else {
-    for (const auto& cluster : cmd.clusters) {
-      // monitor bounds = workspace bounds for UI test
-      infos.push_back({cluster.x,
-                       cluster.y,
-                       cluster.width,
-                       cluster.height,
-                       cluster.x,
-                       cluster.y,
-                       cluster.width,
-                       cluster.height,
-                       {}});
-    }
-  }
-
-  run_raylib_ui_multi_cluster(infos, optionsProvider);
 }
 
 int main(int argc, char* argv[]) {
@@ -231,8 +168,6 @@ int main(int argc, char* argv[]) {
                    std::cout << "win-tiler v" << get_version_string() << std::endl;
                  },
                  [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
-                 [&](const UiTestMonitorCommand&) { runUiTestMonitor(optionsProvider); },
-                 [&](const UiTestMultiCommand& cmd) { runUiTestMulti(cmd, optionsProvider); },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
                  [&](const InitConfigCommand& cmd) {
                    auto targetPath =

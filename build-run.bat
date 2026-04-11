@@ -85,10 +85,14 @@ echo Build succeeded.
 REM Determine output path
 set OUTDIR=x64\%CONFIG%
 
+REM Remove stale DLLs from older builds that are no longer runtime dependencies
+if exist "%OUTDIR%\raylib.dll" del /Q "%OUTDIR%\raylib.dll"
+if exist "%OUTDIR%\glfw3.dll" del /Q "%OUTDIR%\glfw3.dll"
+
 REM Copy required DLLs to output directory
 echo.
 echo Copying DLLs to %OUTDIR%...
-copy /Y ".dll\*.dll" "%OUTDIR%\" >nul
+copy /Y ".dll\fmt*.dll" "%OUTDIR%\" >nul
 if errorlevel 1 (
     echo Warning: Failed to copy some DLLs.
 ) else (

@@ -100,34 +100,6 @@ ParseResult parse_args(int argc, char* argv[]) {
       args.command = VersionCommand{};
     } else if (cmd == "loop") {
       args.command = LoopCommand{};
-    } else if (cmd == "ui-test-monitor") {
-      args.command = UiTestMonitorCommand{};
-    } else if (cmd == "ui-test-multi") {
-      UiTestMultiCommand multi_cmd;
-
-      // Parse optional cluster definitions (groups of 4: x y w h)
-      int remaining = argc - i;
-      if (remaining > 0 && remaining % 4 != 0) {
-        return make_error("ui-test-multi requires 4 numbers per cluster (x y width height). "
-                          "Got " +
-                          std::to_string(remaining) + " arguments.");
-      }
-
-      while (i + 3 < argc) {
-        try {
-          UiTestMultiCommand::ClusterDef cluster;
-          cluster.x = std::stof(argv[i]);
-          cluster.y = std::stof(argv[i + 1]);
-          cluster.width = std::stof(argv[i + 2]);
-          cluster.height = std::stof(argv[i + 3]);
-          multi_cmd.clusters.push_back(cluster);
-          i += 4;
-        } catch (const std::exception&) {
-          return make_error("Invalid number in ui-test-multi arguments");
-        }
-      }
-
-      args.command = multi_cmd;
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
     } else if (cmd == "init-config") {
@@ -185,9 +157,6 @@ void print_usage() {
             << "Commands:\n"
             << "  version                 Show version information\n"
             << "  loop                    Run in loop mode (hotkey-driven, default)\n"
-            << "  ui-test-monitor         Launch UI visualizer with monitor data\n"
-            << "  ui-test-multi [x y w h] Launch UI with custom cluster dimensions\n"
-            << "                          (groups of 4 numbers, defaults to dual 1920x1080)\n"
             << "  track-windows           Track and log windows per monitor in a loop\n"
             << "  init-config [filepath]  Create default configuration TOML file\n"
             << "                          (defaults to win-tiler.toml next to executable)\n"
@@ -196,7 +165,6 @@ void print_usage() {
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
-            << "  win-tiler ui-test-multi 0 0 1920 1080 1920 0 1920 1080\n"
             << "  win-tiler init-config config.toml\n"
             << "  win-tiler --config config.toml loop\n"
             << "  win-tiler startup enable\n";
