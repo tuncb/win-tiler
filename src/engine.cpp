@@ -65,6 +65,36 @@ std::optional<size_t> find_cluster_at_global_point(const ctrl::System& system, f
   return std::nullopt;
 }
 
+bool selections_equal(const std::optional<ctrl::CellIndicatorByIndex>& lhs,
+                      const std::optional<ctrl::CellIndicatorByIndex>& rhs) {
+  if (!lhs.has_value() && !rhs.has_value()) {
+    return true;
+  }
+  if (lhs.has_value() != rhs.has_value()) {
+    return false;
+  }
+  return lhs->cluster_index == rhs->cluster_index && lhs->cell_index == rhs->cell_index;
+}
+
+std::optional<size_t> get_selected_leaf_id(const ctrl::System& system) {
+  if (!system.selection.has_value()) {
+    return std::nullopt;
+  }
+
+  int cluster_index = system.selection->cluster_index;
+  int cell_index = system.selection->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return std::nullopt;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+  if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
+    return std::nullopt;
+  }
+
+  return cluster.tree[cell_index].leaf_id;
+}
+
 } // namespace
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
@@ -95,9 +125,30 @@ Engine::get_hover_info(float global_x, float global_y,
   return info;
 }
 
-bool Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
-                    std::optional<int> redirect_cluster_index) {
-  return ctrl::update(system, cluster_updates, redirect_cluster_index);
+UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
+                            std::optional<int> redirect_cluster_index) {
+  UpdateResult result;
+  auto previous_selection = system.selection;
+  std::vector<bool> previous_fullscreen_state;
+  previous_fullscreen_state.reserve(system.clusters.size());
+  for (const auto& cluster : system.clusters) {
+    previous_fullscreen_state.push_back(cluster.has_fullscreen_cell);
+  }
+
+  result.topology_changed = ctrl::update(system, cluster_updates, redirect_cluster_index);
+  result.selection_changed = !selections_equal(previous_selection, system.selection);
+
+  bool fullscreen_state_changed = false;
+  for (size_t i = 0; i < system.clusters.size() && i < previous_fullscreen_state.size(); ++i) {
+    if (previous_fullscreen_state[i] != system.clusters[i].has_fullscreen_cell) {
+      fullscreen_state_changed = true;
+      break;
+    }
+  }
+
+  result.layout_changed = result.topology_changed || fullscreen_state_changed;
+  result.apply_tiles = result.layout_changed;
+  return result;
 }
 
 void Engine::store_selected_cell() {
@@ -193,7 +244,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Left, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.new_cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(global_geometries);
     }
     break;
 
@@ -202,7 +253,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Down, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.new_cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(global_geometries);
     }
     break;
 
@@ -211,7 +262,7 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Up, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.new_cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(global_geometries);
     }
     break;
 
@@ -220,13 +271,15 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (ctrl::move_selection(system, ctrl::Direction::Right, global_geometries)) {
       result.success = true;
       result.selection_changed = true;
-      result.new_cursor_pos = get_selected_center(global_geometries);
+      result.cursor_pos = get_selected_center(global_geometries);
     }
     break;
 
   case HotkeyAction::ToggleSplit:
     spdlog::info("ToggleSplit: toggling split direction of selected cell");
     result.success = ctrl::toggle_selected_split_dir(system);
+    result.layout_changed = result.success;
+    result.apply_tiles = result.success;
     if (!result.success) {
       spdlog::trace("Failed to toggle split direction");
     }
@@ -255,6 +308,8 @@ ActionResult Engine::process_action(HotkeyAction action,
                              static_cast<int>(stored_cell->cluster_index), *stored_cell_idx)) {
           clear_stored_cell();
           result.success = true;
+          result.layout_changed = true;
+          result.apply_tiles = true;
         }
       }
     }
@@ -271,6 +326,8 @@ ActionResult Engine::process_action(HotkeyAction action,
                             system.selection->cluster_index, system.selection->cell_index)) {
           clear_stored_cell();
           result.success = true;
+          result.layout_changed = true;
+          result.apply_tiles = true;
         }
       }
     }
@@ -280,7 +337,9 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("SplitIncrease: increasing split ratio by 5%%");
     if (ctrl::adjust_selected_split_ratio(system, 0.05f)) {
       result.success = true;
+      result.layout_changed = true;
       result.selection_changed = true;
+      result.apply_tiles = true;
       // Recompute geometry for the affected cluster to get updated center
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
@@ -289,8 +348,7 @@ ActionResult Engine::process_action(HotkeyAction action,
               system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
-            result.new_cursor_pos =
-                ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
+            result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
           }
         }
       }
@@ -301,7 +359,9 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("SplitDecrease: decreasing split ratio by 5%%");
     if (ctrl::adjust_selected_split_ratio(system, -0.05f)) {
       result.success = true;
+      result.layout_changed = true;
       result.selection_changed = true;
+      result.apply_tiles = true;
       // Recompute geometry for the affected cluster to get updated center
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
@@ -310,8 +370,7 @@ ActionResult Engine::process_action(HotkeyAction action,
               system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
-            result.new_cursor_pos =
-                ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
+            result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
           }
         }
       }
@@ -325,7 +384,9 @@ ActionResult Engine::process_action(HotkeyAction action,
         if (ctrl::swap_cells(system, system.selection->cluster_index, system.selection->cell_index,
                              system.selection->cluster_index, *sibling_idx)) {
           result.success = true;
+          result.layout_changed = true;
           result.selection_changed = true;
+          result.apply_tiles = true;
           // Recompute geometry to get updated center
           int ci = system.selection->cluster_index;
           if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
@@ -333,7 +394,7 @@ ActionResult Engine::process_action(HotkeyAction action,
                 system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
             int cell_idx = system.selection->cell_index;
             if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
-              result.new_cursor_pos =
+              result.cursor_pos =
                   ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
             }
           }
@@ -345,6 +406,8 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::ToggleZen:
     spdlog::info("ToggleZen: toggling zen mode for selected cell");
     result.success = ctrl::toggle_selected_zen(system);
+    result.layout_changed = result.success;
+    result.apply_tiles = result.success;
     if (!result.success) {
       spdlog::error("ToggleZen: failed to toggle zen mode");
     }
@@ -355,7 +418,9 @@ ActionResult Engine::process_action(HotkeyAction action,
     if (!result.success) {
       spdlog::error("CycleSplitMode: failed to cycle split mode");
     } else {
-      spdlog::info("CycleSplitMode: switched to {}", magic_enum::enum_name(system.split_mode));
+      const auto mode_name = magic_enum::enum_name(system.split_mode);
+      result.toast_message = std::string("Split mode: ").append(mode_name.data(), mode_name.size());
+      spdlog::info("CycleSplitMode: switched to {}", mode_name);
     }
     break;
 
@@ -363,7 +428,9 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("ResetSplitRatio: resetting split ratio of parent to 50%%");
     if (ctrl::set_selected_split_ratio(system, 0.5f)) {
       result.success = true;
+      result.layout_changed = true;
       result.selection_changed = true;
+      result.apply_tiles = true;
       // Recompute geometry to get updated center
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
@@ -372,8 +439,7 @@ ActionResult Engine::process_action(HotkeyAction action,
               system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
-            result.new_cursor_pos =
-                ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
+            result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
           }
         }
       }
@@ -381,13 +447,19 @@ ActionResult Engine::process_action(HotkeyAction action,
     break;
 
   case HotkeyAction::Exit:
-    spdlog::info("Exit: exit action (not implemented in engine)");
-    // Not implemented in engine
+    spdlog::info("Exit: exit requested");
+    result.success = true;
+    result.control = LoopControl::Exit;
     break;
 
   case HotkeyAction::TogglePause:
-    // Handled directly in loop.cpp before calling engine
+    result.success = true;
+    result.control = LoopControl::EnterManualPause;
     break;
+  }
+
+  if (result.success && result.selection_changed) {
+    result.focus_leaf_id = get_selected_leaf_id(system);
   }
 
   return result;

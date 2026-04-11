@@ -23,9 +23,6 @@ struct LoopDesktopData {
 
 namespace {
 
-// Result type for action handlers - signals whether the main loop should continue or exit
-enum class LoopActionResult { Continue, Exit };
-
 // Toast message display state
 struct ToastState {
   std::string message;
@@ -624,40 +621,22 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
         // Handle CycleSplitMode with toast
         if (action == HotkeyAction::CycleSplitMode) {
           auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
-          if (result.success) {
-            auto mode_str = magic_enum::enum_name(engine.system.split_mode);
-            spdlog::info("Cycled split mode: {}", mode_str);
-            toast.show(std::string("Split mode: ").append(mode_str));
+          if (result.success && result.toast_message.has_value()) {
+            toast.show(*result.toast_message);
           }
         } else {
           // Process other actions through engine
           auto result = engine.process_action(action, geometries, gap_h, gap_v, zen_pct);
 
-          // For navigation actions, set foreground window and move cursor
-          if (result.success && result.selection_changed && result.new_cursor_pos.has_value()) {
-            // Set foreground window for the selected cell
-            if (engine.system.selection.has_value()) {
-              int ci = engine.system.selection->cluster_index;
-              int cell_idx = engine.system.selection->cell_index;
-              if (ci >= 0 && static_cast<size_t>(ci) < engine.system.clusters.size()) {
-                const auto& cluster = engine.system.clusters[static_cast<size_t>(ci)];
-                if (cell_idx >= 0 && cell_idx < cluster.tree.size() &&
-                    cluster.tree.is_leaf(cell_idx)) {
-                  const auto& cell_data = cluster.tree[cell_idx];
-                  if (cell_data.leaf_id.has_value()) {
-                    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
-                    if (!winapi::set_foreground_window(hwnd)) {
-                      spdlog::error("Failed to set foreground window");
-                    }
-                  }
-                }
-              }
+          if (result.success && result.focus_leaf_id.has_value()) {
+            winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*result.focus_leaf_id);
+            if (!winapi::set_foreground_window(hwnd)) {
+              spdlog::error("Failed to set foreground window");
             }
-            // Move cursor to the new position
-            winapi::set_cursor_pos(result.new_cursor_pos->x, result.new_cursor_pos->y);
-          } else if (result.success && result.new_cursor_pos.has_value()) {
-            // For split ratio changes, just move cursor
-            winapi::set_cursor_pos(result.new_cursor_pos->x, result.new_cursor_pos->y);
+          }
+
+          if (result.success && result.cursor_pos.has_value()) {
+            winapi::set_cursor_pos(result.cursor_pos->x, result.cursor_pos->y);
           }
         }
 
@@ -694,7 +673,8 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     }
 
     // Update system state with redirect (selection updated inside ctrl::update)
-    bool changed = engine.update(current_state, redirect_cluster);
+    UpdateResult update_result = engine.update(current_state, redirect_cluster);
+    bool changed = update_result.topology_changed;
     bool zen_changed = false;
     if (provider.options.loopOptions.toggle_zen_on_window_maximize) {
       zen_changed =
@@ -708,7 +688,9 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
       if (changed) {
         // Move cursor to selected cell (which is now the new window if one was added)
-        if (auto center = engine.get_selected_center(geometries)) {
+        if (update_result.cursor_pos.has_value()) {
+          winapi::set_cursor_pos(update_result.cursor_pos->x, update_result.cursor_pos->y);
+        } else if (auto center = engine.get_selected_center(geometries)) {
           winapi::set_cursor_pos(center->x, center->y);
         }
       }

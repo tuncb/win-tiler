@@ -249,7 +249,7 @@ TEST_SUITE("Engine::get_hover_info") {
 // =============================================================================
 
 TEST_SUITE("Engine::update") {
-  TEST_CASE("returns true when changes applied") {
+  TEST_CASE("returns topology_changed when changes applied") {
     Engine engine = create_test_engine();
 
     // Add a new window to cluster 0
@@ -258,11 +258,13 @@ TEST_SUITE("Engine::update") {
         {{3}, false}        // Cluster 1: unchanged
     };
 
-    bool changed = engine.update(updates);
-    CHECK(changed == true);
+    UpdateResult result = engine.update(updates);
+    CHECK(result.topology_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
   }
 
-  TEST_CASE("returns false when no changes") {
+  TEST_CASE("returns no-op result when no changes") {
     Engine engine = create_test_engine();
 
     // Same windows as initial state
@@ -271,8 +273,25 @@ TEST_SUITE("Engine::update") {
         {{3}, false}     // Cluster 1: same
     };
 
-    bool changed = engine.update(updates);
-    CHECK(changed == false);
+    UpdateResult result = engine.update(updates);
+    CHECK(result.topology_changed == false);
+    CHECK(result.selection_changed == false);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+  }
+
+  TEST_CASE("reports selection change when update retargets selection") {
+    Engine engine = create_test_engine();
+    set_selection(engine, 0, 1);
+
+    std::vector<ClusterCellUpdateInfo> updates = {
+        {{1, 2, 4}, false}, // Cluster 0: added window 4
+        {{3}, false}        // Cluster 1: unchanged
+    };
+
+    UpdateResult result = engine.update(updates);
+    CHECK(result.topology_changed == true);
+    CHECK(result.selection_changed == true);
   }
 
   TEST_CASE("updates fullscreen state") {
@@ -281,7 +300,10 @@ TEST_SUITE("Engine::update") {
     std::vector<ClusterCellUpdateInfo> updates = {{{1, 2}, true}, // Cluster 0: has fullscreen
                                                   {{3}, false}};
 
-    [[maybe_unused]] bool _ = engine.update(updates);
+    UpdateResult result = engine.update(updates);
+    CHECK(result.topology_changed == false);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
     CHECK(engine.system.clusters[0].has_fullscreen_cell == true);
     CHECK(engine.system.clusters[1].has_fullscreen_cell == false);
   }
@@ -562,7 +584,15 @@ TEST_SUITE("Engine::process_action - Navigation") {
 
     CHECK(result.success == true);
     CHECK(result.selection_changed == true);
-    CHECK(result.new_cursor_pos.has_value());
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+    CHECK(result.cursor_pos.has_value());
+    REQUIRE(result.focus_leaf_id.has_value());
+    REQUIRE(engine.system.selection.has_value());
+    const auto& selected_cluster =
+        engine.system.clusters[static_cast<size_t>(engine.system.selection->cluster_index)];
+    CHECK(*result.focus_leaf_id ==
+          *selected_cluster.tree[engine.system.selection->cell_index].leaf_id);
   }
 
   TEST_CASE("navigate fails at boundary") {
@@ -577,6 +607,8 @@ TEST_SUITE("Engine::process_action - Navigation") {
 
     CHECK(result.success == false);
     CHECK(result.selection_changed == false);
+    CHECK_FALSE(result.cursor_pos.has_value());
+    CHECK_FALSE(result.focus_leaf_id.has_value());
   }
 
   TEST_CASE("navigate works across clusters") {
@@ -616,6 +648,8 @@ TEST_SUITE("Engine::process_action - ToggleSplit") {
         engine.process_action(HotkeyAction::ToggleSplit, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
 
     // Split direction should have changed
     SplitDir new_dir = engine.system.clusters[0].tree[0].split_dir;
@@ -647,6 +681,8 @@ TEST_SUITE("Engine::process_action - StoreCell/ClearStored") {
     ActionResult result = engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
     CHECK(engine.stored_cell.has_value());
   }
 
@@ -664,6 +700,8 @@ TEST_SUITE("Engine::process_action - StoreCell/ClearStored") {
         engine.process_action(HotkeyAction::ClearStored, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
     CHECK_FALSE(engine.stored_cell.has_value());
   }
 }
@@ -711,6 +749,8 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
     ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
     // Stored cell should be cleared after exchange
     CHECK_FALSE(engine.stored_cell.has_value());
 
@@ -730,6 +770,8 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
     ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
     CHECK_FALSE(engine.stored_cell.has_value());
   }
 }
@@ -752,7 +794,10 @@ TEST_SUITE("Engine::process_action - SplitRatio") {
 
     CHECK(result.success == true);
     CHECK(result.selection_changed == true);
-    CHECK(result.new_cursor_pos.has_value());
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.cursor_pos.has_value());
+    CHECK(result.focus_leaf_id.has_value());
 
     float new_ratio = engine.system.clusters[0].tree[0].split_ratio;
     // Ratio should have changed (direction depends on which child is selected)
@@ -771,6 +816,8 @@ TEST_SUITE("Engine::process_action - SplitRatio") {
         engine.process_action(HotkeyAction::SplitDecrease, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
 
     float new_ratio = engine.system.clusters[0].tree[0].split_ratio;
     CHECK(new_ratio != initial_ratio);
@@ -796,6 +843,10 @@ TEST_SUITE("Engine::process_action - ExchangeSiblings") {
 
     CHECK(result.success == true);
     CHECK(result.selection_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.cursor_pos.has_value());
+    CHECK(result.focus_leaf_id.has_value());
 
     // Verify swap
     CHECK(*engine.system.clusters[0].tree[1].leaf_id == cell2_leaf);
@@ -831,6 +882,8 @@ TEST_SUITE("Engine::process_action - ToggleZen") {
     ActionResult result = engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
     CHECK(engine.system.clusters[0].zen_cell_index.has_value());
     CHECK(*engine.system.clusters[0].zen_cell_index == 1);
   }
@@ -850,6 +903,8 @@ TEST_SUITE("Engine::process_action - ToggleZen") {
     ActionResult result = engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
 
     CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
     CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
   }
 }
@@ -868,16 +923,21 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
     ActionResult result1 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result1.success == true);
+    CHECK(result1.layout_changed == false);
+    CHECK(result1.apply_tiles == false);
+    CHECK(result1.toast_message == std::optional<std::string>{"Split mode: Vertical"});
     CHECK(engine.system.split_mode == SplitMode::Vertical);
 
     ActionResult result2 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result2.success == true);
+    CHECK(result2.toast_message == std::optional<std::string>{"Split mode: Horizontal"});
     CHECK(engine.system.split_mode == SplitMode::Horizontal);
 
     ActionResult result3 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result3.success == true);
+    CHECK(result3.toast_message == std::optional<std::string>{"Split mode: Zigzag"});
     CHECK(engine.system.split_mode == SplitMode::Zigzag);
   }
 }
@@ -906,7 +966,10 @@ TEST_SUITE("Engine::process_action - ResetSplitRatio") {
 
     CHECK(result.success == true);
     CHECK(result.selection_changed == true);
-    CHECK(result.new_cursor_pos.has_value());
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.cursor_pos.has_value());
+    CHECK(result.focus_leaf_id.has_value());
     CHECK(engine.system.clusters[0].tree[0].split_ratio == 0.5f);
   }
 }
@@ -916,15 +979,27 @@ TEST_SUITE("Engine::process_action - ResetSplitRatio") {
 // =============================================================================
 
 TEST_SUITE("Engine::process_action - Exit") {
-  TEST_CASE("Exit action does nothing") {
+  TEST_CASE("Exit action returns loop control") {
     Engine engine = create_test_engine();
     auto geoms = compute_default_geometries(engine);
 
     ActionResult result = engine.process_action(HotkeyAction::Exit, geoms, 10.0f, 10.0f, 0.0f);
 
-    CHECK(result.success == false);
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::Exit);
     CHECK(result.selection_changed == false);
-    CHECK_FALSE(result.new_cursor_pos.has_value());
+    CHECK_FALSE(result.cursor_pos.has_value());
+  }
+
+  TEST_CASE("TogglePause action returns loop control") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::TogglePause, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::EnterManualPause);
   }
 }
 
@@ -966,7 +1041,7 @@ TEST_SUITE("Engine - Edge Cases") {
     ActionResult result =
         engine.process_action(HotkeyAction::NavigateRight, zen_geoms, 10.0f, 10.0f, 0.90f);
     // May succeed or fail depending on geometry, but shouldn't crash
-    (void)result;
+    CHECK(result.control == LoopControl::Continue);
   }
 
   TEST_CASE("get_hover_info with empty geometries") {

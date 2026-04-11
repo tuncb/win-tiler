@@ -112,11 +112,10 @@ void to_screen_point(const ViewTransform& vt, float global_x, float global_y, fl
   screen_y = vt.margin + (global_y - vt.offset_y) * vt.scale;
 }
 
-void center_mouse_on_rect(const ViewTransform& vt, const ctrl::Rect& rect) {
-  float center_x = rect.x + rect.width / 2.0f;
-  float center_y = rect.y + rect.height / 2.0f;
-  float screen_x, screen_y;
-  to_screen_point(vt, center_x, center_y, screen_x, screen_y);
+void center_mouse_on_point(const ViewTransform& vt, const ctrl::Point& point) {
+  float screen_x = 0.0f;
+  float screen_y = 0.0f;
+  to_screen_point(vt, static_cast<float>(point.x), static_cast<float>(point.y), screen_x, screen_y);
   SetMousePosition(static_cast<int>(screen_x), static_cast<int>(screen_y));
 }
 
@@ -206,7 +205,8 @@ void add_new_process(Engine& engine, size_t& next_process_id,
 
   // Build state and update
   auto state = build_current_state(engine, leaf_ids_per_cluster);
-  if (!engine.update(state, static_cast<int>(*target_cluster_index))) {
+  auto update_result = engine.update(state, static_cast<int>(*target_cluster_index));
+  if (!update_result.topology_changed) {
     spdlog::error("add_new_process: failed to update system");
   }
 }
@@ -236,7 +236,8 @@ void delete_selected_process(Engine& engine,
 
   // Build state and update
   auto state = build_current_state(engine, leaf_ids_per_cluster);
-  if (!engine.update(state, std::nullopt)) {
+  auto update_result = engine.update(state, std::nullopt);
+  if (!update_result.topology_changed) {
     spdlog::error("delete_selected_process: failed to update system");
   }
 }
@@ -426,11 +427,8 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     if (action.has_value()) {
       auto result =
           current_desktop.engine.process_action(*action, global_geom, gap_h, gap_v, zen_pct);
-      if (result.selection_changed && current_desktop.engine.system.selection.has_value()) {
-        int ci = current_desktop.engine.system.selection->cluster_index;
-        int cell_idx = current_desktop.engine.system.selection->cell_index;
-        const auto& rect = global_geom[static_cast<size_t>(ci)][static_cast<size_t>(cell_idx)];
-        center_mouse_on_rect(vt, rect);
+      if (result.cursor_pos.has_value()) {
+        center_mouse_on_point(vt, *result.cursor_pos);
       }
     }
 

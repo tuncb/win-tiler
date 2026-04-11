@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "controller.h"
@@ -9,11 +10,31 @@
 
 namespace wintiler {
 
+enum class LoopControl {
+  Continue,
+  Exit,
+  EnterManualPause,
+};
+
 // Result of processing an action
 struct ActionResult {
   bool success = false;
+  bool layout_changed = false;
   bool selection_changed = false;
-  std::optional<ctrl::Point> new_cursor_pos; // New cursor position for navigation/ratio changes
+  bool apply_tiles = false;
+  std::optional<size_t> focus_leaf_id;
+  std::optional<ctrl::Point> cursor_pos;
+  std::optional<std::string> toast_message;
+  LoopControl control = LoopControl::Continue;
+};
+
+// Result of synchronizing external window state into the engine
+struct UpdateResult {
+  bool topology_changed = false;
+  bool selection_changed = false;
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  std::optional<ctrl::Point> cursor_pos;
 };
 
 // Information about what the mouse is hovering over
@@ -41,8 +62,8 @@ struct Engine {
                  const std::vector<std::vector<ctrl::Rect>>& global_geometries) const;
 
   // Update system state - wraps ctrl::update()
-  [[nodiscard]] bool update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
-                            std::optional<int> redirect_cluster_index = std::nullopt);
+  [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
+                                    std::optional<int> redirect_cluster_index = std::nullopt);
 
   // Process a hotkey action
   [[nodiscard]] ActionResult
