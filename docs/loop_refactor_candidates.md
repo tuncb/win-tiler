@@ -25,7 +25,7 @@ Input gathering is not unified. Hotkeys are read separately from gather_loop_inp
 
 Apply is unconditional. apply_tile_positions(...) runs every iteration at src/loop.cpp, not because engine explicitly said “these positions need applying”.
 
-perform_drop_move currently returns a cursor position based on stale/pre-recompute geometry, called out by its own comment at src/controller.cpp. That is another sign the output/apply boundary is blurry.
+perform_drop_move currently returns a cursor position based on stale/pre-recompute geometry, called out by its own comment in src/engine.cpp. That is another sign the output/apply boundary is blurry.
 
 The short version is: update() is the cleanest existing example of your desired pipeline. process_action() is close but still leaks engine internals into the loop. Hover selection, auto-zen, focus selection, pause/exit, and drag/resize handling are the main places where the loop still mixes gather, decide, and apply.
 

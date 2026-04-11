@@ -52,11 +52,36 @@ std::vector<std::vector<Rect>> compute_default_geometries(const Engine& engine) 
   return engine.compute_geometries(10.0f, 10.0f, 0.0f);
 }
 
+std::vector<size_t> collect_cluster_leaf_ids(const Cluster& cluster) {
+  std::vector<size_t> leaf_ids;
+  for (int index = 0; index < cluster.tree.size(); ++index) {
+    if (cluster.tree.is_leaf(index) && cluster.tree[index].leaf_id.has_value()) {
+      leaf_ids.push_back(*cluster.tree[index].leaf_id);
+    }
+  }
+  return leaf_ids;
+}
+
+std::optional<int> find_cluster_leaf_index(const Cluster& cluster, size_t leaf_id) {
+  for (int index = 0; index < cluster.tree.size(); ++index) {
+    if (cluster.tree.is_leaf(index) && cluster.tree[index].leaf_id.has_value() &&
+        *cluster.tree[index].leaf_id == leaf_id) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+Point compute_rect_center(const Rect& rect) {
+  return Point{static_cast<long>(rect.x + rect.width / 2.0f),
+               static_cast<long>(rect.y + rect.height / 2.0f)};
+}
+
 std::vector<ClusterCellUpdateInfo> build_current_cluster_updates(const Engine& engine) {
   std::vector<ClusterCellUpdateInfo> updates;
   updates.reserve(engine.system.clusters.size());
   for (const auto& cluster : engine.system.clusters) {
-    updates.push_back({get_cluster_leaf_ids(cluster), cluster.has_fullscreen_cell});
+    updates.push_back({collect_cluster_leaf_ids(cluster), cluster.has_fullscreen_cell});
   }
   return updates;
 }
@@ -94,7 +119,7 @@ void set_selection(Engine& engine, int cluster_index, int cell_index) {
 
 std::optional<CellIndicatorByIndex> find_cell_for_leaf_id(const Engine& engine, size_t leaf_id) {
   for (size_t cluster_index = 0; cluster_index < engine.system.clusters.size(); ++cluster_index) {
-    auto cell_index = find_cell_by_leaf_id(engine.system.clusters[cluster_index], leaf_id);
+    auto cell_index = find_cluster_leaf_index(engine.system.clusters[cluster_index], leaf_id);
     if (cell_index.has_value()) {
       return CellIndicatorByIndex{static_cast<int>(cluster_index), *cell_index};
     }
@@ -120,7 +145,7 @@ get_leaf_center_from_geometries(const Engine& engine,
     return std::nullopt;
   }
 
-  return get_rect_center(
+  return compute_rect_center(
       geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)]);
 }
 

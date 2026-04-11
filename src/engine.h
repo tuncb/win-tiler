@@ -4,9 +4,88 @@
 #include <string>
 #include <vector>
 
-#include "controller.h"
+#include "binary_tree.h"
 #include "model.h"
 #include "options.h"
+
+namespace wintiler::ctrl {
+
+struct Rect {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 0.0f;
+  float height = 0.0f;
+};
+
+struct Point {
+  long x = 0;
+  long y = 0;
+};
+
+enum class SplitDir { Vertical, Horizontal };
+
+enum class SplitMode {
+  Zigzag,
+  Vertical,
+  Horizontal,
+};
+
+enum class Direction { Left, Right, Up, Down };
+
+struct CellData {
+  SplitDir split_dir = SplitDir::Vertical;
+  float split_ratio = 0.5f;
+  std::optional<size_t> leaf_id;
+};
+
+struct Cluster {
+  BinaryTree<CellData> tree;
+  float window_width = 0.0f;
+  float window_height = 0.0f;
+  std::optional<int> zen_cell_index;
+  bool has_fullscreen_cell = false;
+  float global_x = 0.0f;
+  float global_y = 0.0f;
+  float monitor_x = 0.0f;
+  float monitor_y = 0.0f;
+  float monitor_width = 0.0f;
+  float monitor_height = 0.0f;
+};
+
+struct CellIndicatorByIndex {
+  int cluster_index = 0;
+  int cell_index = 0;
+};
+
+struct System {
+  std::vector<Cluster> clusters;
+  std::optional<CellIndicatorByIndex> selection;
+  SplitMode split_mode = SplitMode::Zigzag;
+};
+
+struct ClusterInitInfo {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 0.0f;
+  float height = 0.0f;
+  float monitor_x = 0.0f;
+  float monitor_y = 0.0f;
+  float monitor_width = 0.0f;
+  float monitor_height = 0.0f;
+  std::vector<size_t> initial_cell_ids;
+};
+
+struct ClusterCellUpdateInfo {
+  std::vector<size_t> leaf_ids;
+  bool has_fullscreen_cell = false;
+};
+
+struct DropMoveResult {
+  Point cursor_pos;
+  bool was_exchange = false;
+};
+
+} // namespace wintiler::ctrl
 
 namespace wintiler {
 
@@ -107,7 +186,7 @@ struct Engine {
   get_hover_info(float global_x, float global_y,
                  const std::vector<std::vector<ctrl::Rect>>& global_geometries) const;
 
-  // Update system state - wraps ctrl::update()
+  // Synchronize external window state into the engine
   [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                                     std::optional<int> redirect_cluster_index = std::nullopt);
 

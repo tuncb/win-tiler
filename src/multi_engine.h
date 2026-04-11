@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include "controller.h"
 #include "engine.h"
 
 namespace wintiler {
