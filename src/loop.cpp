@@ -87,171 +87,6 @@ const char* hotkey_action_to_string(HotkeyAction action) {
   return magic_enum::enum_name(action).data();
 }
 
-std::optional<ctrl::CellIndicatorByIndex> find_cell_by_leaf_id(const ctrl::System& system,
-                                                               size_t leaf_id) {
-  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
-    auto cell_index = ctrl::find_cell_by_leaf_id(system.clusters[cluster_index], leaf_id);
-    if (cell_index.has_value()) {
-      return ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), *cell_index};
-    }
-  }
-  return std::nullopt;
-}
-
-bool apply_zen_to_maximized_windows(
-    ctrl::System& system,
-    const std::vector<std::vector<winapi::ManagedWindowInfo>>& windows_per_monitor,
-    bool& has_completed_initial_tile_pass) {
-  if (!has_completed_initial_tile_pass) {
-    has_completed_initial_tile_pass = true;
-    return false;
-  }
-
-  bool zen_changed = false;
-
-  for (const auto& monitor_windows : windows_per_monitor) {
-    for (const auto& window : monitor_windows) {
-      if (window.handle == nullptr) {
-        continue;
-      }
-
-      size_t leaf_id = reinterpret_cast<size_t>(window.handle);
-      if (!window.is_maximized || window.is_fullscreen) {
-        continue;
-      }
-
-      auto cell = find_cell_by_leaf_id(system, leaf_id);
-      if (!cell.has_value()) {
-        continue;
-      }
-
-      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
-      if (cluster.has_fullscreen_cell) {
-        continue;
-      }
-      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
-        ctrl::clear_zen(system, cell->cluster_index);
-        zen_changed = true;
-        continue;
-      }
-
-      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
-      if (!set_zen_result) {
-        spdlog::error("Failed to set zen for maximized window {}", leaf_id);
-        continue;
-      }
-
-      zen_changed = true;
-    }
-  }
-
-  return zen_changed;
-}
-
-// Handle mouse drag-drop move operation
-// Returns true if an operation was performed
-bool handle_mouse_drop_move(Engine& engine, const std::vector<std::vector<ctrl::Rect>>& geometries,
-                            const winapi::LoopInputState& input_state) {
-  if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
-    return false;
-  }
-
-  // Clear the flag immediately to avoid re-processing
-  winapi::clear_drag_ended();
-
-  // Get cursor position from consolidated state
-  if (!input_state.cursor_pos.has_value()) {
-    spdlog::trace("Mouse drop: could not get cursor position");
-    return false;
-  }
-
-  size_t source_leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-  float cursor_x = static_cast<float>(input_state.cursor_pos->x);
-  float cursor_y = static_cast<float>(input_state.cursor_pos->y);
-  bool do_exchange = input_state.is_ctrl_pressed;
-
-  auto result =
-      engine.perform_drop_move(source_leaf_id, cursor_x, cursor_y, geometries, do_exchange);
-  if (result.has_value()) {
-    winapi::set_cursor_pos(result->cursor_pos.x, result->cursor_pos.y);
-    return true;
-  }
-
-  return false;
-}
-
-// Handle window resize operation to update split ratios
-// Returns true if a resize was performed, false otherwise
-bool handle_window_resize(Engine& engine, const std::vector<std::vector<ctrl::Rect>>& geometries,
-                          const winapi::LoopInputState& input_state) {
-  // Check if drag/resize just ended
-  if (!input_state.drag_info.has_value() || !input_state.drag_info->move_ended) {
-    return false;
-  }
-
-  // Get the HWND and find corresponding cell
-  size_t leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-  if (!ctrl::has_leaf_id(engine.system, leaf_id)) {
-    return false; // Not a managed window
-  }
-
-  // Find cluster and cell index
-  int cluster_index = -1;
-  for (size_t ci = 0; ci < engine.system.clusters.size(); ++ci) {
-    auto idx_opt = ctrl::find_cell_by_leaf_id(engine.system.clusters[ci], leaf_id);
-    if (idx_opt.has_value()) {
-      cluster_index = static_cast<int>(ci);
-      break;
-    }
-  }
-
-  if (cluster_index < 0) {
-    return false;
-  }
-
-  // Skip if fullscreen or zen mode active
-  const auto& cluster = engine.system.clusters[static_cast<size_t>(cluster_index)];
-  if (cluster.has_fullscreen_cell || cluster.zen_cell_index.has_value()) {
-    return false;
-  }
-
-  // Get actual window rect from Windows
-  auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
-  if (!actual_rect_opt.has_value()) {
-    return false;
-  }
-
-  // Convert winapi::WindowPosition to ctrl::Rect
-  ctrl::Rect actual_rect{
-      static_cast<float>(actual_rect_opt->x), static_cast<float>(actual_rect_opt->y),
-      static_cast<float>(actual_rect_opt->width), static_cast<float>(actual_rect_opt->height)};
-
-  // Get expected cell rect from geometries
-  auto cell_idx = ctrl::find_cell_by_leaf_id(cluster, leaf_id);
-  if (!cell_idx.has_value() ||
-      static_cast<size_t>(*cell_idx) >= geometries[static_cast<size_t>(cluster_index)].size()) {
-    return false;
-  }
-  const auto& expected_rect =
-      geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(*cell_idx)];
-
-  // Position-only check: skip if size unchanged (with small tolerance for rounding)
-  bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
-                       std::abs(actual_rect.height - expected_rect.height) > 2.0f);
-  if (!size_changed) {
-    return false; // Only moved, not resized
-  }
-
-  // Update split ratio using the geometry (which now includes internal node rects)
-  bool result = engine.handle_resize(cluster_index, leaf_id, actual_rect,
-                                     geometries[static_cast<size_t>(cluster_index)]);
-  if (result) {
-    spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
-                 leaf_id);
-  }
-  return result;
-}
-
 // Helper: Print tile layout from a multi-cluster system
 void print_tile_layout(const ctrl::System& system,
                        const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -314,6 +149,27 @@ extract_window_state_from_input(const winapi::LoopInputState& input_state) {
   return result;
 }
 
+std::vector<std::vector<ManagedWindowState>>
+extract_managed_window_state_from_input(const winapi::LoopInputState& input_state) {
+  std::vector<std::vector<ManagedWindowState>> result;
+  result.reserve(input_state.windows_per_monitor.size());
+
+  for (const auto& windows : input_state.windows_per_monitor) {
+    std::vector<ManagedWindowState> monitor_state;
+    monitor_state.reserve(windows.size());
+    for (const auto& win : windows) {
+      if (win.handle == nullptr) {
+        continue;
+      }
+      monitor_state.push_back(
+          {reinterpret_cast<size_t>(win.handle), win.is_fullscreen, win.is_maximized});
+    }
+    result.push_back(std::move(monitor_state));
+  }
+
+  return result;
+}
+
 // Helper: Apply tile positions from geometries
 void apply_tile_positions(const ctrl::System& system,
                           const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -349,28 +205,6 @@ void apply_tile_positions(const ctrl::System& system,
                                  static_cast<int>(r.width), static_cast<int>(r.height)};
       winapi::TileInfo tile_info{hwnd, pos};
       winapi::update_window_position(tile_info);
-    }
-  }
-}
-
-// Helper: Update selection based on mouse hover position
-void update_selection_from_hover(Engine& engine,
-                                 const std::vector<std::vector<ctrl::Rect>>& geometries,
-                                 const winapi::LoopInputState& input_state) {
-  if (!input_state.cursor_pos.has_value()) {
-    return;
-  }
-
-  float cursor_x = static_cast<float>(input_state.cursor_pos->x);
-  float cursor_y = static_cast<float>(input_state.cursor_pos->y);
-
-  auto hover_info = engine.get_hover_info(cursor_x, cursor_y, geometries);
-  if (hover_info.cell.has_value()) {
-    // Update selection if it's different
-    if (!engine.system.selection.has_value() ||
-        engine.system.selection->cluster_index != hover_info.cell->cluster_index ||
-        engine.system.selection->cell_index != hover_info.cell->cell_index) {
-      engine.system.selection = *hover_info.cell;
     }
   }
 }
@@ -572,19 +406,30 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
 
     // Check if a drag operation just completed
     if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
-      // Try resize first (size changed = ratio update)
-      bool resized = handle_window_resize(engine, geometries, input_state);
-
-      if (resized) {
-        // Resize performed - clear drag flag; layout applied below
-        winapi::clear_drag_ended();
-      } else {
-        // Try move/swap (clear_drag_ended called inside if successful)
-        handle_mouse_drop_move(engine, geometries, input_state);
+      CompletedDragRequest drag_request;
+      drag_request.leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
+      drag_request.do_exchange = input_state.is_ctrl_pressed;
+      if (input_state.cursor_pos.has_value()) {
+        drag_request.cursor_pos = ctrl::Point{input_state.cursor_pos->x, input_state.cursor_pos->y};
+      }
+      auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
+      if (actual_rect_opt.has_value()) {
+        drag_request.actual_window_rect = ctrl::Rect{static_cast<float>(actual_rect_opt->x),
+                                                     static_cast<float>(actual_rect_opt->y),
+                                                     static_cast<float>(actual_rect_opt->width),
+                                                     static_cast<float>(actual_rect_opt->height)};
       }
 
-      // Recompute geometries after drag operation
-      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+      DragResult drag_result = engine.process_completed_drag(drag_request, geometries);
+      if (drag_result.clear_drag_ended) {
+        winapi::clear_drag_ended();
+      }
+      if (drag_result.cursor_pos.has_value()) {
+        winapi::set_cursor_pos(drag_result.cursor_pos->x, drag_result.cursor_pos->y);
+      }
+      if (drag_result.layout_changed) {
+        geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+      }
     }
 
     // Check for config file changes and hot-reload
@@ -677,9 +522,11 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     bool changed = update_result.topology_changed;
     bool zen_changed = false;
     if (provider.options.loopOptions.toggle_zen_on_window_maximize) {
-      zen_changed =
-          apply_zen_to_maximized_windows(engine.system, input_state.windows_per_monitor,
-                                         current_desktop.data.has_completed_initial_tile_pass);
+      AutoZenResult zen_result = engine.update_zen_for_maximized_windows(
+          extract_managed_window_state_from_input(input_state),
+          current_desktop.data.has_completed_initial_tile_pass);
+      current_desktop.data.has_completed_initial_tile_pass = zen_result.initial_tile_pass_completed;
+      zen_changed = zen_result.layout_changed;
     }
 
     if (changed || zen_changed) {
@@ -697,8 +544,10 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     }
 
     // Update selection based on mouse hover position (skip if we just moved cursor)
-    if (!changed) {
-      update_selection_from_hover(engine, geometries, input_state);
+    if (!changed && input_state.cursor_pos.has_value()) {
+      [[maybe_unused]] HoverSelectionResult hover_result = engine.update_selection_from_hover(
+          static_cast<float>(input_state.cursor_pos->x),
+          static_cast<float>(input_state.cursor_pos->y), geometries);
     }
 
     // Apply tile positions

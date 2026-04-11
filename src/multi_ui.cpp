@@ -412,15 +412,8 @@ void run_raylib_ui_multi_cluster(const std::vector<ctrl::ClusterInitInfo>& infos
     auto hover_info = current_desktop.engine.get_hover_info(global_x, global_y, global_geom);
     hovered_cluster_index = hover_info.cluster_index;
 
-    // Update selection if hovering over a cell
-    if (hover_info.cell.has_value()) {
-      const auto& current_sel = current_desktop.engine.system.selection;
-      if (!current_sel.has_value() ||
-          current_sel->cluster_index != hover_info.cell->cluster_index ||
-          current_sel->cell_index != hover_info.cell->cell_index) {
-        current_desktop.engine.system.selection = *hover_info.cell;
-      }
-    }
+    [[maybe_unused]] HoverSelectionResult hover_result =
+        current_desktop.engine.update_selection_from_hover(global_x, global_y, global_geom);
 
     // Keyboard input (HotkeyAction enum actions)
     auto action = get_key_action();

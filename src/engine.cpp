@@ -1,6 +1,7 @@
 #include "engine.h"
 
 #include <algorithm>
+#include <cmath>
 #include <magic_enum/magic_enum.hpp>
 
 #include "spdlog/spdlog.h"
@@ -95,6 +96,17 @@ std::optional<size_t> get_selected_leaf_id(const ctrl::System& system) {
   return cluster.tree[cell_index].leaf_id;
 }
 
+std::optional<ctrl::CellIndicatorByIndex> find_cell_by_leaf_id(const ctrl::System& system,
+                                                               size_t leaf_id) {
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    auto cell_index = ctrl::find_cell_by_leaf_id(system.clusters[cluster_index], leaf_id);
+    if (cell_index.has_value()) {
+      return ctrl::CellIndicatorByIndex{static_cast<int>(cluster_index), *cell_index};
+    }
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
@@ -147,6 +159,69 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
   }
 
   result.layout_changed = result.topology_changed || fullscreen_state_changed;
+  result.apply_tiles = result.layout_changed;
+  return result;
+}
+
+HoverSelectionResult
+Engine::update_selection_from_hover(float global_x, float global_y,
+                                    const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
+  HoverSelectionResult result;
+  auto previous_selection = system.selection;
+
+  auto hover_info = get_hover_info(global_x, global_y, global_geometries);
+  if (hover_info.cell.has_value()) {
+    system.selection = *hover_info.cell;
+  }
+
+  result.selection_changed = !selections_equal(previous_selection, system.selection);
+  return result;
+}
+
+AutoZenResult Engine::update_zen_for_maximized_windows(
+    const std::vector<std::vector<ManagedWindowState>>& windows,
+    bool has_completed_initial_tile_pass) {
+  AutoZenResult result;
+  result.initial_tile_pass_completed = true;
+
+  if (!has_completed_initial_tile_pass) {
+    return result;
+  }
+
+  for (const auto& monitor_windows : windows) {
+    for (const auto& window : monitor_windows) {
+      if (window.leaf_id == 0) {
+        continue;
+      }
+      if (!window.is_maximized || window.is_fullscreen) {
+        continue;
+      }
+
+      auto cell = find_cell_by_leaf_id(system, window.leaf_id);
+      if (!cell.has_value()) {
+        continue;
+      }
+
+      auto& cluster = system.clusters[static_cast<size_t>(cell->cluster_index)];
+      if (cluster.has_fullscreen_cell) {
+        continue;
+      }
+      if (cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == cell->cell_index) {
+        ctrl::clear_zen(system, cell->cluster_index);
+        result.layout_changed = true;
+        continue;
+      }
+
+      bool set_zen_result = ctrl::set_zen(system, cell->cluster_index, cell->cell_index);
+      if (!set_zen_result) {
+        spdlog::error("Failed to set zen for maximized window {}", window.leaf_id);
+        continue;
+      }
+
+      result.layout_changed = true;
+    }
+  }
+
   result.apply_tiles = result.layout_changed;
   return result;
 }
@@ -211,6 +286,76 @@ bool Engine::handle_resize(int cluster_index, size_t leaf_id, const ctrl::Rect& 
                            const std::vector<ctrl::Rect>& cluster_geometry) {
   return ctrl::update_split_ratio_from_resize(system, cluster_index, leaf_id, actual_rect,
                                               cluster_geometry);
+}
+
+DragResult Engine::process_completed_drag(const CompletedDragRequest& request,
+                                          const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  DragResult result;
+  result.clear_drag_ended = true;
+
+  auto previous_selection = system.selection;
+  if (!ctrl::has_leaf_id(system, request.leaf_id)) {
+    return result;
+  }
+
+  auto cell = find_cell_by_leaf_id(system, request.leaf_id);
+  if (!cell.has_value()) {
+    return result;
+  }
+
+  int cluster_index = cell->cluster_index;
+  int cell_index = cell->cell_index;
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return result;
+  }
+
+  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+
+  bool can_try_resize =
+      request.actual_window_rect.has_value() && !cluster.has_fullscreen_cell &&
+      !cluster.zen_cell_index.has_value() &&
+      static_cast<size_t>(cluster_index) < geometries.size() &&
+      static_cast<size_t>(cell_index) < geometries[static_cast<size_t>(cluster_index)].size();
+
+  if (can_try_resize) {
+    const auto& expected_rect =
+        geometries[static_cast<size_t>(cluster_index)][static_cast<size_t>(cell_index)];
+    const auto& actual_rect = *request.actual_window_rect;
+    bool size_changed = (std::abs(actual_rect.width - expected_rect.width) > 2.0f ||
+                         std::abs(actual_rect.height - expected_rect.height) > 2.0f);
+    if (size_changed) {
+      result.handled =
+          ctrl::update_split_ratio_from_resize(system, cluster_index, request.leaf_id, actual_rect,
+                                               geometries[static_cast<size_t>(cluster_index)]);
+      if (result.handled) {
+        result.layout_changed = true;
+        result.apply_tiles = true;
+        spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
+                     request.leaf_id);
+        result.selection_changed = !selections_equal(previous_selection, system.selection);
+        return result;
+      }
+    }
+  }
+
+  if (!request.cursor_pos.has_value()) {
+    return result;
+  }
+
+  auto drop_result = ctrl::perform_drop_move(
+      system, request.leaf_id, static_cast<float>(request.cursor_pos->x),
+      static_cast<float>(request.cursor_pos->y), geometries, request.do_exchange);
+  if (!drop_result.has_value()) {
+    result.selection_changed = !selections_equal(previous_selection, system.selection);
+    return result;
+  }
+
+  result.handled = true;
+  result.selection_changed = !selections_equal(previous_selection, system.selection);
+  result.layout_changed = true;
+  result.apply_tiles = true;
+  result.cursor_pos = drop_result->cursor_pos;
+  return result;
 }
 
 std::optional<ctrl::Point>

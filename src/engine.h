@@ -37,6 +37,38 @@ struct UpdateResult {
   std::optional<ctrl::Point> cursor_pos;
 };
 
+struct HoverSelectionResult {
+  bool selection_changed = false;
+};
+
+struct ManagedWindowState {
+  size_t leaf_id = 0;
+  bool is_fullscreen = false;
+  bool is_maximized = false;
+};
+
+struct AutoZenResult {
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  bool initial_tile_pass_completed = false;
+};
+
+struct CompletedDragRequest {
+  size_t leaf_id = 0;
+  std::optional<ctrl::Point> cursor_pos;
+  std::optional<ctrl::Rect> actual_window_rect;
+  bool do_exchange = false;
+};
+
+struct DragResult {
+  bool handled = false;
+  bool selection_changed = false;
+  bool layout_changed = false;
+  bool apply_tiles = false;
+  bool clear_drag_ended = false;
+  std::optional<ctrl::Point> cursor_pos;
+};
+
 // Information about what the mouse is hovering over
 struct HoverInfo {
   std::optional<size_t> cluster_index;            // Which cluster mouse is over (even if empty)
@@ -64,6 +96,21 @@ struct Engine {
   // Update system state - wraps ctrl::update()
   [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                                     std::optional<int> redirect_cluster_index = std::nullopt);
+
+  // Update selection based on hover location
+  [[nodiscard]] HoverSelectionResult
+  update_selection_from_hover(float global_x, float global_y,
+                              const std::vector<std::vector<ctrl::Rect>>& global_geometries);
+
+  // Update zen state from maximized managed windows
+  [[nodiscard]] AutoZenResult
+  update_zen_for_maximized_windows(const std::vector<std::vector<ManagedWindowState>>& windows,
+                                   bool has_completed_initial_tile_pass);
+
+  // Interpret a completed drag operation as resize or move/exchange
+  [[nodiscard]] DragResult
+  process_completed_drag(const CompletedDragRequest& request,
+                         const std::vector<std::vector<ctrl::Rect>>& geometries);
 
   // Process a hotkey action
   [[nodiscard]] ActionResult

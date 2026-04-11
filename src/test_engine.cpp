@@ -245,6 +245,42 @@ TEST_SUITE("Engine::get_hover_info") {
 }
 
 // =============================================================================
+// Engine::update_selection_from_hover Tests
+// =============================================================================
+
+TEST_SUITE("Engine::update_selection_from_hover") {
+  TEST_CASE("changes selection when hovering a different cell") {
+    Engine engine = create_two_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 0, 1);
+    const auto& target_rect = geoms[0][2];
+    float hover_x = target_rect.x + target_rect.width / 2.0f;
+    float hover_y = target_rect.y + target_rect.height / 2.0f;
+
+    HoverSelectionResult result = engine.update_selection_from_hover(hover_x, hover_y, geoms);
+
+    CHECK(result.selection_changed == true);
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cluster_index == 0);
+    CHECK(engine.system.selection->cell_index == 2);
+  }
+
+  TEST_CASE("does nothing when hovering outside all cells") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+    set_selection(engine, 0, 1);
+
+    HoverSelectionResult result = engine.update_selection_from_hover(-100.0f, -100.0f, geoms);
+
+    CHECK(result.selection_changed == false);
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cluster_index == 0);
+    CHECK(engine.system.selection->cell_index == 1);
+  }
+}
+
+// =============================================================================
 // Engine::update Tests
 // =============================================================================
 
@@ -306,6 +342,36 @@ TEST_SUITE("Engine::update") {
     CHECK(result.apply_tiles == true);
     CHECK(engine.system.clusters[0].has_fullscreen_cell == true);
     CHECK(engine.system.clusters[1].has_fullscreen_cell == false);
+  }
+}
+
+// =============================================================================
+// Engine::update_zen_for_maximized_windows Tests
+// =============================================================================
+
+TEST_SUITE("Engine::update_zen_for_maximized_windows") {
+  TEST_CASE("initial pass only marks tile pass complete") {
+    Engine engine = create_two_window_engine();
+
+    AutoZenResult result = engine.update_zen_for_maximized_windows({{{1, false, true}}}, false);
+
+    CHECK(result.initial_tile_pass_completed == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("maximized managed window updates zen state after initial pass") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+
+    AutoZenResult result = engine.update_zen_for_maximized_windows({{{1, false, true}}}, true);
+
+    CHECK(result.initial_tile_pass_completed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
+    CHECK(*engine.system.clusters[0].zen_cell_index == 1);
   }
 }
 
@@ -511,6 +577,70 @@ TEST_SUITE("Engine::handle_resize") {
     bool changed = engine.handle_resize(0, leaf_id, geoms[0][1], geoms[0]);
     // Ratio shouldn't change if window matches expected size
     CHECK(changed == false);
+  }
+}
+
+// =============================================================================
+// Engine::process_completed_drag Tests
+// =============================================================================
+
+TEST_SUITE("Engine::process_completed_drag") {
+  TEST_CASE("move drag updates layout and requests cursor move") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
+    const auto& target_rect = geoms[0][2];
+    ctrl::Point cursor_pos{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                           static_cast<long>(target_rect.y + target_rect.height / 2.0f)};
+
+    CompletedDragRequest request;
+    request.leaf_id = source_leaf_id;
+    request.cursor_pos = cursor_pos;
+
+    DragResult result = engine.process_completed_drag(request, geoms);
+
+    CHECK(result.clear_drag_ended == true);
+    CHECK(result.handled == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.cursor_pos.has_value());
+  }
+
+  TEST_CASE("resize drag updates split ratio") {
+    Engine engine = create_two_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
+    float original_ratio = engine.system.clusters[0].tree[0].split_ratio;
+
+    CompletedDragRequest request;
+    request.leaf_id = source_leaf_id;
+    request.actual_window_rect = geoms[0][1];
+    request.actual_window_rect->width += 30.0f;
+
+    DragResult result = engine.process_completed_drag(request, geoms);
+
+    CHECK(result.clear_drag_ended == true);
+    CHECK(result.handled == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio != original_ratio);
+  }
+
+  TEST_CASE("unmanaged drag still requests drag flag clear") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    CompletedDragRequest request;
+    request.leaf_id = 999;
+
+    DragResult result = engine.process_completed_drag(request, geoms);
+
+    CHECK(result.clear_drag_ended == true);
+    CHECK(result.handled == false);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
   }
 }
 
