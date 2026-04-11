@@ -18,3 +18,4 @@
 - Step 9: Documented `agent stdio` in the README, including the current command set, window ID format, and a minimal JSON-lines session example.
 - Follow-up docs: Added reusable `.jsonl` session files under `docs/` with placeholder window IDs instead of machine-specific live IDs.
 - Follow-up docs: Added `docs/Invoke-WinTilerAgent.ps1` as a small stdio wrapper for running either a session file or one-off JSON requests against `win-tiler agent stdio`.
+- Follow-up docs: Added `docs/agent_mode.md` as the full agent-mode manual; `README.md` keeps the short overview and links to the manual.

@@ -150,6 +150,8 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 
 Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. In state responses, `actual_rect` reports the live OS window rect when it is available, `layout_rect` reports the engine's computed tile geometry when `include_layout` is enabled, and `rect` is kept as a compatibility field that prefers the live OS rect and only falls back to `layout_rect` if the live rect cannot be queried. `move_window_to_monitor` supports empty target monitors; when the target already has managed windows, `anchor_window_id` can be used to choose the insertion point.
 
+Full manual: [Agent Mode Manual](./docs/agent_mode.md)
+
 Example session:
 
 ```text
