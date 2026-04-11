@@ -32,10 +32,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path release-package | Out-Null
           Copy-Item x64\Release\win-tiler.exe release-package\
-          $runtime_dlls = Get-ChildItem x64\Release\fmt*.dll -ErrorAction SilentlyContinue
-          if ($runtime_dlls) {
-            Copy-Item $runtime_dlls -Destination release-package\
-          }
           Compress-Archive -Path release-package\* -DestinationPath win-tiler-${{ github.ref_name }}.zip
 
       - name: Create Release
