@@ -122,6 +122,7 @@ If no command is supplied, `win-tiler` defaults to `loop`.
 | `--version`, `-v` | Print version information and exit immediately. |
 | `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
 | `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
+| `--perf-stats` | In `loop` mode, print periodic stage timing summaries for the active portion of the main loop so before/after optimization runs are easier to compare. |
 
 If `--config` is explicitly provided and the file cannot be loaded, the program exits with an error.
 

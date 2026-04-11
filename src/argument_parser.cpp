@@ -80,6 +80,8 @@ ParseResult parse_args(int argc, char* argv[]) {
         }
         ++i;
         args.options.config_path = argv[i];
+      } else if (option_name == "perf-stats") {
+        args.options.perf_stats = true;
       } else {
         return make_error("Unknown option: --" + option_name);
       }
@@ -167,6 +169,7 @@ void print_usage() {
             << "  --version, -v           Show version information\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
             << "  --config <filepath>     Load configuration from a TOML file\n"
+            << "  --perf-stats            Print periodic loop performance summaries\n"
             << "\n"
             << "Commands:\n"
             << "  version                 Show version information\n"

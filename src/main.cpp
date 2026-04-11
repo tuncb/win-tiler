@@ -169,7 +169,9 @@ int main(int argc, char* argv[]) {
                  [](const VersionCommand&) {
                    std::cout << "win-tiler v" << get_version_string() << std::endl;
                  },
-                 [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
+                 [&](const LoopCommand&) {
+                   run_loop_mode(optionsProvider, LoopRunOptions{result.args.options.perf_stats});
+                 },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
                  [&](const AgentCommand& cmd) { run_agent_mode(optionsProvider, cmd); },
                  [&](const InitConfigCommand& cmd) {

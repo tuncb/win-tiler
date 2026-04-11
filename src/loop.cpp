@@ -3,10 +3,13 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 #include <magic_enum/magic_enum.hpp>
 #include <vector>
 
 #include "engine.h"
+#include "loop_perf.h"
 #include "model.h"
 #include "multi_cell_renderer.h"
 #include "multi_engine.h"
@@ -229,9 +232,31 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   return true;
 }
 
+void maybe_print_perf_report(LoopPerfCollector& perf,
+                             std::chrono::steady_clock::time_point report_time) {
+  if (!perf.should_report(report_time)) {
+    return;
+  }
+
+  std::cout << perf.format_report(report_time);
+  std::cout.flush();
+  perf.reset_window(report_time);
+}
+
+void flush_perf_report(LoopPerfCollector& perf) {
+  if (!perf.has_samples()) {
+    return;
+  }
+
+  auto report_time = std::chrono::steady_clock::now();
+  std::cout << perf.format_report(report_time);
+  std::cout.flush();
+  perf.reset_window(report_time);
+}
+
 } // namespace
 
-void run_loop_mode(GlobalOptionsProvider& provider) {
+void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_options) {
   const auto& options = provider.options;
 
   // Get initial monitor configuration and create engine
@@ -280,6 +305,13 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
   // Manual pause state (toggled by hotkey)
   bool is_manually_paused = false;
 
+  LoopPerfCollector perf(run_options.perf_stats);
+  if (perf.enabled) {
+    std::cout << "[perf] reporting every " << perf.report_interval.count()
+              << "s for loop mode stage timings\n";
+    std::cout.flush();
+  }
+
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
@@ -307,16 +339,22 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
       }
     }
 
-    auto loop_start = std::chrono::high_resolution_clock::now();
+    auto loop_start = std::chrono::steady_clock::now();
 
     // Gather all Windows API input state in a single call
+    auto gather_start = std::chrono::steady_clock::now();
     auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
+    perf.record_stage(LoopPerfStage::GatherInput, std::chrono::steady_clock::now() - gather_start);
 
     // Virtual desktop handling via desktop_id from managed windows
     if (!input_state.desktop_id.has_value()) {
       // No windows - skip iteration
       spdlog::debug("No desktop ID (no windows), skipping iteration");
       overlay::clear();
+      perf.note_active_frame();
+      auto loop_end = std::chrono::steady_clock::now();
+      perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+      maybe_print_perf_report(perf, loop_end);
       continue;
     }
 
@@ -346,11 +384,20 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
 
     // Skip all processing while user is dragging a window - only render
+    auto compute_geometry_start = std::chrono::steady_clock::now();
     geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+    perf.record_stage(LoopPerfStage::ComputeGeometry,
+                      std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
+      auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
                        engine.stored_cell, toast.get_visible_message());
-      auto loop_end = std::chrono::high_resolution_clock::now();
+      perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
+      perf.note_active_frame();
+      perf.note_drag_only_frame();
+      auto loop_end = std::chrono::steady_clock::now();
+      perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+      maybe_print_perf_report(perf, loop_end);
       spdlog::trace(
           "loop iteration total: {}us",
           std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
@@ -364,26 +411,50 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
 
     // Check for monitor configuration changes
-    if (handle_monitor_change(monitors, provider.options, engine)) {
+    bool monitor_changed = handle_monitor_change(monitors, provider.options, engine);
+    if (monitor_changed) {
       current_desktop.data.has_completed_initial_tile_pass = false;
+      auto updated_geometry_start = std::chrono::steady_clock::now();
       geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+      perf.record_stage(LoopPerfStage::ComputeGeometry,
+                        std::chrono::steady_clock::now() - updated_geometry_start);
       spdlog::debug("=== Updated Tile Layout After Monitor Change ===");
       print_tile_layout(engine.system, geometries);
     }
 
+    auto build_frame_input_start = std::chrono::steady_clock::now();
     EngineFrameInput frame_input = build_engine_frame_input(
         input_state, current_desktop.data, gap_h, gap_v, zen_pct,
         provider.options.loopOptions.toggle_zen_on_window_maximize, poll_hotkey_action());
+    perf.record_stage(LoopPerfStage::BuildFrameInput,
+                      std::chrono::steady_clock::now() - build_frame_input_start);
 
+    auto engine_start = std::chrono::steady_clock::now();
     EngineFrameOutput frame_output = engine.process_frame(frame_input);
+    perf.record_stage(LoopPerfStage::Engine, std::chrono::steady_clock::now() - engine_start);
+    auto apply_start = std::chrono::steady_clock::now();
     apply_frame_output(frame_output, engine.system, toast);
+    perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);
+    perf.note_active_frame();
+    if (frame_output.apply_tiles) {
+      perf.note_apply_tiles_frame();
+    }
+    if (monitor_changed || frame_output.topology_changed) {
+      perf.note_topology_changed_frame();
+    }
 
     if (frame_output.control == LoopControl::Exit) {
+      auto loop_end = std::chrono::steady_clock::now();
+      perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+      maybe_print_perf_report(perf, loop_end);
       spdlog::info("Exit hotkey pressed, shutting down...");
       break;
     }
 
     if (frame_output.control == LoopControl::EnterManualPause) {
+      auto loop_end = std::chrono::steady_clock::now();
+      perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+      maybe_print_perf_report(perf, loop_end);
       is_manually_paused = true;
       spdlog::info("Manual pause activated");
       overlay::clear();
@@ -395,14 +466,20 @@ void run_loop_mode(GlobalOptionsProvider& provider) {
     geometries = std::move(frame_output.geometries);
 
     // Render cell system overlay
+    auto render_start = std::chrono::steady_clock::now();
     renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
                      engine.stored_cell, toast.get_visible_message());
+    perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
 
-    auto loop_end = std::chrono::high_resolution_clock::now();
+    auto loop_end = std::chrono::steady_clock::now();
+    perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+    maybe_print_perf_report(perf, loop_end);
     spdlog::trace(
         "=======================loop iteration total: {}us",
         std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_start).count());
   }
+
+  flush_perf_report(perf);
 
   // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(provider.options.keyboardOptions);

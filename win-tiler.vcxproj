@@ -210,6 +210,7 @@
     <ClCompile Include="src\argument_parser.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\loop.cpp" />
+    <ClCompile Include="src\loop_perf.cpp" />
     <ClCompile Include="src\multi_cell_renderer.cpp" />
     <ClCompile Include="src\overlay.cpp" />
     <ClCompile Include="src\options.cpp" />
@@ -219,6 +220,7 @@
     <ClCompile Include="src\test_agent_protocol.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_engine.cpp" />
+    <ClCompile Include="src\test_loop_perf.cpp" />
     <ClCompile Include="src\test_options.cpp" />
     <ClCompile Include="src\test_startup.cpp" />
     <ClCompile Include="src\main.cpp" />
@@ -233,6 +235,7 @@
     <ClInclude Include="src\argument_parser.h" />
     <ClInclude Include="src\track_windows.h" />
     <ClInclude Include="src\loop.h" />
+    <ClInclude Include="src\loop_perf.h" />
     <ClInclude Include="src\multi_cell_renderer.h" />
     <ClInclude Include="src\overlay.h" />
     <ClInclude Include="src\options.h" />

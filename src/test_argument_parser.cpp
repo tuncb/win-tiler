@@ -49,6 +49,24 @@ TEST_SUITE("argument_parser") {
     CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
   }
 
+  TEST_CASE("parses perf stats option with implicit loop command") {
+    auto result = parse({"win-tiler", "--perf-stats"});
+
+    CHECK(result.success);
+    CHECK(result.args.options.perf_stats);
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
+  }
+
+  TEST_CASE("parses perf stats option with explicit loop command") {
+    auto result = parse({"win-tiler", "--perf-stats", "loop"});
+
+    CHECK(result.success);
+    CHECK(result.args.options.perf_stats);
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
+  }
+
   TEST_CASE("help still overrides the default loop command") {
     auto result = parse({"win-tiler", "--help"});
 
@@ -147,7 +165,7 @@ TEST_SUITE("argument_parser") {
 
 TEST_SUITE("version") {
   TEST_CASE("version string includes current prerelease label") {
-    CHECK(get_version_string() == "0.4.0-alpha");
+    CHECK(get_version_string() == "0.4.1-alpha");
   }
 }
 
