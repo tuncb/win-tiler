@@ -61,6 +61,32 @@ std::vector<ClusterCellUpdateInfo> build_current_cluster_updates(const Engine& e
   return updates;
 }
 
+bool rects_equal(const Rect& lhs, const Rect& rhs) {
+  return lhs.x == doctest::Approx(rhs.x) && lhs.y == doctest::Approx(rhs.y) &&
+         lhs.width == doctest::Approx(rhs.width) && lhs.height == doctest::Approx(rhs.height);
+}
+
+bool geometries_equal(const std::vector<std::vector<Rect>>& lhs,
+                      const std::vector<std::vector<Rect>>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (size_t cluster_index = 0; cluster_index < lhs.size(); ++cluster_index) {
+    if (lhs[cluster_index].size() != rhs[cluster_index].size()) {
+      return false;
+    }
+
+    for (size_t rect_index = 0; rect_index < lhs[cluster_index].size(); ++rect_index) {
+      if (!rects_equal(lhs[cluster_index][rect_index], rhs[cluster_index][rect_index])) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 // Helper to set selection on a system
 void set_selection(Engine& engine, int cluster_index, int cell_index) {
   engine.system.selection = CellIndicatorByIndex{cluster_index, cell_index};
@@ -750,6 +776,28 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.has_completed_initial_tile_pass == true);
     REQUIRE(engine.system.clusters[0].zen_cell_index.has_value());
     CHECK(*engine.system.clusters[0].zen_cell_index == 1);
+  }
+
+  TEST_CASE("returned geometries match final engine state after multiple layout mutations") {
+    Engine engine = create_test_engine();
+    set_selection(engine, 0, 1);
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2, 4}, false}, {{3}, false}};
+    input.managed_windows = {{{1, false, true}}};
+    input.hotkey_action = HotkeyAction::ToggleSplit;
+    input.auto_zen_on_maximize = true;
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.zen_pct = 0.90f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+    auto expected_geometries = engine.compute_geometries(10.0f, 10.0f, 0.90f);
+
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(geometries_equal(output.geometries, expected_geometries));
   }
 }
 
