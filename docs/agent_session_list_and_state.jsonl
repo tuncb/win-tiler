@@ -1,0 +1,2 @@
+{"id":"list-1","command":"list_windows"}
+{"id":"state-1","command":"get_state","include_layout":true}

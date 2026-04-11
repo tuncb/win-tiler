@@ -1729,6 +1729,50 @@ void Engine::clear_stored_cell() {
   stored_cell.reset();
 }
 
+std::optional<ctrl::CellIndicatorByIndex> Engine::find_leaf(size_t leaf_id) const {
+  return find_cell_by_leaf_id(system, leaf_id);
+}
+
+std::optional<size_t> Engine::selected_leaf_id() const {
+  return get_selected_leaf_id(system);
+}
+
+bool Engine::select_leaf(size_t leaf_id) {
+  auto cell = find_cell_by_leaf_id(system, leaf_id);
+  if (!cell.has_value()) {
+    return false;
+  }
+
+  system.selection = *cell;
+  return true;
+}
+
+bool Engine::swap_leaves(size_t first_leaf_id, size_t second_leaf_id) {
+  auto first_cell = find_cell_by_leaf_id(system, first_leaf_id);
+  if (!first_cell.has_value()) {
+    return false;
+  }
+
+  auto second_cell = find_cell_by_leaf_id(system, second_leaf_id);
+  if (!second_cell.has_value()) {
+    return false;
+  }
+
+  return ctrl::swap_cells(system, first_cell->cluster_index, first_cell->cell_index,
+                          second_cell->cluster_index, second_cell->cell_index);
+}
+
+bool Engine::move_leaf_to_cell(size_t source_leaf_id, int target_cluster_index,
+                               int target_cell_index) {
+  auto source_cell = find_cell_by_leaf_id(system, source_leaf_id);
+  if (!source_cell.has_value()) {
+    return false;
+  }
+
+  return ctrl::move_cell(system, source_cell->cluster_index, source_cell->cell_index,
+                         target_cluster_index, target_cell_index);
+}
+
 ActionResult Engine::process_action(HotkeyAction action,
                                     const std::vector<std::vector<ctrl::Rect>>& global_geometries,
                                     float gap_h, float gap_v, float zen_pct) {

@@ -84,6 +84,38 @@ TEST_SUITE("argument_parser") {
     CHECK(std::get<StartupCommand>(*result.args.command).action == StartupAction::Status);
   }
 
+  TEST_CASE("parses agent command with default stdio transport") {
+    auto result = parse({"win-tiler", "agent"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<AgentCommand>(*result.args.command));
+    CHECK(std::get<AgentCommand>(*result.args.command).transport == AgentTransport::Stdio);
+  }
+
+  TEST_CASE("parses agent command with explicit stdio transport") {
+    auto result = parse({"win-tiler", "agent", "stdio"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<AgentCommand>(*result.args.command));
+    CHECK(std::get<AgentCommand>(*result.args.command).transport == AgentTransport::Stdio);
+  }
+
+  TEST_CASE("agent command rejects unknown transport") {
+    auto result = parse({"win-tiler", "agent", "pipe"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "Unknown agent transport: pipe. Valid transports: stdio");
+  }
+
+  TEST_CASE("agent command rejects extra arguments") {
+    auto result = parse({"win-tiler", "agent", "stdio", "extra"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "agent does not accept extra arguments");
+  }
+
   TEST_CASE("startup command requires an action") {
     auto result = parse({"win-tiler", "startup"});
 

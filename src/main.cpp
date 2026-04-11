@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "agent_mode.h"
 #include "argument_parser.h"
 #include "loop.h"
 #include "options.h"
@@ -50,7 +51,8 @@ std::filesystem::path getDefaultConfigPath() {
 
 bool command_uses_options_provider(const wintiler::Command& command) {
   return std::holds_alternative<wintiler::LoopCommand>(command) ||
-         std::holds_alternative<wintiler::TrackWindowsCommand>(command);
+         std::holds_alternative<wintiler::TrackWindowsCommand>(command) ||
+         std::holds_alternative<wintiler::AgentCommand>(command);
 }
 
 tl::expected<std::optional<std::filesystem::path>, std::string>
@@ -169,6 +171,7 @@ int main(int argc, char* argv[]) {
                  },
                  [&](const LoopCommand&) { run_loop_mode(optionsProvider); },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
+                 [&](const AgentCommand& cmd) { run_agent_mode(optionsProvider, cmd); },
                  [&](const InitConfigCommand& cmd) {
                    auto targetPath =
                        cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();

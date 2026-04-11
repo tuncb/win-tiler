@@ -203,6 +203,22 @@ struct Engine {
   process_action(HotkeyAction action, const std::vector<std::vector<ctrl::Rect>>& global_geometries,
                  float gap_h, float gap_v, float zen_pct);
 
+  // Find a managed leaf by its window-backed leaf ID
+  [[nodiscard]] std::optional<ctrl::CellIndicatorByIndex> find_leaf(size_t leaf_id) const;
+
+  // Get the currently selected leaf ID, if selection exists
+  [[nodiscard]] std::optional<size_t> selected_leaf_id() const;
+
+  // Select a managed leaf by ID
+  [[nodiscard]] bool select_leaf(size_t leaf_id);
+
+  // Swap two managed leaves by ID
+  [[nodiscard]] bool swap_leaves(size_t first_leaf_id, size_t second_leaf_id);
+
+  // Move a managed leaf to a target leaf cell
+  [[nodiscard]] bool move_leaf_to_cell(size_t source_leaf_id, int target_cluster_index,
+                                       int target_cell_index);
+
   // Clear the stored cell reference
   void clear_stored_cell();
 };

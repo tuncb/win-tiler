@@ -18,6 +18,15 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\agent_mode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\agent_protocol.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\runtime_support.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\loop.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -39,6 +48,9 @@
     <ClCompile Include="src\test_argument_parser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\test_agent_protocol.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\argument_parser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -56,6 +68,15 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\agent_mode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\agent_protocol.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\runtime_support.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\loop.h">
       <Filter>Header Files</Filter>
     </ClInclude>

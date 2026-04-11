@@ -16,6 +16,7 @@
 - Ignore filters for processes, window titles, process/title pairs, child windows, and very small windows.
 - Overlay and visualization support for understanding the current layout and selection state.
 - Diagnostic support for logging discovered windows and inspecting runtime behavior.
+- Persistent agent mode over stdio JSON lines for programmatic window inspection and control.
 - Per-user startup registration through the Windows `Run` registry entry.
 
 ## Configuration
@@ -131,6 +132,7 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 | `loop` | Start the main tiling loop. This mode registers hotkeys, tracks monitor and window changes, applies tiling, and renders the overlay. This is the default command. |
 | `version` | Print version information. This is the command form of `--version`. |
 | `track-windows` | Log the windows found on each monitor once per second until the configured exit hotkey is pressed. |
+| `agent [stdio]` | Start persistent agent mode over stdio JSON lines. The current implementation supports `list_windows`, `get_state`, `focus_window`, `send_action`, `swap_windows`, `move_window_to_monitor`, and `retile`. |
 | `init-config [filepath]` | Write a default TOML config file. If `filepath` is omitted, the file is written as `win-tiler.toml` next to the executable. |
 | `startup <action>` | Manage startup registration for the current user. Supported actions are `enable`, `disable`, and `status`. |
 
@@ -142,6 +144,24 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 | `startup disable` | Remove the current-user startup entry. |
 | `startup status` | Print whether startup is enabled and, if available, the exact command line stored in the registry. |
 
+### `agent` Mode
+
+`agent stdio` reads one JSON request per input line and writes one JSON response per output line. The default transport is also `stdio`, so `win-tiler agent` and `win-tiler agent stdio` are equivalent.
+
+Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. `move_window_to_monitor` requires either an anchor window on the target monitor or an existing managed window there.
+
+Example session:
+
+```text
+{"id":"1","command":"list_windows"}
+{"id":"2","command":"get_state","include_layout":true}
+{"id":"3","command":"focus_window","window_id":"hwnd:000000000012ABCD","select":true}
+{"id":"4","command":"send_action","action":"ToggleZen"}
+{"id":"5","command":"swap_windows","first_window_id":"hwnd:000000000012ABCD","second_window_id":"hwnd:0000000000456789"}
+{"id":"6","command":"move_window_to_monitor","window_id":"hwnd:000000000012ABCD","target_monitor_index":1}
+{"id":"7","command":"retile"}
+```
+
 ### Examples
 
 ```text
@@ -149,6 +169,7 @@ win-tiler
 win-tiler --logmode debug
 win-tiler --config C:\work\win-tiler\win-tiler.toml loop
 win-tiler track-windows
+win-tiler agent stdio
 win-tiler init-config
 win-tiler init-config C:\work\win-tiler\custom-config.toml
 win-tiler --config C:\work\win-tiler\custom-config.toml startup enable

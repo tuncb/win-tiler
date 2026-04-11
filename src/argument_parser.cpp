@@ -102,6 +102,20 @@ ParseResult parse_args(int argc, char* argv[]) {
       args.command = LoopCommand{};
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
+    } else if (cmd == "agent") {
+      AgentCommand agent_cmd;
+      if (i < argc) {
+        std::string transport = argv[i];
+        if (transport == "stdio") {
+          ++i;
+        } else {
+          return make_error("Unknown agent transport: " + transport + ". Valid transports: stdio");
+        }
+      }
+      if (i < argc) {
+        return make_error("agent does not accept extra arguments");
+      }
+      args.command = agent_cmd;
     } else if (cmd == "init-config") {
       InitConfigCommand init_cmd;
       if (i < argc && argv[i][0] != '-') {
@@ -158,6 +172,7 @@ void print_usage() {
             << "  version                 Show version information\n"
             << "  loop                    Run in loop mode (hotkey-driven, default)\n"
             << "  track-windows           Track and log windows per monitor in a loop\n"
+            << "  agent [stdio]           Run persistent agent mode over stdio JSON lines\n"
             << "  init-config [filepath]  Create default configuration TOML file\n"
             << "                          (defaults to win-tiler.toml next to executable)\n"
             << "  startup <action>        Manage startup registration for the current user\n"

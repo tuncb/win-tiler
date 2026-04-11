@@ -11,6 +11,7 @@
 #include "multi_cell_renderer.h"
 #include "multi_engine.h"
 #include "overlay.h"
+#include "runtime_support.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -125,50 +126,6 @@ void print_tile_layout(const ctrl::System& system,
   }
 }
 
-// Helper: Extract ClusterCellUpdateInfo from consolidated input state
-std::vector<ctrl::ClusterCellUpdateInfo>
-extract_window_state_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<ctrl::ClusterCellUpdateInfo> result;
-
-  for (size_t monitor_index = 0; monitor_index < input_state.windows_per_monitor.size();
-       ++monitor_index) {
-    const auto& windows = input_state.windows_per_monitor[monitor_index];
-    std::vector<size_t> cell_ids;
-    cell_ids.reserve(windows.size());
-    bool has_fullscreen = false;
-    for (const auto& win : windows) {
-      cell_ids.push_back(reinterpret_cast<size_t>(win.handle));
-      if (win.is_fullscreen) {
-        has_fullscreen = true;
-      }
-    }
-    result.push_back({cell_ids, has_fullscreen});
-  }
-
-  return result;
-}
-
-std::vector<std::vector<ManagedWindowState>>
-extract_managed_window_state_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<std::vector<ManagedWindowState>> result;
-  result.reserve(input_state.windows_per_monitor.size());
-
-  for (const auto& windows : input_state.windows_per_monitor) {
-    std::vector<ManagedWindowState> monitor_state;
-    monitor_state.reserve(windows.size());
-    for (const auto& win : windows) {
-      if (win.handle == nullptr) {
-        continue;
-      }
-      monitor_state.push_back(
-          {reinterpret_cast<size_t>(win.handle), win.is_fullscreen, win.is_maximized});
-    }
-    result.push_back(std::move(monitor_state));
-  }
-
-  return result;
-}
-
 std::optional<HotkeyAction> poll_hotkey_action() {
   auto hotkey_id = winapi::check_keyboard_action();
   if (!hotkey_id.has_value()) {
@@ -182,8 +139,8 @@ EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_st
                                           float gap_v, float zen_pct, bool auto_zen_on_maximize,
                                           std::optional<HotkeyAction> hotkey_action) {
   EngineFrameInput frame_input;
-  frame_input.cluster_updates = extract_window_state_from_input(input_state);
-  frame_input.managed_windows = extract_managed_window_state_from_input(input_state);
+  frame_input.cluster_updates = extract_cluster_updates_from_input(input_state);
+  frame_input.managed_windows = extract_managed_window_states_from_input(input_state);
   frame_input.hotkey_action = hotkey_action;
   frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
   frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
@@ -212,45 +169,6 @@ EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_st
   }
 
   return frame_input;
-}
-
-// Helper: Apply tile positions from geometries
-void apply_tile_positions(const ctrl::System& system,
-                          const std::vector<std::vector<ctrl::Rect>>& geometries) {
-  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
-    const auto& cluster = system.clusters[ci];
-
-    // Skip clusters with fullscreen windows
-    if (cluster.has_fullscreen_cell) {
-      continue;
-    }
-
-    if (ci >= geometries.size()) {
-      continue;
-    }
-    const auto& rects = geometries[ci];
-
-    for (int i = 0; i < cluster.tree.size(); ++i) {
-      if (!cluster.tree.is_leaf(i)) {
-        continue;
-      }
-      const auto& cell_data = cluster.tree[i];
-      if (!cell_data.leaf_id.has_value()) {
-        continue;
-      }
-
-      if (static_cast<size_t>(i) >= rects.size()) {
-        continue;
-      }
-      const auto& r = rects[static_cast<size_t>(i)];
-
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
-      winapi::WindowPosition pos{static_cast<int>(r.x), static_cast<int>(r.y),
-                                 static_cast<int>(r.width), static_cast<int>(r.height)};
-      winapi::TileInfo tile_info{hwnd, pos};
-      winapi::update_window_position(tile_info);
-    }
-  }
 }
 
 void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
@@ -282,41 +200,6 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
     apply_tile_positions(system, output.geometries);
   }
 }
-
-std::vector<ctrl::ClusterInitInfo>
-create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
-                                   const GlobalOptions& options) {
-  std::vector<ctrl::ClusterInitInfo> cluster_infos;
-  for (size_t i = 0; i < monitors.size(); ++i) {
-    const auto& monitor = monitors[i];
-    // Workspace bounds (for tiling)
-    float x = static_cast<float>(monitor.workArea.left);
-    float y = static_cast<float>(monitor.workArea.top);
-    float w = static_cast<float>(monitor.workArea.right - monitor.workArea.left);
-    float h = static_cast<float>(monitor.workArea.bottom - monitor.workArea.top);
-    // Full monitor bounds (for pointer detection)
-    float mx = static_cast<float>(monitor.rect.left);
-    float my = static_cast<float>(monitor.rect.top);
-    float mw = static_cast<float>(monitor.rect.right - monitor.rect.left);
-    float mh = static_cast<float>(monitor.rect.bottom - monitor.rect.top);
-
-    auto hwnds = winapi::get_hwnds_for_monitor(i, options.ignoreOptions);
-    std::vector<size_t> cell_ids;
-    for (auto hwnd : hwnds) {
-      cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
-    }
-    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids});
-  }
-  return cluster_infos;
-}
-
-void initialize_engine_from_monitors(Engine& engine,
-                                     const std::vector<winapi::MonitorInfo>& monitors,
-                                     const GlobalOptions& options) {
-  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
-  engine.init(cluster_infos);
-}
-
 // Handle config file hot-reload
 void handle_config_refresh(GlobalOptionsProvider& provider, Engine& engine, ToastState& toast) {
   if (!provider.refresh()) {

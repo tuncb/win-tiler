@@ -202,6 +202,95 @@ TEST_SUITE("Engine::init") {
 }
 
 // =============================================================================
+// Engine leaf operation tests
+// =============================================================================
+
+TEST_SUITE("Engine leaf operations") {
+  TEST_CASE("find_leaf returns cluster and cell for an existing leaf") {
+    Engine engine = create_test_engine();
+
+    auto cell = engine.find_leaf(3);
+
+    REQUIRE(cell.has_value());
+    CHECK(cell->cluster_index == 1);
+    CHECK(cell->cell_index == 0);
+  }
+
+  TEST_CASE("selected_leaf_id returns selected managed leaf") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 2);
+
+    auto leaf_id = engine.selected_leaf_id();
+
+    REQUIRE(leaf_id.has_value());
+    CHECK(*leaf_id == 2);
+  }
+
+  TEST_CASE("select_leaf updates system selection") {
+    Engine engine = create_test_engine();
+
+    bool selected = engine.select_leaf(2);
+
+    CHECK(selected);
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cluster_index == 0);
+    CHECK(engine.system.selection->cell_index == 2);
+  }
+
+  TEST_CASE("swap_leaves swaps managed leaves across clusters") {
+    Engine engine = create_test_engine();
+
+    bool swapped = engine.swap_leaves(1, 3);
+
+    CHECK(swapped);
+    auto leaf1 = engine.find_leaf(1);
+    auto leaf3 = engine.find_leaf(3);
+    REQUIRE(leaf1.has_value());
+    REQUIRE(leaf3.has_value());
+    CHECK(leaf1->cluster_index == 1);
+    CHECK(leaf3->cluster_index == 0);
+  }
+
+  TEST_CASE("move_leaf_to_cell moves a managed leaf into the target cluster") {
+    Engine engine = create_test_engine();
+
+    bool moved = engine.move_leaf_to_cell(1, 1, 0);
+
+    CHECK(moved);
+    auto moved_leaf = engine.find_leaf(1);
+    auto remaining_leaf = engine.find_leaf(2);
+    REQUIRE(moved_leaf.has_value());
+    REQUIRE(remaining_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 1);
+    CHECK(remaining_leaf->cluster_index == 0);
+  }
+
+  TEST_CASE("select_leaf returns false when leaf is missing") {
+    Engine engine = create_test_engine();
+
+    bool selected = engine.select_leaf(999);
+
+    CHECK_FALSE(selected);
+  }
+
+  TEST_CASE("swap_leaves returns false when a leaf is missing") {
+    Engine engine = create_test_engine();
+
+    bool swapped = engine.swap_leaves(1, 999);
+
+    CHECK_FALSE(swapped);
+  }
+
+  TEST_CASE("move_leaf_to_cell returns false for an invalid target cluster") {
+    Engine engine = create_test_engine();
+
+    bool moved = engine.move_leaf_to_cell(1, 9, 0);
+
+    CHECK_FALSE(moved);
+  }
+}
+
+// =============================================================================
 // Engine::compute_geometries Tests
 // =============================================================================
 
