@@ -8,6 +8,8 @@ These JSON-lines files are intended for `win-tiler agent stdio`.
 
 Replace placeholder values such as `hwnd:REPLACE_WITH_WINDOW_ID` with real window IDs from `list_windows` or `get_state`.
 
+`move_window_to_monitor` can target an empty monitor without an anchor. When the target monitor already contains managed windows, supply `anchor_window_id` if you want to control where the moved window is inserted.
+
 Example usage:
 
 ```powershell

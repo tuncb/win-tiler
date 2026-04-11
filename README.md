@@ -148,7 +148,7 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 
 `agent stdio` reads one JSON request per input line and writes one JSON response per output line. The default transport is also `stdio`, so `win-tiler agent` and `win-tiler agent stdio` are equivalent.
 
-Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. `move_window_to_monitor` requires either an anchor window on the target monitor or an existing managed window there.
+Window IDs use the `hwnd:0000000000000000` format. Responses currently report the filtered window set produced by the normal runtime ignore rules. `move_window_to_monitor` supports empty target monitors; when the target already has managed windows, `anchor_window_id` can be used to choose the insertion point.
 
 Example session:
 

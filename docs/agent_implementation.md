@@ -11,7 +11,7 @@
 - Step 5: Malformed requests that cannot be correlated to an input request ID return an error response with an empty `id` field.
 - Step 6: `list_windows` and `get_state` currently enumerate the same filtered window set produced by `gather_loop_input_state`, so `managed_only = false` does not expose additional ignored/system windows yet.
 - Step 6: The protocol `rect` field uses computed tile geometry when layout is requested and the window is managed; otherwise it falls back to the live OS window rect.
-- Step 7: `move_window_to_monitor` requires either an anchor window on the target monitor or at least one existing managed window there; moving directly into an empty monitor currently returns a structured error.
+- Step 7: `move_window_to_monitor` now routes empty-target monitor moves through a synthetic `engine.update(...)` snapshot so the engine can bootstrap the destination tree; when the target monitor already has managed windows, `anchor_window_id` can still be used to choose the insertion point.
 - Step 7: `send_action` rejects `Exit` and `TogglePause` style control-flow outcomes in agent mode instead of shutting down or pausing the service loop.
 - Step 8: Added negative-path unit coverage for agent protocol validation and for the new `Engine` helper methods used by agent mode.
 - Step 9: Documented `agent stdio` in the README, including the current command set, window ID format, and a minimal JSON-lines session example.

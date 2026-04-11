@@ -21,6 +21,15 @@ Engine create_test_engine() {
   return engine;
 }
 
+Engine create_engine_with_empty_second_cluster() {
+  Engine engine;
+  std::vector<ClusterInitInfo> infos = {
+      {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}},
+      {800.0f, 0.0f, 800.0f, 600.0f, 800.0f, 0.0f, 800.0f, 600.0f, {}}};
+  engine.init(infos);
+  return engine;
+}
+
 // Create engine with single cluster with one window
 Engine create_single_cluster_engine() {
   Engine engine;
@@ -523,6 +532,31 @@ TEST_SUITE("Engine::update") {
     CHECK(result.apply_tiles == true);
     CHECK(engine.system.clusters[0].has_fullscreen_cell == true);
     CHECK(engine.system.clusters[1].has_fullscreen_cell == false);
+  }
+
+  TEST_CASE("can move a managed window into an empty cluster via update") {
+    Engine engine = create_engine_with_empty_second_cluster();
+    REQUIRE(engine.find_leaf(1).has_value());
+    CHECK(engine.system.clusters[1].tree.empty());
+
+    std::vector<ClusterCellUpdateInfo> updates = {
+        {{2}, false},
+        {{1}, false},
+    };
+
+    UpdateResult result = engine.update(updates);
+
+    CHECK(result.topology_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+
+    auto moved_leaf = engine.find_leaf(1);
+    auto remaining_leaf = engine.find_leaf(2);
+    REQUIRE(moved_leaf.has_value());
+    REQUIRE(remaining_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 1);
+    CHECK(remaining_leaf->cluster_index == 0);
+    CHECK_FALSE(engine.system.clusters[1].tree.empty());
   }
 }
 

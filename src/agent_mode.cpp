@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <iostream>
 #include <magic_enum/magic_enum.hpp>
 
@@ -27,6 +28,7 @@ struct AgentRuntimeState {
 struct AgentSyncSnapshot {
   winapi::LoopInputState input_state;
   std::string desktop_id;
+  std::vector<ctrl::ClusterCellUpdateInfo> cluster_updates;
   UpdateResult update_result;
   Engine* engine = nullptr;
 };
@@ -79,9 +81,9 @@ std::optional<int> find_first_leaf_cell_index(const ctrl::Cluster& cluster) {
   return std::nullopt;
 }
 
-tl::expected<int, std::string> resolve_target_cell_index(const Engine& engine,
-                                                         int target_cluster_index,
-                                                         std::optional<size_t> anchor_leaf_id) {
+tl::expected<std::optional<int>, std::string>
+resolve_target_cell_index(const Engine& engine, int target_cluster_index,
+                          std::optional<size_t> anchor_leaf_id) {
   if (target_cluster_index < 0 ||
       static_cast<size_t>(target_cluster_index) >= engine.system.clusters.size()) {
     return tl::unexpected("target_monitor_index is out of range");
@@ -98,12 +100,21 @@ tl::expected<int, std::string> resolve_target_cell_index(const Engine& engine,
     return anchor_cell->cell_index;
   }
 
-  auto cell_index =
-      find_first_leaf_cell_index(engine.system.clusters[static_cast<size_t>(target_cluster_index)]);
-  if (!cell_index.has_value()) {
-    return tl::unexpected("target monitor has no managed anchor window");
+  return find_first_leaf_cell_index(
+      engine.system.clusters[static_cast<size_t>(target_cluster_index)]);
+}
+
+std::vector<ctrl::ClusterCellUpdateInfo>
+build_move_cluster_updates(const std::vector<ctrl::ClusterCellUpdateInfo>& current_updates,
+                           size_t leaf_id, int target_cluster_index) {
+  std::vector<ctrl::ClusterCellUpdateInfo> moved_updates = current_updates;
+  for (auto& cluster_update : moved_updates) {
+    auto& leaf_ids = cluster_update.leaf_ids;
+    leaf_ids.erase(std::remove(leaf_ids.begin(), leaf_ids.end(), leaf_id), leaf_ids.end());
   }
-  return *cell_index;
+
+  moved_updates[static_cast<size_t>(target_cluster_index)].leaf_ids.push_back(leaf_id);
+  return moved_updates;
 }
 
 AgentResponse make_success_response(std::string id, const AgentMutationResponse& mutation) {
@@ -241,7 +252,7 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
   }
 
   AgentSyncSnapshot snapshot{
-      winapi::gather_loop_input_state(options_provider.options.ignoreOptions), "", {}};
+      winapi::gather_loop_input_state(options_provider.options.ignoreOptions), "", {}, {}, nullptr};
   snapshot.desktop_id = resolve_desktop_id(snapshot.input_state);
 
   if (!runtime.multi_engine.has_desktop(snapshot.desktop_id)) {
@@ -270,8 +281,8 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
     current_desktop.data.last_known_monitors = snapshot.input_state.monitors;
   }
 
-  auto cluster_updates = extract_cluster_updates_from_input(snapshot.input_state);
-  snapshot.update_result = current_desktop.engine.update(cluster_updates);
+  snapshot.cluster_updates = extract_cluster_updates_from_input(snapshot.input_state);
+  snapshot.update_result = current_desktop.engine.update(snapshot.cluster_updates);
   snapshot.engine = &current_desktop.engine;
   return snapshot;
 }
@@ -366,9 +377,23 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
     }
 
     auto previous_selection = sync_snapshot->engine->selected_leaf_id();
-    if (!sync_snapshot->engine->move_leaf_to_cell(
-            move_window.leaf_id, move_window.target_monitor_index, *target_cell_index)) {
-      return make_error_response(request.id, "failed to move window to target monitor");
+    if (target_cell_index->has_value()) {
+      if (!sync_snapshot->engine->move_leaf_to_cell(
+              move_window.leaf_id, move_window.target_monitor_index, **target_cell_index)) {
+        return make_error_response(request.id, "failed to move window to target monitor");
+      }
+    } else {
+      auto source_cell = sync_snapshot->engine->find_leaf(move_window.leaf_id);
+      if (!source_cell.has_value()) {
+        return make_error_response(request.id, "window_id was not found in the managed layout");
+      }
+
+      auto moved_updates = build_move_cluster_updates(
+          sync_snapshot->cluster_updates, move_window.leaf_id, move_window.target_monitor_index);
+      UpdateResult move_result = sync_snapshot->engine->update(moved_updates);
+      if (!move_result.topology_changed) {
+        return make_error_response(request.id, "failed to move window to target monitor");
+      }
     }
 
     retile_engine(*sync_snapshot->engine, options_provider.options);
