@@ -1511,6 +1511,7 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
   }
 
   if (!request.cursor_pos.has_value()) {
+    result.apply_tiles = true;
     return result;
   }
 
@@ -1519,6 +1520,7 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
       static_cast<float>(request.cursor_pos->y), geometries, request.do_exchange);
   if (!drop_result.has_value()) {
     result.selection_changed = !selections_equal(previous_selection, system.selection);
+    result.apply_tiles = true;
     return result;
   }
 

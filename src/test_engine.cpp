@@ -695,6 +695,31 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(engine.system.clusters[0].tree[0].split_ratio != original_ratio);
   }
 
+  TEST_CASE("completed drag without valid drop target reapplies current tiles") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+    size_t source_leaf_id = *engine.system.clusters[0].tree[2].leaf_id;
+    const auto& source_rect = geoms[0][2];
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.completed_drag =
+        CompletedDragRequest{source_leaf_id, ctrl::Point{-100, -100},
+                             ctrl::Rect{source_rect.x + 120.0f, source_rect.y + 40.0f,
+                                        source_rect.width, source_rect.height},
+                             false};
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == true);
+    CHECK(geometries_equal(output.geometries, geoms));
+  }
+
   TEST_CASE("unmanaged completed drag still clears drag state") {
     Engine engine = create_test_engine();
 
