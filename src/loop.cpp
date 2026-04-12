@@ -19,11 +19,6 @@
 
 namespace wintiler {
 
-// Empty data struct for now - extension point for future per-desktop state
-struct LoopDesktopData {
-  bool has_completed_initial_tile_pass = false;
-};
-
 namespace {
 
 // Toast message display state
@@ -204,20 +199,21 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
   }
 }
 // Handle config file hot-reload
-void handle_config_refresh(GlobalOptionsProvider& provider, Engine& engine, ToastState& toast) {
+bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
   if (!provider.refresh()) {
-    return;
+    return false;
   }
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
+  return true;
 }
 
 // Handle monitor configuration changes, returns true if change occurred
 bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const GlobalOptions& options,
-                           Engine& engine) {
+                           MultiEngine<LoopDesktopData, std::string>& multi_engine) {
   auto current_monitors = winapi::get_monitors();
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
@@ -225,8 +221,8 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const Glo
   spdlog::info("Monitor configuration changed, reinitializing system...");
   winapi::log_monitors(current_monitors);
   monitors = current_monitors;
-  initialize_engine_from_monitors(engine, monitors, options);
-  engine.clear_stored_cell();
+  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
+  reinitialize_all_desktops(multi_engine, cluster_infos);
   spdlog::info("=== Reinitialized Tile Layout ===");
   // Tile layout will be printed and applied by the main loop
   return true;
@@ -320,6 +316,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     if (winapi::is_session_paused()) {
       spdlog::debug("Session paused, waiting for resume...");
       winapi::wait_for_session_active();
+      mark_all_desktops_for_retile(multi_engine);
       spdlog::debug("Session resumed, continuing loop");
       continue; // Re-gather state after resume
     }
@@ -330,6 +327,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       auto action_opt = poll_hotkey_action();
       if (action_opt.has_value() && *action_opt == HotkeyAction::TogglePause) {
         is_manually_paused = false;
+        mark_all_desktops_for_retile(multi_engine);
         spdlog::info("Manual pause deactivated");
         toast.show("Resumed");
         // Fall through to resume normal processing immediately
@@ -405,15 +403,16 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     }
 
     // Check for config file changes and hot-reload
-    handle_config_refresh(provider, engine, toast);
+    if (handle_config_refresh(provider, toast)) {
+      mark_all_desktops_for_retile(multi_engine);
+    }
     gap_h = provider.options.gapOptions.horizontal;
     gap_v = provider.options.gapOptions.vertical;
     zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
 
     // Check for monitor configuration changes
-    bool monitor_changed = handle_monitor_change(monitors, provider.options, engine);
+    bool monitor_changed = handle_monitor_change(monitors, provider.options, multi_engine);
     if (monitor_changed) {
-      current_desktop.data.has_completed_initial_tile_pass = false;
       auto updated_geometry_start = std::chrono::steady_clock::now();
       geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
       perf.record_stage(LoopPerfStage::ComputeGeometry,
