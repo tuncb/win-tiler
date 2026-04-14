@@ -220,6 +220,7 @@
     <ClCompile Include="src\test_agent_protocol.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_engine.cpp" />
+    <ClCompile Include="src\test_loop.cpp" />
     <ClCompile Include="src\test_loop_perf.cpp" />
     <ClCompile Include="src\test_options.cpp" />
     <ClCompile Include="src\test_startup.cpp" />

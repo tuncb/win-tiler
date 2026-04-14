@@ -19,6 +19,37 @@
 
 namespace wintiler {
 
+SkippedFrameHotkeyAction classify_skipped_frame_hotkey(std::optional<HotkeyAction> hotkey_action) {
+  if (!hotkey_action.has_value()) {
+    return SkippedFrameHotkeyAction::None;
+  }
+
+  switch (*hotkey_action) {
+  case HotkeyAction::Exit:
+    return SkippedFrameHotkeyAction::Exit;
+  case HotkeyAction::TogglePause:
+    return SkippedFrameHotkeyAction::EnterManualPause;
+  case HotkeyAction::NavigateLeft:
+  case HotkeyAction::NavigateDown:
+  case HotkeyAction::NavigateUp:
+  case HotkeyAction::NavigateRight:
+  case HotkeyAction::ToggleSplit:
+  case HotkeyAction::CycleSplitMode:
+  case HotkeyAction::StoreCell:
+  case HotkeyAction::ClearStored:
+  case HotkeyAction::Exchange:
+  case HotkeyAction::Move:
+  case HotkeyAction::SplitIncrease:
+  case HotkeyAction::SplitDecrease:
+  case HotkeyAction::ExchangeSiblings:
+  case HotkeyAction::ToggleZen:
+  case HotkeyAction::ResetSplitRatio:
+    return SkippedFrameHotkeyAction::Ignore;
+  }
+
+  return SkippedFrameHotkeyAction::Ignore;
+}
+
 namespace {
 
 // Toast message display state
@@ -387,6 +418,37 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     perf.record_stage(LoopPerfStage::ComputeGeometry,
                       std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
+      bool should_exit_drag_frame = false;
+      auto hotkey_action = poll_hotkey_action();
+      switch (classify_skipped_frame_hotkey(hotkey_action)) {
+      case SkippedFrameHotkeyAction::Exit: {
+        auto loop_end = std::chrono::steady_clock::now();
+        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+        maybe_print_perf_report(perf, loop_end);
+        spdlog::info("Exit hotkey pressed during move/resize, shutting down...");
+        should_exit_drag_frame = true;
+        break;
+      }
+      case SkippedFrameHotkeyAction::EnterManualPause: {
+        auto loop_end = std::chrono::steady_clock::now();
+        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+        maybe_print_perf_report(perf, loop_end);
+        is_manually_paused = true;
+        spdlog::info("Manual pause activated during move/resize");
+        overlay::clear();
+        continue;
+      }
+      case SkippedFrameHotkeyAction::Ignore:
+        spdlog::debug("Ignoring hotkey during move/resize frame");
+        break;
+      case SkippedFrameHotkeyAction::None:
+        break;
+      }
+
+      if (should_exit_drag_frame) {
+        break;
+      }
+
       auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
                        engine.stored_cell, toast.get_visible_message());
