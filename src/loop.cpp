@@ -19,10 +19,6 @@
 
 namespace wintiler {
 
-bool should_ignore_drag_frame_hotkey(std::optional<HotkeyAction> hotkey_action) {
-  return hotkey_action.has_value();
-}
-
 NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action) {
   if (!hotkey_action.has_value()) {
     return NoDesktopHotkeyAction::None;
@@ -458,7 +454,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                       std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
       auto hotkey_action = poll_hotkey_action();
-      if (should_ignore_drag_frame_hotkey(hotkey_action)) {
+      if (hotkey_action.has_value()) {
         spdlog::debug("Ignoring hotkey during move/resize frame");
       }
 

@@ -7,22 +7,6 @@
 namespace wintiler {
 
 TEST_SUITE("loop") {
-  TEST_CASE("drag-only frames ignore exit hotkeys") {
-    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::Exit));
-  }
-
-  TEST_CASE("drag-only frames ignore pause hotkeys") {
-    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::TogglePause));
-  }
-
-  TEST_CASE("drag-only frames ignore navigation hotkeys") {
-    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::NavigateLeft));
-  }
-
-  TEST_CASE("drag-only frames do nothing when there is no queued hotkey") {
-    CHECK_FALSE(should_ignore_drag_frame_hotkey(std::nullopt));
-  }
-
   TEST_CASE("frames without a desktop id keep exit hotkeys immediate") {
     CHECK(classify_no_desktop_hotkey(HotkeyAction::Exit) == NoDesktopHotkeyAction::Exit);
   }

@@ -39,8 +39,6 @@ enum class NoDesktopHotkeyAction {
   EnterManualPause,
 };
 
-[[nodiscard]] bool should_ignore_drag_frame_hotkey(std::optional<HotkeyAction> hotkey_action);
-
 [[nodiscard]] NoDesktopHotkeyAction
 classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action);
 
