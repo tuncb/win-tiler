@@ -1235,13 +1235,13 @@ find_cell_at_global_point(const ctrl::System& system,
   return std::nullopt;
 }
 
-// Find which cluster contains a global point (for empty cluster hover detection)
+// Find which cluster contains a global point using full monitor bounds, including taskbar area.
 std::optional<size_t> find_cluster_at_global_point(const ctrl::System& system, float global_x,
                                                    float global_y) {
   for (size_t i = 0; i < system.clusters.size(); ++i) {
     const auto& cluster = system.clusters[i];
-    if (global_x >= cluster.global_x && global_x < cluster.global_x + cluster.window_width &&
-        global_y >= cluster.global_y && global_y < cluster.global_y + cluster.window_height) {
+    if (global_x >= cluster.monitor_x && global_x < cluster.monitor_x + cluster.monitor_width &&
+        global_y >= cluster.monitor_y && global_y < cluster.monitor_y + cluster.monitor_height) {
       return i;
     }
   }
@@ -1696,11 +1696,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
       auto hover_cluster_index = find_cluster_at_global_point(
           system, static_cast<float>(input.cursor_pos->x), static_cast<float>(input.cursor_pos->y));
       if (hover_cluster_index.has_value()) {
-        size_t hover_idx = *hover_cluster_index;
-        if (hover_idx < system.clusters.size() &&
-            ctrl::get_cluster_leaf_ids(system.clusters[hover_idx]).empty()) {
-          redirect_cluster_index = static_cast<int>(hover_idx);
-        }
+        redirect_cluster_index = static_cast<int>(*hover_cluster_index);
       }
     }
     if (!redirect_cluster_index.has_value() && system.selection.has_value()) {

@@ -21,6 +21,15 @@ Engine create_test_engine() {
   return engine;
 }
 
+Engine create_test_engine_with_secondary_taskbar() {
+  Engine engine;
+  std::vector<ClusterInitInfo> infos = {
+      {0.0f, 0.0f, 800.0f, 560.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}},
+      {800.0f, 0.0f, 800.0f, 560.0f, 800.0f, 0.0f, 800.0f, 600.0f, {3}}};
+  engine.init(infos);
+  return engine;
+}
+
 Engine create_engine_with_empty_second_cluster() {
   Engine engine;
   std::vector<ClusterInitInfo> infos = {
@@ -417,6 +426,17 @@ TEST_SUITE("Engine::get_hover_info") {
     CHECK(*info.cluster_index == 1);
   }
 
+  TEST_CASE("returns cluster for taskbar area outside the work area") {
+    Engine engine = create_test_engine_with_secondary_taskbar();
+    auto geoms = compute_default_geometries(engine);
+
+    HoverInfo info = engine.get_hover_info(900.0f, 580.0f, geoms);
+
+    CHECK(info.cluster_index.has_value());
+    CHECK(*info.cluster_index == 1);
+    CHECK_FALSE(info.cell.has_value());
+  }
+
   TEST_CASE("zen hover prefers zen cell over overlapped background cell") {
     Engine engine = create_two_window_engine();
     auto geoms = engine.compute_geometries(10.0f, 10.0f, 0.90f);
@@ -649,6 +669,25 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.selection_changed == true);
     REQUIRE(engine.system.selection.has_value());
     CHECK(engine.system.selection->cell_index == 2);
+  }
+
+  TEST_CASE("redirects new windows to the hovered monitor taskbar area") {
+    Engine engine = create_test_engine_with_secondary_taskbar();
+    set_selection(engine, 0, 1);
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2, 4}, false}, {{3}, false}};
+    input.cursor_pos = ctrl::Point{900, 580};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.topology_changed == true);
+    auto new_leaf = engine.find_leaf(4);
+    REQUIRE(new_leaf.has_value());
+    CHECK(new_leaf->cluster_index == 1);
   }
 
   TEST_CASE("completed drag move is handled inside process_frame") {
