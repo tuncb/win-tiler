@@ -274,6 +274,19 @@ TEST_SUITE("Engine leaf operations") {
     CHECK(remaining_leaf->cluster_index == 0);
   }
 
+  TEST_CASE("move_leaf_to_cell clears zen when the target leaf is split") {
+    Engine engine = create_test_engine();
+    engine.system.clusters[1].zen_cell_index = 0;
+
+    bool moved = engine.move_leaf_to_cell(1, 1, 0);
+
+    CHECK(moved);
+    CHECK_FALSE(engine.system.clusters[1].zen_cell_index.has_value());
+    auto moved_leaf = engine.find_leaf(1);
+    REQUIRE(moved_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 1);
+  }
+
   TEST_CASE("select_leaf returns false when leaf is missing") {
     Engine engine = create_test_engine();
 

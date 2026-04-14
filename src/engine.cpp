@@ -351,6 +351,11 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
   auto second_child_opt = tgt_cluster.tree.get_second_child(adjusted_target_index);
   int new_cell_index = second_child_opt.value_or(new_selection_index);
 
+  if (tgt_cluster.zen_cell_index.has_value() &&
+      *tgt_cluster.zen_cell_index == adjusted_target_index) {
+    tgt_cluster.zen_cell_index = std::nullopt;
+  }
+
   if (source_was_selected) {
     system.selection = CellIndicatorByIndex{target_cluster_index, new_cell_index};
   } else if (target_was_selected) {
