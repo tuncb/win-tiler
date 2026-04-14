@@ -7,22 +7,37 @@
 namespace wintiler {
 
 TEST_SUITE("loop") {
-  TEST_CASE("skipped frames keep exit hotkeys immediate") {
-    CHECK(classify_skipped_frame_hotkey(HotkeyAction::Exit) == SkippedFrameHotkeyAction::Exit);
+  TEST_CASE("drag-only frames ignore exit hotkeys") {
+    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::Exit));
   }
 
-  TEST_CASE("skipped frames keep pause hotkeys immediate") {
-    CHECK(classify_skipped_frame_hotkey(HotkeyAction::TogglePause) ==
-          SkippedFrameHotkeyAction::EnterManualPause);
+  TEST_CASE("drag-only frames ignore pause hotkeys") {
+    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::TogglePause));
   }
 
-  TEST_CASE("skipped frames discard non control hotkeys instead of deferring them") {
-    CHECK(classify_skipped_frame_hotkey(HotkeyAction::NavigateLeft) ==
-          SkippedFrameHotkeyAction::Ignore);
+  TEST_CASE("drag-only frames ignore navigation hotkeys") {
+    CHECK(should_ignore_drag_frame_hotkey(HotkeyAction::NavigateLeft));
   }
 
-  TEST_CASE("skipped frames do nothing when there is no queued hotkey") {
-    CHECK(classify_skipped_frame_hotkey(std::nullopt) == SkippedFrameHotkeyAction::None);
+  TEST_CASE("drag-only frames do nothing when there is no queued hotkey") {
+    CHECK_FALSE(should_ignore_drag_frame_hotkey(std::nullopt));
+  }
+
+  TEST_CASE("frames without a desktop id keep exit hotkeys immediate") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::Exit) == NoDesktopHotkeyAction::Exit);
+  }
+
+  TEST_CASE("frames without a desktop id keep pause hotkeys immediate") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::TogglePause) ==
+          NoDesktopHotkeyAction::EnterManualPause);
+  }
+
+  TEST_CASE("frames without a desktop id discard non control hotkeys instead of deferring them") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::NavigateLeft) == NoDesktopHotkeyAction::Ignore);
+  }
+
+  TEST_CASE("frames without a desktop id do nothing when there is no queued hotkey") {
+    CHECK(classify_no_desktop_hotkey(std::nullopt) == NoDesktopHotkeyAction::None);
   }
 }
 

@@ -19,16 +19,20 @@
 
 namespace wintiler {
 
-SkippedFrameHotkeyAction classify_skipped_frame_hotkey(std::optional<HotkeyAction> hotkey_action) {
+bool should_ignore_drag_frame_hotkey(std::optional<HotkeyAction> hotkey_action) {
+  return hotkey_action.has_value();
+}
+
+NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action) {
   if (!hotkey_action.has_value()) {
-    return SkippedFrameHotkeyAction::None;
+    return NoDesktopHotkeyAction::None;
   }
 
   switch (*hotkey_action) {
   case HotkeyAction::Exit:
-    return SkippedFrameHotkeyAction::Exit;
+    return NoDesktopHotkeyAction::Exit;
   case HotkeyAction::TogglePause:
-    return SkippedFrameHotkeyAction::EnterManualPause;
+    return NoDesktopHotkeyAction::EnterManualPause;
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
   case HotkeyAction::NavigateUp:
@@ -44,10 +48,10 @@ SkippedFrameHotkeyAction classify_skipped_frame_hotkey(std::optional<HotkeyActio
   case HotkeyAction::ExchangeSiblings:
   case HotkeyAction::ToggleZen:
   case HotkeyAction::ResetSplitRatio:
-    return SkippedFrameHotkeyAction::Ignore;
+    return NoDesktopHotkeyAction::Ignore;
   }
 
-  return SkippedFrameHotkeyAction::Ignore;
+  return NoDesktopHotkeyAction::Ignore;
 }
 
 namespace {
@@ -381,8 +385,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     if (!input_state.desktop_id.has_value()) {
       bool should_exit_without_desktop = false;
       auto hotkey_action = poll_hotkey_action();
-      switch (classify_skipped_frame_hotkey(hotkey_action)) {
-      case SkippedFrameHotkeyAction::Exit: {
+      switch (classify_no_desktop_hotkey(hotkey_action)) {
+      case NoDesktopHotkeyAction::Exit: {
         perf.note_active_frame();
         auto loop_end = std::chrono::steady_clock::now();
         perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
@@ -391,7 +395,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         should_exit_without_desktop = true;
         break;
       }
-      case SkippedFrameHotkeyAction::EnterManualPause: {
+      case NoDesktopHotkeyAction::EnterManualPause: {
         perf.note_active_frame();
         auto loop_end = std::chrono::steady_clock::now();
         perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
@@ -401,10 +405,10 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         overlay::clear();
         continue;
       }
-      case SkippedFrameHotkeyAction::Ignore:
+      case NoDesktopHotkeyAction::Ignore:
         spdlog::debug("Ignoring hotkey without a desktop ID");
         break;
-      case SkippedFrameHotkeyAction::None:
+      case NoDesktopHotkeyAction::None:
         break;
       }
 
@@ -453,35 +457,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     perf.record_stage(LoopPerfStage::ComputeGeometry,
                       std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
-      bool should_exit_drag_frame = false;
       auto hotkey_action = poll_hotkey_action();
-      switch (classify_skipped_frame_hotkey(hotkey_action)) {
-      case SkippedFrameHotkeyAction::Exit: {
-        auto loop_end = std::chrono::steady_clock::now();
-        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
-        maybe_print_perf_report(perf, loop_end);
-        spdlog::info("Exit hotkey pressed during move/resize, shutting down...");
-        should_exit_drag_frame = true;
-        break;
-      }
-      case SkippedFrameHotkeyAction::EnterManualPause: {
-        auto loop_end = std::chrono::steady_clock::now();
-        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
-        maybe_print_perf_report(perf, loop_end);
-        is_manually_paused = true;
-        spdlog::info("Manual pause activated during move/resize");
-        overlay::clear();
-        continue;
-      }
-      case SkippedFrameHotkeyAction::Ignore:
+      if (should_ignore_drag_frame_hotkey(hotkey_action)) {
         spdlog::debug("Ignoring hotkey during move/resize frame");
-        break;
-      case SkippedFrameHotkeyAction::None:
-        break;
-      }
-
-      if (should_exit_drag_frame) {
-        break;
       }
 
       auto render_start = std::chrono::steady_clock::now();

@@ -32,15 +32,17 @@ struct LoopRunOptions {
   bool perf_stats = false;
 };
 
-enum class SkippedFrameHotkeyAction {
+enum class NoDesktopHotkeyAction {
   None,
   Ignore,
   Exit,
   EnterManualPause,
 };
 
-[[nodiscard]] SkippedFrameHotkeyAction
-classify_skipped_frame_hotkey(std::optional<HotkeyAction> hotkey_action);
+[[nodiscard]] bool should_ignore_drag_frame_hotkey(std::optional<HotkeyAction> hotkey_action);
+
+[[nodiscard]] NoDesktopHotkeyAction
+classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action);
 
 void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_options = {});
 
