@@ -1124,6 +1124,49 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
     CHECK(result.apply_tiles == true);
     CHECK_FALSE(engine.stored_cell.has_value());
   }
+
+  TEST_CASE("Exchange across clusters reports selection change and focus") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 0, 1);
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    REQUIRE(store_result.success == true);
+
+    set_selection(engine, 1, 0);
+    ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.selection_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.focus_leaf_id == std::optional<size_t>{3});
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cluster_index == 0);
+    CHECK(engine.system.selection->cell_index == 1);
+  }
+
+  TEST_CASE("Move across clusters reports selection change and focus") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 0, 1);
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    REQUIRE(store_result.success == true);
+
+    set_selection(engine, 1, 0);
+    ActionResult result = engine.process_action(HotkeyAction::Move, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.selection_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.focus_leaf_id == std::optional<size_t>{1});
+    REQUIRE(engine.system.selection.has_value());
+    CHECK(engine.system.selection->cluster_index == 1);
+  }
 }
 
 // =============================================================================

@@ -1847,6 +1847,7 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::Exchange:
     spdlog::info("Exchange: swapping stored cell with selected cell");
     if (stored_cell.has_value() && system.selection.has_value()) {
+      auto previous_selection = system.selection;
       // Find stored cell index from leaf_id
       auto stored_cell_idx = ctrl::find_cell_by_leaf_id(system.clusters[stored_cell->cluster_index],
                                                         stored_cell->leaf_id);
@@ -1855,6 +1856,7 @@ ActionResult Engine::process_action(HotkeyAction action,
                              static_cast<int>(stored_cell->cluster_index), *stored_cell_idx)) {
           clear_stored_cell();
           result.success = true;
+          result.selection_changed = !selections_equal(previous_selection, system.selection);
           result.layout_changed = true;
           result.apply_tiles = true;
         }
@@ -1865,6 +1867,7 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::Move:
     spdlog::info("Move: moving stored cell to selected cell's position");
     if (stored_cell.has_value() && system.selection.has_value()) {
+      auto previous_selection = system.selection;
       // Find stored cell index from leaf_id
       auto stored_cell_idx = ctrl::find_cell_by_leaf_id(system.clusters[stored_cell->cluster_index],
                                                         stored_cell->leaf_id);
@@ -1873,6 +1876,7 @@ ActionResult Engine::process_action(HotkeyAction action,
                             system.selection->cluster_index, system.selection->cell_index)) {
           clear_stored_cell();
           result.success = true;
+          result.selection_changed = !selections_equal(previous_selection, system.selection);
           result.layout_changed = true;
           result.apply_tiles = true;
         }
