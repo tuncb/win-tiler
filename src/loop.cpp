@@ -379,6 +379,39 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Virtual desktop handling via desktop_id from managed windows
     if (!input_state.desktop_id.has_value()) {
+      bool should_exit_without_desktop = false;
+      auto hotkey_action = poll_hotkey_action();
+      switch (classify_skipped_frame_hotkey(hotkey_action)) {
+      case SkippedFrameHotkeyAction::Exit: {
+        perf.note_active_frame();
+        auto loop_end = std::chrono::steady_clock::now();
+        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+        maybe_print_perf_report(perf, loop_end);
+        spdlog::info("Exit hotkey pressed without a desktop ID, shutting down...");
+        should_exit_without_desktop = true;
+        break;
+      }
+      case SkippedFrameHotkeyAction::EnterManualPause: {
+        perf.note_active_frame();
+        auto loop_end = std::chrono::steady_clock::now();
+        perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
+        maybe_print_perf_report(perf, loop_end);
+        is_manually_paused = true;
+        spdlog::info("Manual pause activated without a desktop ID");
+        overlay::clear();
+        continue;
+      }
+      case SkippedFrameHotkeyAction::Ignore:
+        spdlog::debug("Ignoring hotkey without a desktop ID");
+        break;
+      case SkippedFrameHotkeyAction::None:
+        break;
+      }
+
+      if (should_exit_without_desktop) {
+        break;
+      }
+
       // No windows - skip iteration
       spdlog::debug("No desktop ID (no windows), skipping iteration");
       overlay::clear();
