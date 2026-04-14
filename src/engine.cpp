@@ -204,7 +204,13 @@ bool swap_cells(System& system, int cluster_index1, int cell_index1, int cluster
       return true;
     }
 
+    bool swapped_cell_is_zen =
+        cluster1.zen_cell_index.has_value() &&
+        (*cluster1.zen_cell_index == cell_index1 || *cluster1.zen_cell_index == cell_index2);
     std::swap(cluster1.tree[cell_index1].leaf_id, cluster1.tree[cell_index2].leaf_id);
+    if (swapped_cell_is_zen) {
+      cluster1.zen_cell_index = std::nullopt;
+    }
     return true;
   }
 

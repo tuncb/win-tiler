@@ -1270,6 +1270,23 @@ TEST_SUITE("Engine::process_action - ExchangeSiblings") {
 
     CHECK(result.success == false);
   }
+
+  TEST_CASE("clears zen when swapping a zen cell with its sibling") {
+    Engine engine = create_two_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 0, 1);
+    ActionResult zen_result =
+        engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
+    REQUIRE(zen_result.success == true);
+    REQUIRE(engine.system.clusters[0].zen_cell_index == std::optional<int>{1});
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ExchangeSiblings, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
 }
 
 // =============================================================================
