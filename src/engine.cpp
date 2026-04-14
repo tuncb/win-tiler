@@ -1305,26 +1305,29 @@ struct DragResult {
   std::optional<size_t> cursor_leaf_id;
 };
 
-void store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& stored_cell) {
+bool store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& stored_cell) {
   if (!system.selection.has_value()) {
-    return;
+    return false;
   }
 
   int cluster_index = system.selection->cluster_index;
   int cell_index = system.selection->cell_index;
   if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
-    return;
+    return false;
   }
 
   const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
   if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
-    return;
+    return false;
   }
 
   const auto& cell_data = cluster.tree[cell_index];
   if (cell_data.leaf_id.has_value()) {
     stored_cell = StoredCell{static_cast<size_t>(cluster_index), *cell_data.leaf_id};
+    return true;
   }
+
+  return false;
 }
 
 std::optional<int> get_selected_sibling_index(const ctrl::System& system) {
@@ -1845,8 +1848,7 @@ ActionResult Engine::process_action(HotkeyAction action,
 
   case HotkeyAction::StoreCell:
     spdlog::info("StoreCell: storing current cell for swap/move operation");
-    store_selected_cell(system, stored_cell);
-    result.success = stored_cell.has_value();
+    result.success = store_selected_cell(system, stored_cell);
     break;
 
   case HotkeyAction::ClearStored:

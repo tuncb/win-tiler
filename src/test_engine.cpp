@@ -1043,6 +1043,21 @@ TEST_SUITE("Engine::process_action - StoreCell/ClearStored") {
     CHECK(engine.stored_cell.has_value());
   }
 
+  TEST_CASE("StoreCell fails when no current selection was captured") {
+    Engine engine = create_two_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    engine.stored_cell = StoredCell{0, 1};
+    engine.system.selection.reset();
+
+    ActionResult result = engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == false);
+    REQUIRE(engine.stored_cell.has_value());
+    CHECK(engine.stored_cell->cluster_index == 0);
+    CHECK(engine.stored_cell->leaf_id == 1);
+  }
+
   TEST_CASE("ClearStored clears stored cell") {
     Engine engine = create_two_window_engine();
     auto geoms = compute_default_geometries(engine);
