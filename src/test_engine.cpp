@@ -682,6 +682,42 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.cursor_pos->y == expected_center->y);
   }
 
+  TEST_CASE("completed drag exchange across clusters is preserved until the next frame") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = *engine.system.clusters[0].tree[1].leaf_id;
+    size_t target_leaf_id = *engine.system.clusters[1].tree[0].leaf_id;
+    const auto& target_rect = geoms[1][0];
+
+    EngineFrameInput input;
+    input.cluster_updates = {
+        {{2}, false},
+        {{1, 3}, false},
+    };
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.completed_drag = CompletedDragRequest{
+        source_leaf_id,
+        ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                    static_cast<long>(target_rect.y + target_rect.height / 2.0f)},
+        std::nullopt, true};
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+
+    auto moved_source = engine.find_leaf(source_leaf_id);
+    auto moved_target = engine.find_leaf(target_leaf_id);
+    REQUIRE(moved_source.has_value());
+    REQUIRE(moved_target.has_value());
+    CHECK(moved_source->cluster_index == 1);
+    CHECK(moved_target->cluster_index == 0);
+  }
+
   TEST_CASE("completed drag resize is handled inside process_frame") {
     Engine engine = create_two_window_engine();
     auto geoms = compute_default_geometries(engine);

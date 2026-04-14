@@ -1630,6 +1630,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   std::vector<std::vector<ctrl::Rect>> geometries;
   bool has_geometries = false;
   bool geometries_dirty = false;
+  bool skip_cluster_update = false;
   std::optional<size_t> drag_cursor_leaf_id;
 
   auto ensure_geometries = [&]() -> const std::vector<std::vector<ctrl::Rect>>& {
@@ -1655,6 +1656,12 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     }
     if (drag_result.layout_changed) {
       mark_geometries_dirty();
+    }
+    // A handled drag already decided the intended layout for this frame. The current
+    // OS window snapshot can still reflect the pre-retile monitor membership, especially
+    // for cross-monitor exchanges, so defer topology sync until the next frame.
+    if (drag_result.handled) {
+      skip_cluster_update = true;
     }
   }
 
@@ -1683,35 +1690,37 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     }
   }
 
-  std::optional<int> redirect_cluster_index;
-  if (input.cursor_pos.has_value()) {
-    auto hover_cluster_index = find_cluster_at_global_point(
-        system, static_cast<float>(input.cursor_pos->x), static_cast<float>(input.cursor_pos->y));
-    if (hover_cluster_index.has_value()) {
-      size_t hover_idx = *hover_cluster_index;
-      if (hover_idx < system.clusters.size() &&
-          ctrl::get_cluster_leaf_ids(system.clusters[hover_idx]).empty()) {
-        redirect_cluster_index = static_cast<int>(hover_idx);
+  if (!skip_cluster_update) {
+    std::optional<int> redirect_cluster_index;
+    if (input.cursor_pos.has_value()) {
+      auto hover_cluster_index = find_cluster_at_global_point(
+          system, static_cast<float>(input.cursor_pos->x), static_cast<float>(input.cursor_pos->y));
+      if (hover_cluster_index.has_value()) {
+        size_t hover_idx = *hover_cluster_index;
+        if (hover_idx < system.clusters.size() &&
+            ctrl::get_cluster_leaf_ids(system.clusters[hover_idx]).empty()) {
+          redirect_cluster_index = static_cast<int>(hover_idx);
+        }
       }
     }
-  }
-  if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
-    redirect_cluster_index = system.selection->cluster_index;
-  }
+    if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
+      redirect_cluster_index = system.selection->cluster_index;
+    }
 
-  UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index);
-  output.topology_changed = output.topology_changed || update_result.topology_changed;
-  output.selection_changed = output.selection_changed || update_result.selection_changed;
-  output.layout_changed = output.layout_changed || update_result.layout_changed;
-  output.apply_tiles = output.apply_tiles || update_result.apply_tiles;
-  if (update_result.layout_changed) {
-    mark_geometries_dirty();
-  }
-  if (update_result.topology_changed) {
-    if (update_result.cursor_pos.has_value()) {
-      output.cursor_pos = update_result.cursor_pos;
-    } else if (auto center = get_selected_center(system, ensure_geometries())) {
-      output.cursor_pos = center;
+    UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index);
+    output.topology_changed = output.topology_changed || update_result.topology_changed;
+    output.selection_changed = output.selection_changed || update_result.selection_changed;
+    output.layout_changed = output.layout_changed || update_result.layout_changed;
+    output.apply_tiles = output.apply_tiles || update_result.apply_tiles;
+    if (update_result.layout_changed) {
+      mark_geometries_dirty();
+    }
+    if (update_result.topology_changed) {
+      if (update_result.cursor_pos.has_value()) {
+        output.cursor_pos = update_result.cursor_pos;
+      } else if (auto center = get_selected_center(system, ensure_geometries())) {
+        output.cursor_pos = center;
+      }
     }
   }
 
