@@ -14,6 +14,11 @@ pre-commit run --all-files         # Run all pre-commit hooks
 .\build-run.bat build --Debug           # Build debug version
 ```
 
+# Version update
+
+- When user asks for a version update do the update, see version.h
+- If there are no unrelated changes in the repo, make a git commit and then execute: `nu c:\tools\gittag.nu vX.X.X` where X.X.X is the new version.
+
 # Coding Rules
 
  - Do not use (void), log error for handling return statements from [[nodiscard]] functions.
