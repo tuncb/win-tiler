@@ -164,8 +164,12 @@ TEST_SUITE("argument_parser") {
 }
 
 TEST_SUITE("version") {
-  TEST_CASE("version string includes current prerelease label") {
-    CHECK(get_version_string() == "0.4.2-alpha");
+  TEST_CASE("version string matches the current release version") {
+    CHECK(get_version_string() == "0.4.3");
+  }
+
+  TEST_CASE("version string does not include a prerelease suffix") {
+    CHECK(get_version_string().find('-') == std::string::npos);
   }
 }
 
