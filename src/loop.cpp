@@ -226,7 +226,9 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
   }
 
   if (output.cursor_pos.has_value()) {
-    winapi::set_cursor_pos(output.cursor_pos->x, output.cursor_pos->y);
+    if (!winapi::set_cursor_pos(output.cursor_pos->x, output.cursor_pos->y)) {
+      spdlog::error("Failed to set cursor position");
+    }
   }
 }
 // Handle config file hot-reload
