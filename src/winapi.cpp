@@ -50,6 +50,19 @@ std::vector<MonitorInfo> get_monitors() {
   return monitors;
 }
 
+static bool visible_size_differs_from_target(const WindowPosition& target_visible_position,
+                                             const WindowPosition& actual_visible_position) {
+  constexpr int kSizeTolerance = 2;
+
+  int width_delta = actual_visible_position.width - target_visible_position.width;
+  int height_delta = actual_visible_position.height - target_visible_position.height;
+
+  return (actual_visible_position.width > 0 &&
+          (width_delta < -kSizeTolerance || width_delta > kSizeTolerance)) ||
+         (actual_visible_position.height > 0 &&
+          (height_delta < -kSizeTolerance || height_delta > kSizeTolerance));
+}
+
 void log_monitors(const std::vector<MonitorInfo>& monitors) {
   spdlog::info("=== Monitor Info ({} monitors) ===", monitors.size());
   for (size_t i = 0; i < monitors.size(); ++i) {
@@ -333,6 +346,12 @@ void update_window_position(const TileInfo& tile_info) {
     }
 
     SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    auto actual_visible_rect = get_window_rect(tile_info.handle);
+    if (actual_visible_rect.has_value() &&
+        visible_size_differs_from_target(tile_info.window_position, *actual_visible_rect)) {
+      SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
   } else {
     // Fallback if DWM query fails
     int targetX = tile_info.window_position.x;
@@ -347,6 +366,12 @@ void update_window_position(const TileInfo& tile_info) {
     }
 
     SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    auto actual_visible_rect = get_window_rect(tile_info.handle);
+    if (actual_visible_rect.has_value() &&
+        visible_size_differs_from_target(tile_info.window_position, *actual_visible_rect)) {
+      SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
   }
 }
 
