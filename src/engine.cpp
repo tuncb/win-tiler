@@ -1516,8 +1516,6 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
       if (result.handled) {
         result.layout_changed = true;
         result.apply_tiles = true;
-        spdlog::info("Window resize: updated split ratio for cluster {}, leaf_id {}", cluster_index,
-                     request.leaf_id);
         result.selection_changed = !selections_equal(previous_selection, system.selection);
         return result;
       }
