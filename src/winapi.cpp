@@ -978,7 +978,7 @@ void register_virtual_desktop_notifications() {
     return;
   }
 
-  spdlog::info("Initialized virtual desktop manager");
+  spdlog::debug("Initialized virtual desktop manager");
 }
 
 void unregister_virtual_desktop_notifications() {
@@ -992,7 +992,7 @@ void unregister_virtual_desktop_notifications() {
     g_com_initialized = false;
   }
 
-  spdlog::info("Unregistered virtual desktop notifications");
+  spdlog::debug("Unregistered virtual desktop notifications");
 }
 
 static bool is_ctrl_pressed() {

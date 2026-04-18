@@ -15,17 +15,8 @@ namespace {
 
 constexpr int EXIT_HOTKEY_ID = 1;
 
-std::optional<std::string> find_exit_hotkey(const KeyboardOptions& keyboard_options) {
-  for (const auto& binding : keyboard_options.bindings) {
-    if (binding.action == HotkeyAction::Exit) {
-      return binding.hotkey;
-    }
-  }
-  return std::nullopt;
-}
-
 bool register_exit_hotkey(const KeyboardOptions& keyboard_options) {
-  auto hotkey_str = find_exit_hotkey(keyboard_options);
+  auto hotkey_str = find_hotkey_binding(keyboard_options, HotkeyAction::Exit);
   if (!hotkey_str) {
     spdlog::warn("No exit hotkey configured");
     return false;

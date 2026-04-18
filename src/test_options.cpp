@@ -255,6 +255,32 @@ TEST_SUITE("GlobalOptionsProvider") {
   }
 }
 
+TEST_SUITE("KeyboardOptions helpers") {
+  TEST_CASE("find_hotkey_binding returns configured hotkey text for an action") {
+    KeyboardOptions keyboard_options;
+    keyboard_options.bindings = {
+        {HotkeyAction::NavigateLeft, "super+h"},
+        {HotkeyAction::Exit, "alt+f4"},
+    };
+
+    auto hotkey = find_hotkey_binding(keyboard_options, HotkeyAction::Exit);
+
+    REQUIRE(hotkey.has_value());
+    CHECK(*hotkey == "alt+f4");
+  }
+
+  TEST_CASE("find_hotkey_binding returns nullopt when an action is not configured") {
+    KeyboardOptions keyboard_options;
+    keyboard_options.bindings = {
+        {HotkeyAction::NavigateLeft, "super+h"},
+    };
+
+    auto hotkey = find_hotkey_binding(keyboard_options, HotkeyAction::Exit);
+
+    CHECK(!hotkey.has_value());
+  }
+}
+
 // ============================================================================
 // IgnoreOptions Merge Tests
 // ============================================================================

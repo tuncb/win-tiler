@@ -326,7 +326,11 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   }
 
   // 3. Enter monitoring loop
-  spdlog::info("Monitoring for window changes... (Ctrl+C to exit)");
+  if (auto exit_hotkey = find_hotkey_binding(options.keyboardOptions, HotkeyAction::Exit)) {
+    spdlog::info("Monitoring for window changes... (Exit hotkey: {})", *exit_hotkey);
+  } else {
+    spdlog::info("Monitoring for window changes... (Exit hotkey not configured)");
+  }
 
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
@@ -429,13 +433,13 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     if (!multi_engine.has_desktop(current_desktop_id)) {
       auto cluster_infos = create_cluster_infos_from_monitors(monitors, provider.options);
       multi_engine.create_desktop(current_desktop_id, cluster_infos);
-      spdlog::info("Created new virtual desktop engine: {}", current_desktop_id);
+      spdlog::debug("Created new virtual desktop engine: {}", current_desktop_id);
     }
 
     // Switch to current desktop if needed
     if (!multi_engine.has_current() || *multi_engine.current_id != current_desktop_id) {
       multi_engine.switch_to(current_desktop_id);
-      spdlog::info("Switched to virtual desktop: {}", current_desktop_id);
+      spdlog::debug("Switched to virtual desktop: {}", current_desktop_id);
     }
 
     // Get reference to current desktop's engine

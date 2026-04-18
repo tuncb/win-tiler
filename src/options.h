@@ -125,6 +125,10 @@ struct GlobalOptions {
 // Get default global options
 GlobalOptions get_default_global_options();
 
+// Find the configured hotkey text for a specific action
+std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_options,
+                                               HotkeyAction action);
+
 // Get default ignore options (convenience function)
 IgnoreOptions get_default_ignore_options();
 

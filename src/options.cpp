@@ -176,6 +176,17 @@ GlobalOptions get_default_global_options() {
   return options;
 }
 
+std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_options,
+                                               HotkeyAction action) {
+  for (const auto& binding : keyboard_options.bindings) {
+    if (binding.action == action) {
+      return binding.hotkey;
+    }
+  }
+
+  return std::nullopt;
+}
+
 tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
                                                    const std::filesystem::path& filepath) {
   try {
