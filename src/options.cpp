@@ -47,6 +47,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "ResetSplitRatio";
   case HotkeyAction::TogglePause:
     return "TogglePause";
+  case HotkeyAction::DumpWindowManagement:
+    return "DumpWindowManagement";
   }
   return "Unknown";
 }
@@ -86,6 +88,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::ResetSplitRatio;
   if (str == "TogglePause")
     return HotkeyAction::TogglePause;
+  if (str == "DumpWindowManagement")
+    return HotkeyAction::DumpWindowManagement;
   return std::nullopt;
 }
 
@@ -125,6 +129,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+home";
   case HotkeyAction::TogglePause:
     return "super+shift+\\";
+  case HotkeyAction::DumpWindowManagement:
+    return "super+shift+d";
   }
   return "";
 }

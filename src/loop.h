@@ -37,6 +37,7 @@ enum class NoDesktopHotkeyAction {
   Ignore,
   Exit,
   EnterManualPause,
+  DumpWindowManagement,
 };
 
 [[nodiscard]] NoDesktopHotkeyAction

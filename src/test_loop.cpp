@@ -20,6 +20,11 @@ TEST_SUITE("loop") {
     CHECK(classify_no_desktop_hotkey(HotkeyAction::NavigateLeft) == NoDesktopHotkeyAction::Ignore);
   }
 
+  TEST_CASE("frames without a desktop id keep window dump hotkeys immediate") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::DumpWindowManagement) ==
+          NoDesktopHotkeyAction::DumpWindowManagement);
+  }
+
   TEST_CASE("frames without a desktop id do nothing when there is no queued hotkey") {
     CHECK(classify_no_desktop_hotkey(std::nullopt) == NoDesktopHotkeyAction::None);
   }

@@ -52,6 +52,7 @@ void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index = std::nullopt);
+void dump_window_management_state(const wintiler::IgnoreOptions& ignore_options);
 void update_window_position(const TileInfo& tile_info);
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
                                           const wintiler::IgnoreOptions& ignore_options);

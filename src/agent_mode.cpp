@@ -141,6 +141,10 @@ apply_action_result(Engine& engine, const ActionResult& action_result,
   mutation.layout_changed = action_result.layout_changed;
   mutation.toast_message = action_result.toast_message;
 
+  if (action_result.dump_window_management) {
+    winapi::dump_window_management_state(options.ignoreOptions);
+  }
+
   if (action_result.cursor_pos.has_value()) {
     if (!winapi::set_cursor_pos(action_result.cursor_pos->x, action_result.cursor_pos->y)) {
       spdlog::error("Failed to set cursor position");

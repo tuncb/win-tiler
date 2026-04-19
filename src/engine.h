@@ -101,6 +101,7 @@ struct ActionResult {
   bool layout_changed = false;
   bool selection_changed = false;
   bool apply_tiles = false;
+  bool dump_window_management = false;
   std::optional<size_t> focus_leaf_id;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<std::string> toast_message;
@@ -153,6 +154,7 @@ struct EngineFrameOutput {
   bool selection_changed = false;
   bool layout_changed = false;
   bool apply_tiles = false;
+  bool dump_window_management = false;
   bool clear_drag_ended = false;
   bool has_completed_initial_tile_pass = false;
   std::optional<size_t> focus_leaf_id;

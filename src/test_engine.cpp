@@ -651,6 +651,25 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.cursor_pos.has_value());
   }
 
+  TEST_CASE("dump hotkey returns a one-shot window management dump request") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.hotkey_action = HotkeyAction::DumpWindowManagement;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.dump_window_management == true);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == false);
+    CHECK_FALSE(output.toast_message.has_value());
+  }
+
   TEST_CASE("hover selection happens inside process_frame") {
     Engine engine = create_two_window_engine();
     set_selection(engine, 0, 1);
@@ -1519,6 +1538,21 @@ TEST_SUITE("Engine::process_action - Exit") {
 
     CHECK(result.success == true);
     CHECK(result.control == LoopControl::EnterManualPause);
+  }
+
+  TEST_CASE("DumpWindowManagement action requests a one-shot dump without changing layout") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::DumpWindowManagement, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::Continue);
+    CHECK(result.dump_window_management == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+    CHECK_FALSE(result.toast_message.has_value());
   }
 }
 

@@ -50,7 +50,8 @@ enum class HotkeyAction {
   ExchangeSiblings,
   ToggleZen,
   ResetSplitRatio,
-  TogglePause
+  TogglePause,
+  DumpWindowManagement
 };
 
 // Maps a hotkey action to its keyboard shortcut string

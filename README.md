@@ -80,6 +80,7 @@ bindings = [
   { action = "ToggleZen", hotkey = "super+shift+'" },
   { action = "ResetSplitRatio", hotkey = "super+shift+home" },
   { action = "TogglePause", hotkey = "super+shift+\\" },
+  { action = "DumpWindowManagement", hotkey = "super+shift+d" },
 ]
 
 [gap]

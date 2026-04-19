@@ -45,6 +45,8 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
   case HotkeyAction::ToggleZen:
   case HotkeyAction::ResetSplitRatio:
     return NoDesktopHotkeyAction::Ignore;
+  case HotkeyAction::DumpWindowManagement:
+    return NoDesktopHotkeyAction::DumpWindowManagement;
   }
 
   return NoDesktopHotkeyAction::Ignore;
@@ -201,13 +203,17 @@ EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_st
 }
 
 void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
-                        ToastState& toast) {
+                        const IgnoreOptions& ignore_options, ToastState& toast) {
   if (output.clear_drag_ended) {
     winapi::clear_drag_ended();
   }
 
   if (output.toast_message.has_value()) {
     toast.show(*output.toast_message);
+  }
+
+  if (output.dump_window_management) {
+    winapi::dump_window_management_state(ignore_options);
   }
 
   if (output.control != LoopControl::Continue) {
@@ -405,6 +411,10 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         overlay::clear();
         continue;
       }
+      case NoDesktopHotkeyAction::DumpWindowManagement:
+        spdlog::info("Dumping window management state without a desktop ID");
+        winapi::dump_window_management_state(provider.options.ignoreOptions);
+        break;
       case NoDesktopHotkeyAction::Ignore:
         spdlog::debug("Ignoring hotkey without a desktop ID");
         break;
@@ -507,7 +517,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     EngineFrameOutput frame_output = engine.process_frame(frame_input);
     perf.record_stage(LoopPerfStage::Engine, std::chrono::steady_clock::now() - engine_start);
     auto apply_start = std::chrono::steady_clock::now();
-    apply_frame_output(frame_output, engine.system, toast);
+    apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, toast);
     perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);
     perf.note_active_frame();
     if (frame_output.apply_tiles) {

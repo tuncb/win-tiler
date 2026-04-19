@@ -131,7 +131,6 @@ static bool is_window_maximized(HWND_T hwnd) {
   return IsZoomed((HWND)hwnd);
 }
 
-// Context struct for passing data to WindowEnumProc callback
 struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
@@ -144,12 +143,9 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  // Check if window is cloaked (hidden by shell/virtual desktops)
   BOOL cloaked = FALSE;
-  if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)))) {
-    if (cloaked) {
-      return TRUE;
-    }
+  if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked) {
+    return TRUE;
   }
 
   char title[256];
@@ -157,77 +153,68 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  char classNameBuf[256];
-  std::string className;
-  if (GetClassNameA(hwnd, classNameBuf, sizeof(classNameBuf)) > 0) {
-    className = classNameBuf;
+  char class_name_buf[256];
+  std::string class_name;
+  if (GetClassNameA(hwnd, class_name_buf, sizeof(class_name_buf)) > 0) {
+    class_name = class_name_buf;
   }
 
-  // Check for system drag image windows (always ignore)
-  if (className == "SysDragImage") {
+  if (class_name == "SysDragImage") {
     return TRUE;
   }
 
-  // Check for tooltip windows (always ignore)
-  if (className == "tooltips_class32") {
+  if (class_name == "tooltips_class32") {
     return TRUE;
   }
 
-  // Check extended window styles
-  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-  if (exStyle & WS_EX_TOOLWINDOW) {
-    return TRUE; // Tool windows (floating panels, utility windows)
+  LONG ex_style = GetWindowLong(hwnd, GWL_EXSTYLE);
+  if (ex_style & WS_EX_TOOLWINDOW) {
+    return TRUE;
   }
-  if (exStyle & WS_EX_TOPMOST) {
-    return TRUE; // Always-on-top windows (overlays)
+  if (ex_style & WS_EX_TOPMOST) {
+    return TRUE;
   }
-  if (exStyle & WS_EX_TRANSPARENT) {
-    return TRUE; // Click-through windows
+  if (ex_style & WS_EX_TRANSPARENT) {
+    return TRUE;
   }
-  if (exStyle & WS_EX_NOACTIVATE) {
-    return TRUE; // Windows that can't be activated
+  if (ex_style & WS_EX_NOACTIVATE) {
+    return TRUE;
   }
 
-  // Skip unresponsive windows
   if (IsHungAppWindow(hwnd)) {
     return TRUE;
   }
 
-  auto pid = get_window_pid((HWND_T)hwnd);
-  std::string processName;
+  auto pid = get_window_pid(reinterpret_cast<HWND_T>(hwnd));
+  std::string process_name;
   if (pid.has_value()) {
-    processName = get_process_name_from_pid(pid.value());
+    process_name = get_process_name_from_pid(*pid);
   }
 
-  // Skip windows with empty process name
-  if (processName.empty()) {
+  if (process_name.empty()) {
     return TRUE;
   }
 
   const auto& options = *ctx->ignore_options;
 
-  // Check ignored processes
   for (const auto& proc : options.ignored_processes) {
-    if (processName == proc) {
+    if (process_name == proc) {
       return TRUE;
     }
   }
 
-  // Check ignored titles
   for (const auto& ignored_title : options.ignored_window_titles) {
     if (title == ignored_title) {
       return TRUE;
     }
   }
 
-  // Check ignored process/title pairs
   for (const auto& pair : options.ignored_process_title_pairs) {
-    if (iequals(processName, pair.first) && iequals(title, pair.second)) {
+    if (iequals(process_name, pair.first) && iequals(title, pair.second)) {
       return TRUE;
     }
   }
 
-  // Check small window barrier
   if (options.small_window_barrier.has_value()) {
     RECT rect;
     if (GetWindowRect(hwnd, &rect)) {
@@ -240,22 +227,20 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     }
   }
 
-  // Check if this is a child/owned window of a process we want to ignore children for
   if (!options.ignore_children_of_processes.empty()) {
     HWND owner = GetWindow(hwnd, GW_OWNER);
     HWND parent = GetParent(hwnd);
 
-    if (owner != NULL || parent != NULL) {
-      // This is a child/owned window - check if process is in the ignore list
+    if (owner != nullptr || parent != nullptr) {
       for (const auto& proc : options.ignore_children_of_processes) {
-        if (iequals(processName, proc)) {
-          return TRUE; // Skip this child window
+        if (iequals(process_name, proc)) {
+          return TRUE;
         }
       }
     }
   }
 
-  ctx->handles->push_back((HWND_T)hwnd);
+  ctx->handles->push_back(reinterpret_cast<HWND_T>(hwnd));
   return TRUE;
 }
 
@@ -269,10 +254,239 @@ static std::vector<HWND_T> get_windows_list(const wintiler::IgnoreOptions& ignor
 static std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
   auto handles = get_windows_list(ignore_options);
 
-  std::sort(handles.begin(), handles.end(),
-            [](HWND_T a, HWND_T b) { return (uintptr_t)a < (uintptr_t)b; });
+  std::sort(handles.begin(), handles.end(), [](HWND_T lhs, HWND_T rhs) {
+    return reinterpret_cast<uintptr_t>(lhs) < reinterpret_cast<uintptr_t>(rhs);
+  });
 
   return handles;
+}
+
+static bool is_window_fullscreen(HWND_T hwnd);
+
+struct WindowManagementState {
+  HWND_T handle = nullptr;
+  std::string title;
+  std::string class_name;
+  std::optional<DWORD_T> pid;
+  std::string process_name;
+  std::optional<Rect> rect;
+  long ex_style = 0;
+  bool is_visible = false;
+  bool is_cloaked = false;
+  bool has_title = false;
+  bool is_sys_drag_image = false;
+  bool is_tooltip = false;
+  bool is_tool_window = false;
+  bool is_topmost = false;
+  bool is_transparent = false;
+  bool is_no_activate = false;
+  bool is_hung = false;
+  bool has_owner = false;
+  bool has_parent = false;
+  bool is_child_or_owned = false;
+  bool process_name_missing = false;
+  bool matches_ignored_process = false;
+  bool matches_ignored_title = false;
+  bool matches_ignored_process_title_pair = false;
+  bool is_below_small_window_barrier = false;
+  bool is_ignored_child_of_process = false;
+  bool is_maximized = false;
+  bool is_fullscreen = false;
+  bool passes_filters = false;
+  bool is_currently_managed = false;
+  std::optional<size_t> monitor_index;
+  std::vector<std::string> reasons;
+};
+
+struct DumpWindowEnumContext {
+  std::vector<WindowManagementState>* windows;
+  const wintiler::IgnoreOptions* ignore_options;
+  const std::vector<MonitorInfo>* monitors;
+};
+
+static std::optional<Rect> get_raw_window_rect(HWND hwnd) {
+  RECT rect;
+  if (GetWindowRect(hwnd, &rect) == 0) {
+    return std::nullopt;
+  }
+
+  return Rect{rect.left, rect.top, rect.right, rect.bottom};
+}
+
+static std::optional<size_t>
+get_monitor_index_for_window(HWND hwnd, const std::vector<MonitorInfo>& monitors) {
+  HMONITOR window_monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+  if (window_monitor == nullptr) {
+    return std::nullopt;
+  }
+
+  for (size_t i = 0; i < monitors.size(); ++i) {
+    if (window_monitor == reinterpret_cast<HMONITOR>(monitors[i].handle)) {
+      return i;
+    }
+  }
+
+  return std::nullopt;
+}
+
+static void add_reason_if(std::vector<std::string>& reasons, bool condition, const char* reason) {
+  if (condition) {
+    reasons.emplace_back(reason);
+  }
+}
+
+static std::string join_reasons(const std::vector<std::string>& reasons) {
+  if (reasons.empty()) {
+    return "none";
+  }
+
+  std::string joined;
+  for (size_t i = 0; i < reasons.size(); ++i) {
+    if (i > 0) {
+      joined += ", ";
+    }
+    joined += reasons[i];
+  }
+  return joined;
+}
+
+static WindowManagementState
+inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& options,
+                                const std::vector<MonitorInfo>& monitors) {
+  WindowManagementState state;
+  state.handle = reinterpret_cast<HWND_T>(hwnd);
+  state.is_visible = IsWindowVisible(hwnd) != 0;
+
+  BOOL cloaked = FALSE;
+  if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)))) {
+    state.is_cloaked = cloaked != FALSE;
+  }
+
+  char title[256] = {};
+  int title_length = GetWindowTextA(hwnd, title, sizeof(title));
+  if (title_length > 0) {
+    state.title = title;
+  }
+  state.has_title = title_length > 0;
+
+  char class_name_buf[256] = {};
+  if (GetClassNameA(hwnd, class_name_buf, sizeof(class_name_buf)) > 0) {
+    state.class_name = class_name_buf;
+  }
+
+  state.is_sys_drag_image = state.class_name == "SysDragImage";
+  state.is_tooltip = state.class_name == "tooltips_class32";
+
+  state.ex_style = GetWindowLong(hwnd, GWL_EXSTYLE);
+  state.is_tool_window = (state.ex_style & WS_EX_TOOLWINDOW) != 0;
+  state.is_topmost = (state.ex_style & WS_EX_TOPMOST) != 0;
+  state.is_transparent = (state.ex_style & WS_EX_TRANSPARENT) != 0;
+  state.is_no_activate = (state.ex_style & WS_EX_NOACTIVATE) != 0;
+  state.is_hung = IsHungAppWindow(hwnd) != 0;
+
+  state.pid = get_window_pid(state.handle);
+  if (state.pid.has_value()) {
+    state.process_name = get_process_name_from_pid(*state.pid);
+  }
+  state.process_name_missing = state.process_name.empty();
+
+  state.rect = get_raw_window_rect(hwnd);
+
+  HWND owner = GetWindow(hwnd, GW_OWNER);
+  HWND parent = GetParent(hwnd);
+  state.has_owner = owner != nullptr;
+  state.has_parent = parent != nullptr;
+  state.is_child_or_owned = state.has_owner || state.has_parent;
+
+  for (const auto& proc : options.ignored_processes) {
+    if (state.process_name == proc) {
+      state.matches_ignored_process = true;
+      break;
+    }
+  }
+
+  for (const auto& ignored_title : options.ignored_window_titles) {
+    if (state.title == ignored_title) {
+      state.matches_ignored_title = true;
+      break;
+    }
+  }
+
+  for (const auto& pair : options.ignored_process_title_pairs) {
+    if (iequals(state.process_name, pair.first) && iequals(state.title, pair.second)) {
+      state.matches_ignored_process_title_pair = true;
+      break;
+    }
+  }
+
+  if (options.small_window_barrier.has_value() && state.rect.has_value()) {
+    int width = static_cast<int>(state.rect->right - state.rect->left);
+    int height = static_cast<int>(state.rect->bottom - state.rect->top);
+    state.is_below_small_window_barrier = width < options.small_window_barrier->width ||
+                                          height < options.small_window_barrier->height;
+  }
+
+  if (state.is_child_or_owned && !options.ignore_children_of_processes.empty()) {
+    for (const auto& proc : options.ignore_children_of_processes) {
+      if (iequals(state.process_name, proc)) {
+        state.is_ignored_child_of_process = true;
+        break;
+      }
+    }
+  }
+
+  state.is_maximized = is_window_maximized(state.handle);
+  state.is_fullscreen = is_window_fullscreen(state.handle);
+  state.monitor_index = get_monitor_index_for_window(hwnd, monitors);
+
+  add_reason_if(state.reasons, !state.is_visible, "not visible");
+  add_reason_if(state.reasons, state.is_cloaked, "cloaked");
+  add_reason_if(state.reasons, !state.has_title, "empty title");
+  add_reason_if(state.reasons, state.is_sys_drag_image, "SysDragImage window");
+  add_reason_if(state.reasons, state.is_tooltip, "tooltip window");
+  add_reason_if(state.reasons, state.is_tool_window, "WS_EX_TOOLWINDOW");
+  add_reason_if(state.reasons, state.is_topmost, "WS_EX_TOPMOST");
+  add_reason_if(state.reasons, state.is_transparent, "WS_EX_TRANSPARENT");
+  add_reason_if(state.reasons, state.is_no_activate, "WS_EX_NOACTIVATE");
+  add_reason_if(state.reasons, state.is_hung, "hung window");
+  add_reason_if(state.reasons, state.process_name_missing, "missing process name");
+  add_reason_if(state.reasons, state.matches_ignored_process, "ignored process");
+  add_reason_if(state.reasons, state.matches_ignored_title, "ignored title");
+  add_reason_if(state.reasons, state.matches_ignored_process_title_pair,
+                "ignored process/title pair");
+  add_reason_if(state.reasons, state.is_below_small_window_barrier, "below small window barrier");
+  add_reason_if(state.reasons, state.is_ignored_child_of_process, "ignored child/owned window");
+
+  state.passes_filters = state.reasons.empty();
+  if (!state.monitor_index.has_value()) {
+    state.reasons.emplace_back("not on a known monitor");
+  }
+  state.is_currently_managed = state.passes_filters && state.monitor_index.has_value();
+
+  return state;
+}
+
+BOOL CALLBACK DumpWindowEnumProc(HWND hwnd, LPARAM lParam) {
+  auto* ctx = reinterpret_cast<DumpWindowEnumContext*>(lParam);
+  ctx->windows->push_back(
+      inspect_window_management_state(hwnd, *ctx->ignore_options, *ctx->monitors));
+  return TRUE;
+}
+
+static std::vector<WindowManagementState>
+gather_window_management_states(const wintiler::IgnoreOptions& ignore_options,
+                                const std::vector<MonitorInfo>& monitors) {
+  std::vector<WindowManagementState> windows;
+  DumpWindowEnumContext ctx{&windows, &ignore_options, &monitors};
+  EnumWindows(DumpWindowEnumProc, (LPARAM)&ctx);
+
+  std::sort(windows.begin(), windows.end(),
+            [](const WindowManagementState& lhs, const WindowManagementState& rhs) {
+              return reinterpret_cast<uintptr_t>(lhs.handle) <
+                     reinterpret_cast<uintptr_t>(rhs.handle);
+            });
+
+  return windows;
 }
 
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
@@ -313,6 +527,59 @@ void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
     }
     spdlog::debug("--------------------------------------------------");
   }
+}
+
+void dump_window_management_state(const wintiler::IgnoreOptions& ignore_options) {
+  auto monitors = get_monitors();
+  auto windows = gather_window_management_states(ignore_options, monitors);
+
+  spdlog::info("=== Window Management Dump ({} windows, {} monitors) ===", windows.size(),
+               monitors.size());
+  if (ignore_options.small_window_barrier.has_value()) {
+    spdlog::info("Small window barrier: {}x{}", ignore_options.small_window_barrier->width,
+                 ignore_options.small_window_barrier->height);
+  } else {
+    spdlog::info("Small window barrier: disabled");
+  }
+
+  for (size_t i = 0; i < windows.size(); ++i) {
+    const auto& window = windows[i];
+    auto rect_text = std::string("N/A");
+    auto size_text = std::string("N/A");
+    if (window.rect.has_value()) {
+      rect_text = std::to_string(window.rect->left) + ", " + std::to_string(window.rect->top) +
+                  ", " + std::to_string(window.rect->right) + ", " +
+                  std::to_string(window.rect->bottom);
+      size_text = std::to_string(window.rect->right - window.rect->left) + "x" +
+                  std::to_string(window.rect->bottom - window.rect->top);
+    }
+
+    spdlog::info("[{}] hwnd={}, managed={}, passes_filters={}, monitor_index={}, reasons={}", i,
+                 window.handle, window.is_currently_managed, window.passes_filters,
+                 window.monitor_index.has_value() ? std::to_string(*window.monitor_index) : "N/A",
+                 join_reasons(window.reasons));
+    spdlog::info("     title=\"{}\"", window.title);
+    spdlog::info("     class=\"{}\"", window.class_name);
+    spdlog::info("     pid={}, process=\"{}\"",
+                 window.pid.has_value() ? std::to_string(*window.pid) : "N/A", window.process_name);
+    spdlog::info("     rect=[{}], size={}", rect_text, size_text);
+    spdlog::info("     visible={}, cloaked={}, has_title={}, hung={}", window.is_visible,
+                 window.is_cloaked, window.has_title, window.is_hung);
+    spdlog::info("     ex_style=0x{:08X}, tool_window={}, topmost={}, transparent={}, "
+                 "no_activate={}",
+                 static_cast<unsigned long>(window.ex_style), window.is_tool_window,
+                 window.is_topmost, window.is_transparent, window.is_no_activate);
+    spdlog::info("     owner_present={}, parent_present={}, child_or_owned={}", window.has_owner,
+                 window.has_parent, window.is_child_or_owned);
+    spdlog::info("     ignored_process={}, ignored_title={}, ignored_process_title_pair={}, "
+                 "ignored_child_of_process={}",
+                 window.matches_ignored_process, window.matches_ignored_title,
+                 window.matches_ignored_process_title_pair, window.is_ignored_child_of_process);
+    spdlog::info("     small_window_barrier_hit={}, maximized={}, fullscreen={}",
+                 window.is_below_small_window_barrier, window.is_maximized, window.is_fullscreen);
+  }
+
+  spdlog::info("=== End Window Management Dump ===");
 }
 
 void update_window_position(const TileInfo& tile_info) {

@@ -220,6 +220,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::NavigateRight) == "super+shift+l");
     CHECK(find_binding(HotkeyAction::Exit) == "super+shift+escape");
     CHECK(find_binding(HotkeyAction::ToggleSplit) == "super+shift+y");
+    CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
   }
 
   TEST_CASE("empty keyboard section uses all default bindings") {
@@ -252,6 +253,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::NavigateLeft) == "super+shift+h");
     CHECK(find_binding(HotkeyAction::NavigateDown) == "super+shift+j");
     CHECK(find_binding(HotkeyAction::Exit) == "super+shift+escape");
+    CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
   }
 }
 

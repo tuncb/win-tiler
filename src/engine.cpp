@@ -1670,6 +1670,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     output.selection_changed = output.selection_changed || action_result.selection_changed;
     output.layout_changed = output.layout_changed || action_result.layout_changed;
     output.apply_tiles = output.apply_tiles || action_result.apply_tiles;
+    output.dump_window_management =
+        output.dump_window_management || action_result.dump_window_management;
     if (action_result.focus_leaf_id.has_value()) {
       output.focus_leaf_id = action_result.focus_leaf_id;
     }
@@ -2025,6 +2027,12 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::TogglePause:
     result.success = true;
     result.control = LoopControl::EnterManualPause;
+    break;
+
+  case HotkeyAction::DumpWindowManagement:
+    spdlog::info("DumpWindowManagement: dumping current window management state");
+    result.success = true;
+    result.dump_window_management = true;
     break;
   }
 
