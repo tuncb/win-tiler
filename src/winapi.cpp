@@ -28,6 +28,10 @@ static bool iequals(const std::string& a, const std::string& b) {
                     [](char a, char b) { return std::tolower(a) == std::tolower(b); });
 }
 
+bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name) {
+  return has_owner && class_name == "#32770";
+}
+
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor,
                               LPARAM dwData) {
   std::vector<MonitorInfo>* monitors = reinterpret_cast<std::vector<MonitorInfo>*>(dwData);
@@ -167,6 +171,11 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
+  HWND owner = GetWindow(hwnd, GW_OWNER);
+  if (should_ignore_owned_dialog_window(owner != nullptr, class_name)) {
+    return TRUE;
+  }
+
   LONG ex_style = GetWindowLong(hwnd, GWL_EXSTYLE);
   if (ex_style & WS_EX_TOOLWINDOW) {
     return TRUE;
@@ -284,6 +293,7 @@ struct WindowManagementState {
   bool has_owner = false;
   bool has_parent = false;
   bool is_child_or_owned = false;
+  bool is_owned_dialog = false;
   bool process_name_missing = false;
   bool matches_ignored_process = false;
   bool matches_ignored_title = false;
@@ -397,6 +407,7 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   state.has_owner = owner != nullptr;
   state.has_parent = parent != nullptr;
   state.is_child_or_owned = state.has_owner || state.has_parent;
+  state.is_owned_dialog = should_ignore_owned_dialog_window(state.has_owner, state.class_name);
 
   for (const auto& proc : options.ignored_processes) {
     if (state.process_name == proc) {
@@ -455,6 +466,7 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   add_reason_if(state.reasons, state.matches_ignored_process_title_pair,
                 "ignored process/title pair");
   add_reason_if(state.reasons, state.is_below_small_window_barrier, "below small window barrier");
+  add_reason_if(state.reasons, state.is_owned_dialog, "owned #32770 dialog");
   add_reason_if(state.reasons, state.is_ignored_child_of_process, "ignored child/owned window");
 
   state.passes_filters = state.reasons.empty();

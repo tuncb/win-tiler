@@ -5,6 +5,7 @@
 #include <filesystem>
 
 #include "startup.h"
+#include "winapi.h"
 
 using namespace wintiler;
 
@@ -34,6 +35,20 @@ TEST_SUITE("startup") {
     auto command_line = build_startup_command_line(executable, std::nullopt);
 
     CHECK(command_line == "\"C:\\Apps\\win-\\\"tiler\\\"\\win-tiler.exe\" loop");
+  }
+}
+
+TEST_SUITE("winapi") {
+  TEST_CASE("owned standard dialog windows are ignored") {
+    CHECK(winapi::should_ignore_owned_dialog_window(true, "#32770"));
+  }
+
+  TEST_CASE("unowned standard dialog windows are not ignored by the owned-dialog rule") {
+    CHECK_FALSE(winapi::should_ignore_owned_dialog_window(false, "#32770"));
+  }
+
+  TEST_CASE("owned non-dialog windows are not ignored by the owned-dialog rule") {
+    CHECK_FALSE(winapi::should_ignore_owned_dialog_window(true, "Chrome_WidgetWin_1"));
   }
 }
 

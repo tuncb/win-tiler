@@ -47,6 +47,9 @@ struct WindowInfo {
   std::string className;
 };
 
+// Standard Win32 dialogs use the predefined "#32770" class and are commonly owned popups.
+bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name);
+
 std::vector<MonitorInfo> get_monitors();
 void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
