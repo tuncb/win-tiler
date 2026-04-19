@@ -6,7 +6,7 @@ namespace wintiler {
 
 constexpr int VERSION_MAJOR = 0;
 constexpr int VERSION_MINOR = 4;
-constexpr int VERSION_PATCH = 7;
+constexpr int VERSION_PATCH = 8;
 
 // Build version string from constants (single source of truth)
 inline std::string get_version_string() {
