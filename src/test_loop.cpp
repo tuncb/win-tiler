@@ -28,6 +28,25 @@ TEST_SUITE("loop") {
   TEST_CASE("frames without a desktop id do nothing when there is no queued hotkey") {
     CHECK(classify_no_desktop_hotkey(std::nullopt) == NoDesktopHotkeyAction::None);
   }
+
+  TEST_CASE("manual pause only resumes on the pause hotkey") {
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::TogglePause) ==
+          ManualPauseHotkeyAction::Resume);
+  }
+
+  TEST_CASE("manual pause keeps the window dump hotkey immediate") {
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::DumpWindowManagement) ==
+          ManualPauseHotkeyAction::DumpWindowManagement);
+  }
+
+  TEST_CASE("manual pause ignores normal tiling hotkeys") {
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::NavigateLeft) ==
+          ManualPauseHotkeyAction::Ignore);
+  }
+
+  TEST_CASE("manual pause does nothing when there is no queued hotkey") {
+    CHECK(classify_manual_pause_hotkey(std::nullopt) == ManualPauseHotkeyAction::None);
+  }
 }
 
 } // namespace wintiler

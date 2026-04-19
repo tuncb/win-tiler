@@ -52,6 +52,38 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
   return NoDesktopHotkeyAction::Ignore;
 }
 
+ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction> hotkey_action) {
+  if (!hotkey_action.has_value()) {
+    return ManualPauseHotkeyAction::None;
+  }
+
+  switch (*hotkey_action) {
+  case HotkeyAction::TogglePause:
+    return ManualPauseHotkeyAction::Resume;
+  case HotkeyAction::DumpWindowManagement:
+    return ManualPauseHotkeyAction::DumpWindowManagement;
+  case HotkeyAction::Exit:
+  case HotkeyAction::NavigateLeft:
+  case HotkeyAction::NavigateDown:
+  case HotkeyAction::NavigateUp:
+  case HotkeyAction::NavigateRight:
+  case HotkeyAction::ToggleSplit:
+  case HotkeyAction::CycleSplitMode:
+  case HotkeyAction::StoreCell:
+  case HotkeyAction::ClearStored:
+  case HotkeyAction::Exchange:
+  case HotkeyAction::Move:
+  case HotkeyAction::SplitIncrease:
+  case HotkeyAction::SplitDecrease:
+  case HotkeyAction::ExchangeSiblings:
+  case HotkeyAction::ToggleZen:
+  case HotkeyAction::ResetSplitRatio:
+    return ManualPauseHotkeyAction::Ignore;
+  }
+
+  return ManualPauseHotkeyAction::Ignore;
+}
+
 namespace {
 
 // Toast message display state
@@ -366,17 +398,20 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Check for manual pause (hotkey-toggled)
     if (is_manually_paused) {
-      // Only check for unpause hotkey when manually paused
-      auto action_opt = poll_hotkey_action();
-      if (action_opt.has_value() && *action_opt == HotkeyAction::TogglePause) {
+      switch (classify_manual_pause_hotkey(poll_hotkey_action())) {
+      case ManualPauseHotkeyAction::Resume:
         is_manually_paused = false;
         mark_all_desktops_for_retile(multi_engine);
         spdlog::info("Manual pause deactivated");
         toast.show("Resumed");
-        // Fall through to resume normal processing immediately
-      }
-      if (is_manually_paused) {
-        continue; // Still paused, skip this iteration
+        break;
+      case ManualPauseHotkeyAction::DumpWindowManagement:
+        spdlog::info("Dumping window management state while manually paused");
+        winapi::dump_window_management_state(options.ignoreOptions);
+        continue;
+      case ManualPauseHotkeyAction::Ignore:
+      case ManualPauseHotkeyAction::None:
+        continue;
       }
     }
 

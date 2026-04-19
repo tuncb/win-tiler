@@ -43,6 +43,16 @@ enum class NoDesktopHotkeyAction {
 [[nodiscard]] NoDesktopHotkeyAction
 classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action);
 
+enum class ManualPauseHotkeyAction {
+  None,
+  Ignore,
+  Resume,
+  DumpWindowManagement,
+};
+
+[[nodiscard]] ManualPauseHotkeyAction
+classify_manual_pause_hotkey(std::optional<HotkeyAction> hotkey_action);
+
 void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_options = {});
 
 } // namespace wintiler
