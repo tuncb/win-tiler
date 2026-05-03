@@ -25,4 +25,8 @@ void initialize_engine_from_monitors(Engine& engine,
 void apply_tile_positions(const ctrl::System& system,
                           const std::vector<std::vector<ctrl::Rect>>& geometries);
 
+void apply_tile_positions_for_leaf_ids(const ctrl::System& system,
+                                       const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                       const std::vector<size_t>& leaf_ids);
+
 } // namespace wintiler

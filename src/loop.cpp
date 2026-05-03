@@ -254,6 +254,9 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
 
   if (output.apply_tiles) {
     apply_tile_positions(system, output.geometries);
+  } else if (!output.placement_correction_leaf_ids.empty()) {
+    apply_tile_positions_for_leaf_ids(system, output.geometries,
+                                      output.placement_correction_leaf_ids);
   }
 
   if (output.focus_leaf_id.has_value()) {

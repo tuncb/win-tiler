@@ -125,6 +125,8 @@ struct ManagedWindowState {
   size_t leaf_id = 0;
   bool is_fullscreen = false;
   bool is_maximized = false;
+  bool is_minimized = false;
+  std::optional<ctrl::Rect> actual_rect;
 };
 
 struct CompletedDragRequest {
@@ -160,6 +162,7 @@ struct EngineFrameOutput {
   std::optional<size_t> focus_leaf_id;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<std::string> toast_message;
+  std::vector<size_t> placement_correction_leaf_ids;
   std::vector<std::vector<ctrl::Rect>> geometries;
 };
 

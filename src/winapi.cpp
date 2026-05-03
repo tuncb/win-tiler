@@ -135,6 +135,10 @@ static bool is_window_maximized(HWND_T hwnd) {
   return IsZoomed((HWND)hwnd);
 }
 
+static bool is_window_minimized(HWND_T hwnd) {
+  return IsIconic((HWND)hwnd);
+}
+
 struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
@@ -1334,6 +1338,8 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
         managed_info.handle = hwnd;
         managed_info.is_fullscreen = is_window_fullscreen(hwnd);
         managed_info.is_maximized = is_window_maximized(hwnd);
+        managed_info.is_minimized = is_window_minimized(hwnd);
+        managed_info.actual_rect = get_window_rect(hwnd);
         monitor_windows.push_back(managed_info);
       }
     }

@@ -1,6 +1,54 @@
 #include "runtime_support.h"
 
+#include <algorithm>
+
 namespace wintiler {
+
+namespace {
+
+void apply_tile_positions_impl(const ctrl::System& system,
+                               const std::vector<std::vector<ctrl::Rect>>& geometries,
+                               const std::vector<size_t>* leaf_ids) {
+  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
+    const auto& cluster = system.clusters[ci];
+    if (cluster.has_fullscreen_cell) {
+      continue;
+    }
+
+    if (ci >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[ci];
+
+    for (int i = 0; i < cluster.tree.size(); ++i) {
+      if (!cluster.tree.is_leaf(i)) {
+        continue;
+      }
+      const auto& cell_data = cluster.tree[i];
+      if (!cell_data.leaf_id.has_value()) {
+        continue;
+      }
+
+      if (leaf_ids != nullptr &&
+          std::find(leaf_ids->begin(), leaf_ids->end(), *cell_data.leaf_id) == leaf_ids->end()) {
+        continue;
+      }
+
+      if (static_cast<size_t>(i) >= rects.size()) {
+        continue;
+      }
+      const auto& rect = rects[static_cast<size_t>(i)];
+
+      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
+      winapi::WindowPosition pos{static_cast<int>(rect.x), static_cast<int>(rect.y),
+                                 static_cast<int>(rect.width), static_cast<int>(rect.height)};
+      winapi::TileInfo tile_info{hwnd, pos};
+      winapi::update_window_position(tile_info);
+    }
+  }
+}
+
+} // namespace
 
 std::vector<ctrl::ClusterCellUpdateInfo>
 extract_cluster_updates_from_input(const winapi::LoopInputState& input_state) {
@@ -35,8 +83,15 @@ extract_managed_window_states_from_input(const winapi::LoopInputState& input_sta
       if (win.handle == nullptr) {
         continue;
       }
-      monitor_state.push_back(
-          {reinterpret_cast<size_t>(win.handle), win.is_fullscreen, win.is_maximized});
+      std::optional<ctrl::Rect> actual_rect;
+      if (win.actual_rect.has_value()) {
+        actual_rect = ctrl::Rect{static_cast<float>(win.actual_rect->x),
+                                 static_cast<float>(win.actual_rect->y),
+                                 static_cast<float>(win.actual_rect->width),
+                                 static_cast<float>(win.actual_rect->height)};
+      }
+      monitor_state.push_back({reinterpret_cast<size_t>(win.handle), win.is_fullscreen,
+                               win.is_maximized, win.is_minimized, actual_rect});
     }
     result.push_back(std::move(monitor_state));
   }
@@ -83,38 +138,13 @@ void initialize_engine_from_monitors(Engine& engine,
 
 void apply_tile_positions(const ctrl::System& system,
                           const std::vector<std::vector<ctrl::Rect>>& geometries) {
-  for (size_t ci = 0; ci < system.clusters.size(); ++ci) {
-    const auto& cluster = system.clusters[ci];
-    if (cluster.has_fullscreen_cell) {
-      continue;
-    }
+  apply_tile_positions_impl(system, geometries, nullptr);
+}
 
-    if (ci >= geometries.size()) {
-      continue;
-    }
-    const auto& rects = geometries[ci];
-
-    for (int i = 0; i < cluster.tree.size(); ++i) {
-      if (!cluster.tree.is_leaf(i)) {
-        continue;
-      }
-      const auto& cell_data = cluster.tree[i];
-      if (!cell_data.leaf_id.has_value()) {
-        continue;
-      }
-
-      if (static_cast<size_t>(i) >= rects.size()) {
-        continue;
-      }
-      const auto& rect = rects[static_cast<size_t>(i)];
-
-      winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
-      winapi::WindowPosition pos{static_cast<int>(rect.x), static_cast<int>(rect.y),
-                                 static_cast<int>(rect.width), static_cast<int>(rect.height)};
-      winapi::TileInfo tile_info{hwnd, pos};
-      winapi::update_window_position(tile_info);
-    }
-  }
+void apply_tile_positions_for_leaf_ids(const ctrl::System& system,
+                                       const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                       const std::vector<size_t>& leaf_ids) {
+  apply_tile_positions_impl(system, geometries, &leaf_ids);
 }
 
 } // namespace wintiler

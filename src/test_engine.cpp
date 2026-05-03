@@ -1014,6 +1014,69 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.apply_tiles == false);
     CHECK(output.has_completed_initial_tile_pass == true);
     CHECK(output.geometries.size() == engine.system.clusters.size());
+    CHECK(output.placement_correction_leaf_ids.empty());
+  }
+
+  TEST_CASE("steady frame requests targeted placement correction for mismatched window") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState mismatched_window;
+    mismatched_window.leaf_id = 1;
+    mismatched_window.actual_rect =
+        Rect{target_rect.x + 20.0f, target_rect.y, target_rect.width, target_rect.height};
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{mismatched_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == false);
+    REQUIRE(output.placement_correction_leaf_ids.size() == 1);
+    CHECK(output.placement_correction_leaf_ids[0] == 1);
+  }
+
+  TEST_CASE("steady placement correction ignores small drift and minimized windows") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState close_window;
+    close_window.leaf_id = 1;
+    close_window.actual_rect =
+        Rect{target_rect.x + 1.0f, target_rect.y, target_rect.width, target_rect.height};
+
+    ManagedWindowState minimized_window;
+    minimized_window.leaf_id = 2;
+    minimized_window.is_minimized = true;
+    minimized_window.actual_rect =
+        Rect{target_rect.x + 40.0f, target_rect.y, target_rect.width, target_rect.height};
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{close_window, minimized_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.apply_tiles == false);
+    CHECK(output.placement_correction_leaf_ids.empty());
   }
 }
 

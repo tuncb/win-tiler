@@ -1544,6 +1544,57 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
   return result;
 }
 
+bool rect_differs_from_target(const ctrl::Rect& actual_rect, const ctrl::Rect& target_rect) {
+  constexpr float kPlacementTolerance = 2.0f;
+
+  return std::abs(actual_rect.x - target_rect.x) > kPlacementTolerance ||
+         std::abs(actual_rect.y - target_rect.y) > kPlacementTolerance ||
+         std::abs(actual_rect.width - target_rect.width) > kPlacementTolerance ||
+         std::abs(actual_rect.height - target_rect.height) > kPlacementTolerance;
+}
+
+std::vector<size_t>
+find_placement_correction_leaf_ids(const ctrl::System& system,
+                                   const std::vector<std::vector<ManagedWindowState>>& windows,
+                                   const std::vector<std::vector<ctrl::Rect>>& geometries) {
+  std::vector<size_t> leaf_ids;
+  size_t cluster_count = std::min(system.clusters.size(), windows.size());
+
+  for (size_t cluster_index = 0; cluster_index < cluster_count; ++cluster_index) {
+    const auto& cluster = system.clusters[cluster_index];
+    if (cluster.has_fullscreen_cell) {
+      continue;
+    }
+
+    if (cluster_index >= geometries.size()) {
+      continue;
+    }
+
+    for (const auto& window : windows[cluster_index]) {
+      if (window.leaf_id == 0 || window.is_fullscreen || window.is_maximized ||
+          window.is_minimized || !window.actual_rect.has_value()) {
+        continue;
+      }
+
+      auto cell_index = ctrl::find_cell_by_leaf_id(cluster, window.leaf_id);
+      if (!cell_index.has_value()) {
+        continue;
+      }
+
+      if (*cell_index < 0 || static_cast<size_t>(*cell_index) >= geometries[cluster_index].size()) {
+        continue;
+      }
+
+      const auto& target_rect = geometries[cluster_index][static_cast<size_t>(*cell_index)];
+      if (rect_differs_from_target(*window.actual_rect, target_rect)) {
+        leaf_ids.push_back(window.leaf_id);
+      }
+    }
+  }
+
+  return leaf_ids;
+}
+
 } // namespace
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
@@ -1748,6 +1799,10 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   output.geometries = ensure_geometries();
+  if (!output.apply_tiles) {
+    output.placement_correction_leaf_ids =
+        find_placement_correction_leaf_ids(system, input.managed_windows, output.geometries);
+  }
   return output;
 }
 
