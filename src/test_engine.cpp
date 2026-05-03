@@ -283,6 +283,18 @@ TEST_SUITE("Engine leaf operations") {
     CHECK(remaining_leaf->cluster_index == 0);
   }
 
+  TEST_CASE("move_leaf_to_cell can empty the source cluster") {
+    Engine engine = create_test_engine();
+
+    bool moved = engine.move_leaf_to_cell(3, 0, 2);
+
+    CHECK(moved);
+    auto moved_leaf = engine.find_leaf(3);
+    REQUIRE(moved_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 0);
+    CHECK(engine.system.clusters[1].tree.empty());
+  }
+
   TEST_CASE("move_leaf_to_cell clears zen when the target leaf is split") {
     Engine engine = create_test_engine();
     engine.system.clusters[1].zen_cell_index = 0;
@@ -738,6 +750,41 @@ TEST_SUITE("Engine::process_frame") {
     REQUIRE(expected_center.has_value());
     CHECK(output.cursor_pos->x == expected_center->x);
     CHECK(output.cursor_pos->y == expected_center->y);
+  }
+
+  TEST_CASE("completed drag from single-window monitor honors the hovered target cell") {
+    Engine engine = create_test_engine();
+    set_selection(engine, 1, 0);
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = 3;
+    const auto& target_rect = geoms[0][2];
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2, 3}, false}, {{}, false}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+    input.completed_drag = CompletedDragRequest{
+        source_leaf_id,
+        ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                    static_cast<long>(target_rect.y + target_rect.height / 2.0f)},
+        std::nullopt, false};
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+
+    auto moved_leaf = engine.find_leaf(source_leaf_id);
+    REQUIRE(moved_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 0);
+    const auto& moved_rect = output.geometries[static_cast<size_t>(moved_leaf->cluster_index)]
+                                              [static_cast<size_t>(moved_leaf->cell_index)];
+    CHECK(moved_rect.x == doctest::Approx(target_rect.x));
+    CHECK(moved_rect.width == doctest::Approx(target_rect.width));
+    CHECK(engine.system.clusters[1].tree.empty());
   }
 
   TEST_CASE("completed drag exchange across clusters is preserved until the next frame") {

@@ -294,7 +294,11 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
   std::optional<size_t> source_leaf_id = src_cluster.tree[source_cell_index].leaf_id;
   auto src_parent_opt = src_cluster.tree.get_parent(source_cell_index);
   if (!src_parent_opt.has_value() && src_cluster.tree.size() == 1) {
-    return false;
+    if (source_cluster_index == target_cluster_index) {
+      return false;
+    }
+    src_cluster.tree.clear();
+    src_cluster.zen_cell_index = std::nullopt;
   }
 
   int adjusted_target_index = target_cell_index;
