@@ -16,8 +16,7 @@ pre-commit run --all-files         # Run all pre-commit hooks
 
 # Version update
 
-- When user asks for a version update do the update, see version.h
-- If there are no unrelated changes in the repo, make a git commit, after it commit finishes only then execute: `nu c:\tools\gittag.nu vX.X.X` where X.X.X is the new version.
+- When user asks for a version update do the update, see version.h, If there are no unrelated changes in the repo, make a git commit and wait for the commit to finish, only then execute: `nu c:\tools\gittag.nu vX.X.X` where X.X.X is the new version.
 
 # Coding Rules
 
