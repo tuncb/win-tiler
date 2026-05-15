@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <limits>
 
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
@@ -736,15 +737,25 @@ static HWND_T get_foreground_window() {
 
 static std::optional<Point> get_cursor_pos() {
   POINT pt;
+  SetLastError(ERROR_SUCCESS);
   if (GetCursorPos(&pt)) {
     return Point{pt.x, pt.y};
   }
-  spdlog::error("GetCursorPos failed");
+
+  DWORD error = GetLastError();
+  if (is_session_paused() || error == ERROR_ACCESS_DENIED) {
+    spdlog::debug("GetCursorPos unavailable during inactive session/input desktop, error={}",
+                  error);
+  } else {
+    spdlog::error("GetCursorPos failed, error={}", error);
+  }
   return std::nullopt;
 }
 
 bool set_cursor_pos(long x, long y) {
+  SetLastError(ERROR_SUCCESS);
   if (SetCursorPos(static_cast<int>(x), static_cast<int>(y)) == 0) {
+    spdlog::debug("SetCursorPos failed, error={}", GetLastError());
     return false;
   }
 
@@ -944,13 +955,35 @@ bool unregister_hotkey(int id) {
 std::optional<int> check_keyboard_action() {
   MSG msg;
   if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-    if (msg.message == WM_HOTKEY) {
+    if (should_defer_message_to_hotkey_poll(msg.message)) {
       return static_cast<int>(msg.wParam);
     }
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
   }
   return std::nullopt;
+}
+
+bool should_defer_message_to_hotkey_poll(unsigned int message) {
+  return message == WM_HOTKEY;
+}
+
+namespace {
+bool peek_non_hotkey_message(MSG& msg) {
+  if (PeekMessageW(&msg, nullptr, 0, WM_HOTKEY - 1, PM_REMOVE)) {
+    return true;
+  }
+
+  return PeekMessageW(&msg, nullptr, WM_HOTKEY + 1, (std::numeric_limits<UINT>::max)(), PM_REMOVE);
+}
+} // namespace
+
+void process_pending_non_hotkey_messages() {
+  MSG msg;
+  while (peek_non_hotkey_message(msg)) {
+    TranslateMessage(&msg);
+    DispatchMessageW(&msg);
+  }
 }
 
 bool wait_for_messages_or_timeout(unsigned long timeout_ms) {

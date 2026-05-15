@@ -389,6 +389,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
+    winapi::process_pending_non_hotkey_messages();
 
     // Block if session is paused (locked, sleeping, or display off)
     if (winapi::is_session_paused()) {
@@ -554,6 +555,16 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto engine_start = std::chrono::steady_clock::now();
     EngineFrameOutput frame_output = engine.process_frame(frame_input);
     perf.record_stage(LoopPerfStage::Engine, std::chrono::steady_clock::now() - engine_start);
+
+    winapi::process_pending_non_hotkey_messages();
+    if (winapi::is_session_paused()) {
+      spdlog::debug("Session paused before applying frame output, waiting for resume...");
+      winapi::wait_for_session_active();
+      mark_all_desktops_for_retile(multi_engine);
+      spdlog::debug("Session resumed, continuing loop");
+      continue;
+    }
+
     auto apply_start = std::chrono::steady_clock::now();
     apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, toast);
     perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);

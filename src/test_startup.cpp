@@ -50,6 +50,14 @@ TEST_SUITE("winapi") {
   TEST_CASE("owned non-dialog windows are not ignored by the owned-dialog rule") {
     CHECK_FALSE(winapi::should_ignore_owned_dialog_window(true, "Chrome_WidgetWin_1"));
   }
+
+  TEST_CASE("hotkey messages stay queued for hotkey polling") {
+    CHECK(winapi::should_defer_message_to_hotkey_poll(0x0312));
+  }
+
+  TEST_CASE("power messages are not deferred to hotkey polling") {
+    CHECK_FALSE(winapi::should_defer_message_to_hotkey_poll(0x0218));
+  }
 }
 
 #endif // !DOCTEST_CONFIG_DISABLE

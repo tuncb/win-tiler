@@ -93,6 +93,12 @@ bool unregister_hotkey(int id);
 // Check for pending hotkey messages, returns the hotkey id if triggered
 std::optional<int> check_keyboard_action();
 
+// Returns true for messages that should remain queued for check_keyboard_action().
+[[nodiscard]] bool should_defer_message_to_hotkey_poll(unsigned int message);
+
+// Process queued window messages while leaving hotkeys queued for check_keyboard_action().
+void process_pending_non_hotkey_messages();
+
 // Wait for messages or timeout using MsgWaitForMultipleObjectsEx
 // Returns true if messages are available, false on timeout
 bool wait_for_messages_or_timeout(unsigned long timeout_ms);
