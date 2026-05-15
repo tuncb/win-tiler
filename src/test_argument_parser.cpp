@@ -181,7 +181,7 @@ TEST_SUITE("argument_parser") {
 
 TEST_SUITE("version") {
   TEST_CASE("version string matches the current release version") {
-    CHECK(get_version_string() == "0.5.1");
+    CHECK(get_version_string() == "0.6.0");
   }
 
   TEST_CASE("version string does not include a prerelease suffix") {
