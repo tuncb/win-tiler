@@ -31,6 +31,7 @@ Top-level sections:
 - `keyboard`: maps actions to hotkeys.
 - `gap`: horizontal and vertical spacing between tiled windows.
 - `loop`: loop timing and automatic zen toggling on maximize.
+- `layout`: optional declarative tiling rules selected by managed window count.
 - `visualization`: toast timing and overlay rendering settings, including zen mode sizing.
 
 Default config written by `win-tiler init-config`:
@@ -91,6 +92,10 @@ vertical = 10.0
 interval_ms = 100
 toggle_zen_on_window_maximize = true
 
+[layout]
+enabled = true
+rules = []
+
 [visualization]
 toast_duration_ms = 2000
 
@@ -102,6 +107,32 @@ border_width = 3.0
 toast_font_size = 60.0
 zen_percentage = 0.9
 ```
+
+Declarative layout rules describe only the tiling structure, not specific apps. Rules are selected
+by the number of managed windows on a monitor. A missing `first` or `second` child means that side is
+a window leaf.
+
+```toml
+[[layout.rules]]
+window_count = 2
+split = "vertical"
+ratio = 0.30
+
+[[layout.rules]]
+window_count = 3
+
+[layout.rules.tree]
+split = "vertical"
+ratio = 0.30
+
+[layout.rules.tree.second]
+split = "horizontal"
+ratio = 0.50
+```
+
+`vertical` splits left/right and `horizontal` splits top/bottom. The ratio belongs to the first
+side of the split, so `ratio = 0.30` gives the first side 30% and the second side 70%. Rules whose
+tree leaf count does not match `window_count` are ignored.
 
 ## Command Line Arguments
 

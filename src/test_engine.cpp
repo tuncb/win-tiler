@@ -57,6 +57,20 @@ Engine create_two_window_engine() {
   return engine;
 }
 
+LayoutRule create_two_window_vertical_layout_rule(float ratio) {
+  LayoutRule rule;
+  rule.window_count = 2;
+  rule.tree.split_dir = LayoutSplitDir::Vertical;
+  rule.tree.split_ratio = ratio;
+  return rule;
+}
+
+LayoutOptions create_two_window_vertical_layout_options(float ratio) {
+  LayoutOptions options;
+  options.rules.push_back(create_two_window_vertical_layout_rule(ratio));
+  return options;
+}
+
 Engine create_three_window_engine() {
   Engine engine;
   std::vector<ClusterInitInfo> infos = {
@@ -224,6 +238,37 @@ TEST_SUITE("Engine::init") {
 
     CHECK(engine.system.clusters.size() == 1);
     CHECK(engine.system.clusters[0].window_width == 400.0f);
+  }
+
+  TEST_CASE("init applies configured layout rule for matching window count") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {{0.0f,
+                                           0.0f,
+                                           800.0f,
+                                           600.0f,
+                                           0.0f,
+                                           0.0f,
+                                           800.0f,
+                                           600.0f,
+                                           {1, 2},
+                                           create_two_window_vertical_layout_rule(0.30f)}};
+
+    engine.init(infos);
+
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 3);
+    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.30f));
+
+    auto geometries = engine.compute_geometries(0.0f, 0.0f, 0.0f);
+    auto first_leaf = find_cluster_leaf_index(cluster, 1);
+    auto second_leaf = find_cluster_leaf_index(cluster, 2);
+    REQUIRE(first_leaf.has_value());
+    REQUIRE(second_leaf.has_value());
+
+    CHECK(geometries[0][static_cast<size_t>(*first_leaf)].width == doctest::Approx(240.0f));
+    CHECK(geometries[0][static_cast<size_t>(*second_leaf)].x == doctest::Approx(240.0f));
+    CHECK(geometries[0][static_cast<size_t>(*second_leaf)].width == doctest::Approx(560.0f));
   }
 }
 
@@ -611,6 +656,24 @@ TEST_SUITE("Engine::update") {
     CHECK(remaining_leaf->cluster_index == 0);
     CHECK_FALSE(engine.system.clusters[1].tree.empty());
   }
+
+  TEST_CASE("applies configured layout rule when topology changes") {
+    Engine engine = create_single_cluster_engine();
+    LayoutOptions layout_options = create_two_window_vertical_layout_options(0.30f);
+
+    std::vector<ClusterCellUpdateInfo> updates = {{{1, 2}, false}};
+
+    UpdateResult result = engine.update(updates, std::nullopt, &layout_options);
+
+    CHECK(result.topology_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 3);
+    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.30f));
+  }
 }
 
 // =============================================================================
@@ -618,6 +681,25 @@ TEST_SUITE("Engine::update") {
 // =============================================================================
 
 TEST_SUITE("Engine::process_frame") {
+  TEST_CASE("reapplies configured layout templates when requested") {
+    Engine engine = create_two_window_engine();
+    LayoutOptions layout_options = create_two_window_vertical_layout_options(0.30f);
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.reapply_layout_templates = true;
+    input.layout_options = &layout_options;
+    input.gap_h = 0.0f;
+    input.gap_v = 0.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.30f));
+  }
+
   TEST_CASE("exit hotkey returns loop control and final geometries") {
     Engine engine = create_test_engine();
 

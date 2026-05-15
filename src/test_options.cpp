@@ -535,6 +535,113 @@ TEST_SUITE("IgnoreOptions Merge") {
 }
 
 // ============================================================================
+// Layout Options Tests
+// ============================================================================
+
+TEST_SUITE("Layout Options") {
+  TEST_CASE("parses two-window layout with implicit window leaves") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "enabled = true\n";
+      file << "\n";
+      file << "[[layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.30\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    const auto& layout = result.value().layoutOptions;
+    CHECK(layout.enabled == true);
+    REQUIRE(layout.rules.size() == 1);
+    CHECK(layout.rules[0].window_count == 2);
+    CHECK(layout.rules[0].tree.split_dir == LayoutSplitDir::Vertical);
+    CHECK(layout.rules[0].tree.split_ratio == doctest::Approx(0.30f));
+    CHECK(layout.rules[0].tree.first == nullptr);
+    CHECK(layout.rules[0].tree.second == nullptr);
+    CHECK(count_layout_windows(layout.rules[0].tree) == 2);
+  }
+
+  TEST_CASE("parses nested layout with omitted leaf children") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[[layout.rules]]\n";
+      file << "window_count = 3\n";
+      file << "\n";
+      file << "[layout.rules.tree]\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.30\n";
+      file << "\n";
+      file << "[layout.rules.tree.second]\n";
+      file << "split = \"horizontal\"\n";
+      file << "ratio = 0.50\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    const auto& layout = result.value().layoutOptions;
+    REQUIRE(layout.rules.size() == 1);
+    const auto& rule = layout.rules[0];
+    CHECK(rule.window_count == 3);
+    CHECK(rule.tree.first == nullptr);
+    REQUIRE(rule.tree.second != nullptr);
+    CHECK(rule.tree.second->split_dir == LayoutSplitDir::Horizontal);
+    CHECK(count_layout_windows(rule.tree) == 3);
+  }
+
+  TEST_CASE("ignores layout rule when window_count does not match leaf count") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[[layout.rules]]\n";
+      file << "window_count = 3\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.30\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.rules.empty());
+  }
+
+  TEST_CASE("disabled layout does not return matching rules") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "enabled = false\n";
+      file << "\n";
+      file << "[[layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.30\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().layoutOptions.rules.size() == 1);
+
+    auto rule = find_layout_rule_for_window_count(result.value().layoutOptions, 2);
+    CHECK(!rule.has_value());
+  }
+}
+
+// ============================================================================
 // TOML Parse Error Tests
 // ============================================================================
 

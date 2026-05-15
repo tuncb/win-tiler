@@ -9,6 +9,7 @@ namespace wintiler {
 
 struct LoopDesktopData {
   bool has_completed_initial_tile_pass = false;
+  bool reapply_layout_templates = false;
 };
 
 template <typename DesktopId>
@@ -19,12 +20,21 @@ void mark_all_desktops_for_retile(MultiEngine<LoopDesktopData, DesktopId>& multi
 }
 
 template <typename DesktopId>
+void mark_all_desktops_for_layout_reapply(MultiEngine<LoopDesktopData, DesktopId>& multi_engine) {
+  for (auto& [id, desktop] : multi_engine.desktops) {
+    desktop.data.has_completed_initial_tile_pass = false;
+    desktop.data.reapply_layout_templates = true;
+  }
+}
+
+template <typename DesktopId>
 void reinitialize_all_desktops(MultiEngine<LoopDesktopData, DesktopId>& multi_engine,
                                const std::vector<ctrl::ClusterInitInfo>& cluster_infos) {
   for (auto& [id, desktop] : multi_engine.desktops) {
     desktop.engine.init(cluster_infos);
     desktop.engine.clear_stored_cell();
     desktop.data.has_completed_initial_tile_pass = false;
+    desktop.data.reapply_layout_templates = false;
   }
 }
 

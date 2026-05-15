@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <magic_enum/magic_enum.hpp>
 #include <toml++/toml.hpp>
@@ -93,6 +94,29 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
   return std::nullopt;
 }
 
+std::string layout_split_dir_to_string(LayoutSplitDir split_dir) {
+  switch (split_dir) {
+  case LayoutSplitDir::Vertical:
+    return "vertical";
+  case LayoutSplitDir::Horizontal:
+    return "horizontal";
+  }
+  return "vertical";
+}
+
+std::optional<LayoutSplitDir> string_to_layout_split_dir(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+  if (value == "vertical") {
+    return LayoutSplitDir::Vertical;
+  }
+  if (value == "horizontal") {
+    return LayoutSplitDir::Horizontal;
+  }
+  return std::nullopt;
+}
+
 std::string get_default_hotkey(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
@@ -147,6 +171,132 @@ std::optional<T> get_number(const toml::node_view<toml::node>& node) {
   return std::nullopt;
 }
 
+float clamp_layout_ratio(float ratio) {
+  if (ratio < 0.1f) {
+    spdlog::error("Invalid layout split ratio ({}): must be >= 0.1. Using 0.1.", ratio);
+    return 0.1f;
+  }
+  if (ratio > 0.9f) {
+    spdlog::error("Invalid layout split ratio ({}): must be <= 0.9. Using 0.9.", ratio);
+    return 0.9f;
+  }
+  return ratio;
+}
+
+std::optional<std::shared_ptr<LayoutTreeNode>>
+parse_layout_child(const toml::node_view<toml::node>& node, std::string_view child_name);
+
+std::optional<LayoutTreeNode> parse_layout_tree_node(toml::table& table) {
+  auto split = table["split"].as_string();
+  if (!split) {
+    spdlog::error("Invalid layout rule: split must be \"vertical\" or \"horizontal\".");
+    return std::nullopt;
+  }
+
+  auto split_dir = string_to_layout_split_dir(std::string(split->get()));
+  if (!split_dir.has_value()) {
+    spdlog::error("Invalid layout rule: unknown split value \"{}\".", split->get());
+    return std::nullopt;
+  }
+
+  LayoutTreeNode node;
+  node.split_dir = *split_dir;
+  if (auto ratio = get_number<float>(table["ratio"])) {
+    node.split_ratio = clamp_layout_ratio(*ratio);
+  }
+
+  auto first = parse_layout_child(table["first"], "first");
+  if (!first.has_value()) {
+    return std::nullopt;
+  }
+  node.first = *first;
+
+  auto second = parse_layout_child(table["second"], "second");
+  if (!second.has_value()) {
+    return std::nullopt;
+  }
+  node.second = *second;
+
+  return node;
+}
+
+std::optional<std::shared_ptr<LayoutTreeNode>>
+parse_layout_child(const toml::node_view<toml::node>& node, std::string_view child_name) {
+  if (!node) {
+    return std::optional<std::shared_ptr<LayoutTreeNode>>(std::shared_ptr<LayoutTreeNode>{});
+  }
+
+  if (auto value = node.as_string()) {
+    std::string text = value->get();
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+    if (text == "window") {
+      return std::optional<std::shared_ptr<LayoutTreeNode>>(std::shared_ptr<LayoutTreeNode>{});
+    }
+
+    spdlog::error("Invalid layout rule: {} must be \"window\" or a split table.", child_name);
+    return std::nullopt;
+  }
+
+  if (auto table = node.as_table()) {
+    auto parsed_node = parse_layout_tree_node(*table);
+    if (!parsed_node.has_value()) {
+      return std::nullopt;
+    }
+    return std::make_shared<LayoutTreeNode>(std::move(*parsed_node));
+  }
+
+  spdlog::error("Invalid layout rule: {} must be \"window\" or a split table.", child_name);
+  return std::nullopt;
+}
+
+std::optional<LayoutRule> parse_layout_rule(toml::table& table) {
+  auto window_count = table["window_count"].as_integer();
+  if (!window_count || window_count->get() <= 0) {
+    spdlog::error("Invalid layout rule: window_count must be positive.");
+    return std::nullopt;
+  }
+
+  toml::table* tree_table = table["tree"].as_table();
+  if (tree_table == nullptr) {
+    tree_table = &table;
+  }
+
+  auto tree = parse_layout_tree_node(*tree_table);
+  if (!tree.has_value()) {
+    return std::nullopt;
+  }
+
+  LayoutRule rule;
+  rule.window_count = static_cast<size_t>(window_count->get());
+  rule.tree = std::move(*tree);
+
+  size_t leaf_count = count_layout_windows(rule.tree);
+  if (leaf_count != rule.window_count) {
+    spdlog::error("Invalid layout rule for window_count {}: tree contains {} window leaves.",
+                  rule.window_count, leaf_count);
+    return std::nullopt;
+  }
+
+  return rule;
+}
+
+toml::table layout_tree_node_to_toml(const LayoutTreeNode& node) {
+  toml::table result;
+  result.insert("split", layout_split_dir_to_string(node.split_dir));
+  result.insert("ratio", node.split_ratio);
+
+  if (node.first) {
+    result.insert("first", layout_tree_node_to_toml(*node.first));
+  }
+  if (node.second) {
+    result.insert("second", layout_tree_node_to_toml(*node.second));
+  }
+
+  return result;
+}
+
 } // anonymous namespace
 
 IgnoreOptions get_default_ignore_options() {
@@ -187,6 +337,28 @@ std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_o
   for (const auto& binding : keyboard_options.bindings) {
     if (binding.action == action) {
       return binding.hotkey;
+    }
+  }
+
+  return std::nullopt;
+}
+
+size_t count_layout_windows(const LayoutTreeNode& node) {
+  size_t count = 0;
+  count += node.first ? count_layout_windows(*node.first) : 1;
+  count += node.second ? count_layout_windows(*node.second) : 1;
+  return count;
+}
+
+std::optional<LayoutRule> find_layout_rule_for_window_count(const LayoutOptions& layout_options,
+                                                            size_t window_count) {
+  if (!layout_options.enabled) {
+    return std::nullopt;
+  }
+
+  for (const auto& rule : layout_options.rules) {
+    if (rule.window_count == window_count) {
+      return rule;
     }
   }
 
@@ -268,6 +440,19 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     loop.insert("interval_ms", options.loopOptions.intervalMs);
     loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
     root.insert("loop", loop);
+
+    // Build layout section
+    toml::table layout;
+    layout.insert("enabled", options.layoutOptions.enabled);
+    toml::array layout_rules;
+    for (const auto& rule : options.layoutOptions.rules) {
+      toml::table rule_table;
+      rule_table.insert("window_count", static_cast<int64_t>(rule.window_count));
+      rule_table.insert("tree", layout_tree_node_to_toml(rule.tree));
+      layout_rules.push_back(rule_table);
+    }
+    layout.insert("rules", layout_rules);
+    root.insert("layout", layout);
 
     // Build visualization section with nested render
     toml::table visualization;
@@ -530,6 +715,26 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       spdlog::error("Invalid loop.interval_ms value ({}): must be non-negative. Using default.",
                     options.loopOptions.intervalMs);
       options.loopOptions.intervalMs = kDefaultLoopIntervalMs;
+    }
+
+    // Parse layout section
+    if (auto layout = tbl["layout"].as_table()) {
+      if (auto enabled = (*layout)["enabled"].as_boolean()) {
+        options.layoutOptions.enabled = enabled->get();
+      }
+
+      if (auto rules = (*layout)["rules"].as_array()) {
+        for (auto& rule_value : *rules) {
+          if (auto rule_table = rule_value.as_table()) {
+            auto rule = parse_layout_rule(*rule_table);
+            if (rule.has_value()) {
+              options.layoutOptions.rules.push_back(std::move(*rule));
+            }
+          } else {
+            spdlog::error("Invalid layout rule: each rule must be a table.");
+          }
+        }
+      }
     }
 
     // Parse visualization section with nested render

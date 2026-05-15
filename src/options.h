@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tl/expected.hpp>
@@ -96,6 +97,25 @@ struct LoopOptions {
   bool toggle_zen_on_window_maximize = kDefaultToggleZenOnWindowMaximize;
 };
 
+enum class LayoutSplitDir { Vertical, Horizontal };
+
+struct LayoutTreeNode {
+  LayoutSplitDir split_dir = LayoutSplitDir::Vertical;
+  float split_ratio = 0.5f;
+  std::shared_ptr<LayoutTreeNode> first;
+  std::shared_ptr<LayoutTreeNode> second;
+};
+
+struct LayoutRule {
+  size_t window_count = 0;
+  LayoutTreeNode tree;
+};
+
+struct LayoutOptions {
+  bool enabled = true;
+  std::vector<LayoutRule> rules;
+};
+
 // Render-specific options used by the renderer
 namespace renderer {
 struct RenderOptions {
@@ -120,6 +140,7 @@ struct GlobalOptions {
   KeyboardOptions keyboardOptions;
   GapOptions gapOptions;
   LoopOptions loopOptions;
+  LayoutOptions layoutOptions;
   VisualizationOptions visualizationOptions;
 };
 
@@ -129,6 +150,11 @@ GlobalOptions get_default_global_options();
 // Find the configured hotkey text for a specific action
 std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_options,
                                                HotkeyAction action);
+
+[[nodiscard]] size_t count_layout_windows(const LayoutTreeNode& node);
+
+[[nodiscard]] std::optional<LayoutRule>
+find_layout_rule_for_window_count(const LayoutOptions& layout_options, size_t window_count);
 
 // Get default ignore options (convenience function)
 IgnoreOptions get_default_ignore_options();

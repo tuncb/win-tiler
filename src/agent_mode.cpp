@@ -19,6 +19,7 @@ constexpr char kFallbackDesktopId[] = "__agent_default__";
 
 struct AgentDesktopData {
   std::vector<winapi::MonitorInfo> last_known_monitors;
+  bool reapply_layout_templates = false;
 };
 
 struct AgentRuntimeState {
@@ -254,6 +255,9 @@ tl::expected<AgentSyncSnapshot, std::string>
 sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_provider) {
   if (options_provider.refresh()) {
     spdlog::info("Agent mode config hot-reloaded");
+    for (auto& [id, desktop] : runtime.multi_engine.desktops) {
+      desktop.data.reapply_layout_templates = true;
+    }
   }
 
   AgentSyncSnapshot snapshot{
@@ -284,10 +288,14 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
                                     options_provider.options);
     current_desktop.engine.clear_stored_cell();
     current_desktop.data.last_known_monitors = snapshot.input_state.monitors;
+    current_desktop.data.reapply_layout_templates = false;
   }
 
   snapshot.cluster_updates = extract_cluster_updates_from_input(snapshot.input_state);
-  snapshot.update_result = current_desktop.engine.update(snapshot.cluster_updates);
+  snapshot.update_result = current_desktop.engine.update(
+      snapshot.cluster_updates, std::nullopt, &options_provider.options.layoutOptions,
+      current_desktop.data.reapply_layout_templates);
+  current_desktop.data.reapply_layout_templates = false;
   snapshot.engine = &current_desktop.engine;
   return snapshot;
 }

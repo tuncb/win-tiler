@@ -200,13 +200,16 @@ std::optional<HotkeyAction> poll_hotkey_action() {
 EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_state,
                                           const LoopDesktopData& desktop_data, float gap_h,
                                           float gap_v, float zen_pct, bool auto_zen_on_maximize,
-                                          std::optional<HotkeyAction> hotkey_action) {
+                                          std::optional<HotkeyAction> hotkey_action,
+                                          const LayoutOptions& layout_options) {
   EngineFrameInput frame_input;
   frame_input.cluster_updates = extract_cluster_updates_from_input(input_state);
   frame_input.managed_windows = extract_managed_window_states_from_input(input_state);
   frame_input.hotkey_action = hotkey_action;
   frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
   frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
+  frame_input.reapply_layout_templates = desktop_data.reapply_layout_templates;
+  frame_input.layout_options = &layout_options;
   frame_input.gap_h = gap_h;
   frame_input.gap_v = gap_v;
   frame_input.zen_pct = zen_pct;
@@ -528,7 +531,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Check for config file changes and hot-reload
     if (handle_config_refresh(provider, toast)) {
-      mark_all_desktops_for_retile(multi_engine);
+      mark_all_desktops_for_layout_reapply(multi_engine);
     }
     gap_h = provider.options.gapOptions.horizontal;
     gap_v = provider.options.gapOptions.vertical;
@@ -546,9 +549,10 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     }
 
     auto build_frame_input_start = std::chrono::steady_clock::now();
-    EngineFrameInput frame_input = build_engine_frame_input(
-        input_state, current_desktop.data, gap_h, gap_v, zen_pct,
-        provider.options.loopOptions.toggle_zen_on_window_maximize, poll_hotkey_action());
+    EngineFrameInput frame_input =
+        build_engine_frame_input(input_state, current_desktop.data, gap_h, gap_v, zen_pct,
+                                 provider.options.loopOptions.toggle_zen_on_window_maximize,
+                                 poll_hotkey_action(), provider.options.layoutOptions);
     perf.record_stage(LoopPerfStage::BuildFrameInput,
                       std::chrono::steady_clock::now() - build_frame_input_start);
 
@@ -596,6 +600,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     current_desktop.data.has_completed_initial_tile_pass =
         frame_output.has_completed_initial_tile_pass;
+    current_desktop.data.reapply_layout_templates = false;
     geometries = std::move(frame_output.geometries);
 
     // Render cell system overlay
