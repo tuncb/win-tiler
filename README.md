@@ -33,6 +33,7 @@ Top-level sections:
 - `loop`: loop timing and automatic zen toggling on maximize.
 - `layout`: optional declarative tiling rules selected by managed window count.
 - `visualization`: toast timing and overlay rendering settings, including zen mode sizing.
+- `monitor_profiles`: optional per-monitor overrides for gap, layout, and zen mode sizing.
 
 Default config written by `win-tiler init-config`:
 
@@ -106,6 +107,41 @@ stored_color = [255, 180, 0, 200]
 border_width = 3.0
 toast_font_size = 60.0
 zen_percentage = 0.9
+```
+
+Per-monitor tiling overrides can target a monitor by device name, monitor index, primary status, or
+a combination of those fields. Later matching profiles override earlier ones. Any field omitted from
+a matching profile falls back to the global configuration.
+
+```toml
+[[monitor_profiles]]
+name = "Laptop"
+match = { device_name = "\\\\.\\DISPLAY1" }
+
+[monitor_profiles.gap]
+horizontal = 8
+vertical = 8
+
+[[monitor_profiles.layout.rules]]
+window_count = 2
+split = "vertical"
+ratio = 0.50
+
+[[monitor_profiles]]
+name = "External"
+match = { device_name = "\\\\.\\DISPLAY2" }
+
+[monitor_profiles.gap]
+horizontal = 16
+vertical = 12
+
+[monitor_profiles.visualization.render]
+zen_percentage = 0.82
+
+[[monitor_profiles.layout.rules]]
+window_count = 3
+split = "vertical"
+ratio = 0.30
 ```
 
 Declarative layout rules describe only the tiling structure, not specific apps. Rules are selected

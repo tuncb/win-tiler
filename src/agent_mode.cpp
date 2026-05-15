@@ -58,10 +58,9 @@ AgentRect make_agent_rect(const ctrl::Rect& rect) {
                    static_cast<int>(rect.height)};
 }
 
-void retile_engine(const Engine& engine, const GlobalOptions& options) {
-  auto geometries =
-      engine.compute_geometries(options.gapOptions.horizontal, options.gapOptions.vertical,
-                                options.visualizationOptions.renderOptions.zen_percentage);
+void retile_engine(const Engine& engine, const std::vector<winapi::MonitorInfo>& monitors,
+                   const GlobalOptions& options) {
+  auto geometries = engine.compute_geometries(resolve_cluster_tiling_options(monitors, options));
   apply_tile_positions(engine.system, geometries);
 }
 
@@ -128,6 +127,7 @@ AgentResponse make_success_response(std::string id, const AgentMutationResponse&
 
 tl::expected<AgentMutationResponse, std::string>
 apply_action_result(Engine& engine, const ActionResult& action_result,
+                    const std::vector<winapi::MonitorInfo>& monitors,
                     const GlobalOptions& options) {
   if (!action_result.success) {
     return tl::unexpected("agent action failed");
@@ -161,7 +161,7 @@ apply_action_result(Engine& engine, const ActionResult& action_result,
   }
 
   if (action_result.apply_tiles) {
-    retile_engine(engine, options);
+    retile_engine(engine, monitors, options);
   }
 
   return mutation;
@@ -179,8 +179,7 @@ AgentStateResponse build_state_response(const AgentSyncSnapshot& snapshot,
   std::vector<std::vector<ctrl::Rect>> geometries;
   if (include_layout) {
     geometries = snapshot.engine->compute_geometries(
-        options.gapOptions.horizontal, options.gapOptions.vertical,
-        options.visualizationOptions.renderOptions.zen_percentage);
+        resolve_cluster_tiling_options(snapshot.input_state.monitors, options));
   }
 
   for (size_t monitor_index = 0; monitor_index < snapshot.input_state.windows_per_monitor.size();
@@ -293,7 +292,8 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
 
   snapshot.cluster_updates = extract_cluster_updates_from_input(snapshot.input_state);
   snapshot.update_result = current_desktop.engine.update(
-      snapshot.cluster_updates, std::nullopt, &options_provider.options.layoutOptions,
+      snapshot.cluster_updates, std::nullopt,
+      resolve_cluster_tiling_options(snapshot.input_state.monitors, options_provider.options),
       current_desktop.data.reapply_layout_templates);
   current_desktop.data.reapply_layout_templates = false;
   snapshot.engine = &current_desktop.engine;
@@ -349,16 +349,14 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
 
   if (std::holds_alternative<AgentSendActionRequest>(request.payload)) {
     const auto& send_action = std::get<AgentSendActionRequest>(request.payload);
-    auto geometries = sync_snapshot->engine->compute_geometries(
-        options_provider.options.gapOptions.horizontal,
-        options_provider.options.gapOptions.vertical,
-        options_provider.options.visualizationOptions.renderOptions.zen_percentage);
-    auto action_result = sync_snapshot->engine->process_action(
-        send_action.action, geometries, options_provider.options.gapOptions.horizontal,
-        options_provider.options.gapOptions.vertical,
-        options_provider.options.visualizationOptions.renderOptions.zen_percentage);
+    auto cluster_options = resolve_cluster_tiling_options(sync_snapshot->input_state.monitors,
+                                                          options_provider.options);
+    auto geometries = sync_snapshot->engine->compute_geometries(cluster_options);
+    auto action_result =
+        sync_snapshot->engine->process_action(send_action.action, geometries, cluster_options);
     auto mutation =
-        apply_action_result(*sync_snapshot->engine, action_result, options_provider.options);
+        apply_action_result(*sync_snapshot->engine, action_result,
+                            sync_snapshot->input_state.monitors, options_provider.options);
     if (!mutation.has_value()) {
       return make_error_response(request.id, mutation.error());
     }
@@ -373,7 +371,8 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
       return make_error_response(request.id, "failed to swap windows");
     }
 
-    retile_engine(*sync_snapshot->engine, options_provider.options);
+    retile_engine(*sync_snapshot->engine, sync_snapshot->input_state.monitors,
+                  options_provider.options);
 
     AgentMutationResponse mutation;
     mutation.selection_changed = previous_selection != sync_snapshot->engine->selected_leaf_id();
@@ -403,13 +402,17 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
 
       auto moved_updates = build_move_cluster_updates(
           sync_snapshot->cluster_updates, move_window.leaf_id, move_window.target_monitor_index);
-      UpdateResult move_result = sync_snapshot->engine->update(moved_updates);
+      UpdateResult move_result = sync_snapshot->engine->update(
+          moved_updates, std::nullopt,
+          resolve_cluster_tiling_options(sync_snapshot->input_state.monitors,
+                                         options_provider.options));
       if (!move_result.topology_changed) {
         return make_error_response(request.id, "failed to move window to target monitor");
       }
     }
 
-    retile_engine(*sync_snapshot->engine, options_provider.options);
+    retile_engine(*sync_snapshot->engine, sync_snapshot->input_state.monitors,
+                  options_provider.options);
 
     AgentMutationResponse mutation;
     mutation.selection_changed = previous_selection != sync_snapshot->engine->selected_leaf_id();
@@ -418,7 +421,8 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
   }
 
   if (std::holds_alternative<AgentRetileRequest>(request.payload)) {
-    retile_engine(*sync_snapshot->engine, options_provider.options);
+    retile_engine(*sync_snapshot->engine, sync_snapshot->input_state.monitors,
+                  options_provider.options);
 
     AgentMutationResponse mutation;
     mutation.layout_changed = true;

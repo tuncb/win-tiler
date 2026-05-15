@@ -14,6 +14,14 @@ extract_cluster_updates_from_input(const winapi::LoopInputState& input_state);
 [[nodiscard]] std::vector<std::vector<ManagedWindowState>>
 extract_managed_window_states_from_input(const winapi::LoopInputState& input_state);
 
+[[nodiscard]] ClusterTilingOptions
+resolve_monitor_tiling_options(const GlobalOptions& options, const winapi::MonitorInfo& monitor,
+                               size_t monitor_index);
+
+[[nodiscard]] std::vector<ClusterTilingOptions>
+resolve_cluster_tiling_options(const std::vector<winapi::MonitorInfo>& monitors,
+                               const GlobalOptions& options);
+
 [[nodiscard]] std::vector<ctrl::ClusterInitInfo>
 create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
                                    const GlobalOptions& options);

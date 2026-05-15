@@ -22,6 +22,7 @@ struct Rect {
 
 struct MonitorInfo {
   HMONITOR_T handle;
+  std::string deviceName;
   Rect rect;
   Rect workArea;
   bool isPrimary;

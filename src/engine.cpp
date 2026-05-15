@@ -964,8 +964,44 @@ bool apply_layout_templates(System& system, const LayoutOptions& layout_options)
   return updated;
 }
 
-bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
-            std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options) {
+bool apply_layout_templates(System& system,
+                            const std::vector<ClusterTilingOptions>& cluster_options) {
+  bool updated = false;
+
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    if (cluster_idx >= cluster_options.size()) {
+      continue;
+    }
+
+    auto& cluster = system.clusters[cluster_idx];
+    const auto& layout_options = cluster_options[cluster_idx].layoutOptions;
+    std::vector<size_t> leaf_ids = get_cluster_leaf_ids(cluster);
+    auto layout_rule = find_layout_rule_for_window_count(layout_options, leaf_ids.size());
+    if (!layout_rule.has_value()) {
+      continue;
+    }
+
+    bool selection_was_in_cluster =
+        system.selection.has_value() &&
+        system.selection->cluster_index == static_cast<int>(cluster_idx);
+    auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
+    auto fallback_leaf_index = rebuild_cluster_from_layout_rule(cluster, leaf_ids, *layout_rule);
+    if (!fallback_leaf_index.has_value()) {
+      continue;
+    }
+
+    if (selection_was_in_cluster || !system.selection.has_value()) {
+      select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id, *fallback_leaf_index);
+    }
+    updated = true;
+  }
+
+  return updated;
+}
+
+bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+                 std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options,
+                 const std::vector<ClusterTilingOptions>* cluster_options) {
   bool updated = false;
   std::vector<ClusterCellUpdateInfo> redirected_updates = cluster_updates;
 
@@ -1031,9 +1067,14 @@ bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_up
     std::set_difference(sorted_desired.begin(), sorted_desired.end(), sorted_current.begin(),
                         sorted_current.end(), std::back_inserter(to_add));
 
-    if ((!to_delete.empty() || !to_add.empty()) && layout_options != nullptr) {
-      auto layout_rule =
-          find_layout_rule_for_window_count(*layout_options, cluster_update.leaf_ids.size());
+    const LayoutOptions* cluster_layout_options = layout_options;
+    if (cluster_options != nullptr && cluster_idx < cluster_options->size()) {
+      cluster_layout_options = &(*cluster_options)[cluster_idx].layoutOptions;
+    }
+
+    if ((!to_delete.empty() || !to_add.empty()) && cluster_layout_options != nullptr) {
+      auto layout_rule = find_layout_rule_for_window_count(*cluster_layout_options,
+                                                           cluster_update.leaf_ids.size());
       if (layout_rule.has_value()) {
         bool selection_was_in_cluster =
             system.selection.has_value() &&
@@ -1120,6 +1161,17 @@ bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_up
   }
 
   return updated;
+}
+
+bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+            std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options) {
+  return update_impl(system, cluster_updates, redirect_cluster_index, layout_options, nullptr);
+}
+
+bool update(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+            std::optional<int> redirect_cluster_index,
+            const std::vector<ClusterTilingOptions>& cluster_options) {
+  return update_impl(system, cluster_updates, redirect_cluster_index, nullptr, &cluster_options);
 }
 
 bool has_leaf_id(const System& system, size_t leaf_id) {
@@ -1416,6 +1468,39 @@ bool update_split_ratio_from_resize(System& system, int cluster_index, size_t le
 namespace wintiler {
 
 namespace {
+
+ClusterTilingOptions make_legacy_cluster_options(float gap_h, float gap_v, float zen_pct,
+                                                 const LayoutOptions* layout_options) {
+  ClusterTilingOptions options;
+  options.gapOptions.horizontal = gap_h;
+  options.gapOptions.vertical = gap_v;
+  options.zen_percentage = zen_pct;
+  if (layout_options != nullptr) {
+    options.layoutOptions = *layout_options;
+  }
+  return options;
+}
+
+std::vector<ClusterTilingOptions> make_legacy_cluster_options(size_t cluster_count, float gap_h,
+                                                              float gap_v, float zen_pct,
+                                                              const LayoutOptions* layout_options) {
+  std::vector<ClusterTilingOptions> options;
+  options.reserve(cluster_count);
+  for (size_t i = 0; i < cluster_count; ++i) {
+    options.push_back(make_legacy_cluster_options(gap_h, gap_v, zen_pct, layout_options));
+  }
+  return options;
+}
+
+const ClusterTilingOptions&
+cluster_options_or_default(const std::vector<ClusterTilingOptions>& cluster_options,
+                           size_t cluster_index) {
+  static const ClusterTilingOptions default_options{};
+  if (cluster_index < cluster_options.size()) {
+    return cluster_options[cluster_index];
+  }
+  return default_options;
+}
 
 // Find the cluster and cell index at a global point using precomputed geometries
 std::optional<std::pair<size_t, int>>
@@ -1814,10 +1899,21 @@ void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
                                                                 float zen_pct) const {
+  auto cluster_options =
+      make_legacy_cluster_options(system.clusters.size(), gap_h, gap_v, zen_pct, nullptr);
+  return compute_geometries(cluster_options);
+}
+
+std::vector<std::vector<ctrl::Rect>>
+Engine::compute_geometries(const std::vector<ClusterTilingOptions>& cluster_options) const {
   std::vector<std::vector<ctrl::Rect>> geometries;
   geometries.reserve(system.clusters.size());
-  for (const auto& cluster : system.clusters) {
-    geometries.push_back(ctrl::compute_cluster_geometry(cluster, gap_h, gap_v, zen_pct));
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    const auto& cluster = system.clusters[cluster_index];
+    const auto& options = cluster_options_or_default(cluster_options, cluster_index);
+    geometries.push_back(ctrl::compute_cluster_geometry(cluster, options.gapOptions.horizontal,
+                                                        options.gapOptions.vertical,
+                                                        options.zen_percentage));
   }
   return geometries;
 }
@@ -1871,6 +1967,42 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
   return result;
 }
 
+UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
+                            std::optional<int> redirect_cluster_index,
+                            const std::vector<ClusterTilingOptions>& cluster_options,
+                            bool reapply_layout_templates) {
+  UpdateResult result;
+  auto previous_selection = system.selection;
+  std::vector<bool> previous_fullscreen_state;
+  previous_fullscreen_state.reserve(system.clusters.size());
+  for (const auto& cluster : system.clusters) {
+    previous_fullscreen_state.push_back(cluster.has_fullscreen_cell);
+  }
+
+  result.topology_changed =
+      ctrl::update(system, cluster_updates, redirect_cluster_index, cluster_options);
+
+  bool layout_template_changed = false;
+  if (reapply_layout_templates) {
+    layout_template_changed = ctrl::apply_layout_templates(system, cluster_options);
+  }
+
+  result.selection_changed = !selections_equal(previous_selection, system.selection);
+
+  bool fullscreen_state_changed = false;
+  for (size_t i = 0; i < system.clusters.size() && i < previous_fullscreen_state.size(); ++i) {
+    if (previous_fullscreen_state[i] != system.clusters[i].has_fullscreen_cell) {
+      fullscreen_state_changed = true;
+      break;
+    }
+  }
+
+  result.layout_changed =
+      result.topology_changed || fullscreen_state_changed || layout_template_changed;
+  result.apply_tiles = result.layout_changed;
+  return result;
+}
+
 HoverSelectionResult
 Engine::update_selection_from_hover(float global_x, float global_y,
                                     const std::vector<std::vector<ctrl::Rect>>& global_geometries) {
@@ -1889,6 +2021,11 @@ Engine::update_selection_from_hover(float global_x, float global_y,
 EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   EngineFrameOutput output;
   output.has_completed_initial_tile_pass = input.has_completed_initial_tile_pass;
+  std::vector<ClusterTilingOptions> cluster_options = input.cluster_options;
+  if (cluster_options.empty()) {
+    cluster_options = make_legacy_cluster_options(system.clusters.size(), input.gap_h, input.gap_v,
+                                                  input.zen_pct, input.layout_options);
+  }
 
   if (!input.has_completed_initial_tile_pass) {
     output.apply_tiles = true;
@@ -1903,7 +2040,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   auto ensure_geometries = [&]() -> const std::vector<std::vector<ctrl::Rect>>& {
     if (!has_geometries || geometries_dirty) {
-      geometries = compute_geometries(input.gap_h, input.gap_v, input.zen_pct);
+      geometries = compute_geometries(cluster_options);
       has_geometries = true;
       geometries_dirty = false;
     }
@@ -1934,8 +2071,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   if (input.hotkey_action.has_value()) {
-    ActionResult action_result = process_action(*input.hotkey_action, ensure_geometries(),
-                                                input.gap_h, input.gap_v, input.zen_pct);
+    ActionResult action_result =
+        process_action(*input.hotkey_action, ensure_geometries(), cluster_options);
     output.control = action_result.control;
     output.selection_changed = output.selection_changed || action_result.selection_changed;
     output.layout_changed = output.layout_changed || action_result.layout_changed;
@@ -1974,7 +2111,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     }
 
     UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index,
-                                        input.layout_options, input.reapply_layout_templates);
+                                        cluster_options, input.reapply_layout_templates);
     output.topology_changed = output.topology_changed || update_result.topology_changed;
     output.selection_changed = output.selection_changed || update_result.selection_changed;
     output.layout_changed = output.layout_changed || update_result.layout_changed;
@@ -2077,7 +2214,23 @@ bool Engine::move_leaf_to_cell(size_t source_leaf_id, int target_cluster_index,
 ActionResult Engine::process_action(HotkeyAction action,
                                     const std::vector<std::vector<ctrl::Rect>>& global_geometries,
                                     float gap_h, float gap_v, float zen_pct) {
+  auto cluster_options =
+      make_legacy_cluster_options(system.clusters.size(), gap_h, gap_v, zen_pct, nullptr);
+  return process_action(action, global_geometries, cluster_options);
+}
+
+ActionResult Engine::process_action(HotkeyAction action,
+                                    const std::vector<std::vector<ctrl::Rect>>& global_geometries,
+                                    const std::vector<ClusterTilingOptions>& cluster_options) {
   ActionResult result;
+
+  auto compute_updated_cluster_geometry = [&](int cluster_index) {
+    const auto& options =
+        cluster_options_or_default(cluster_options, static_cast<size_t>(cluster_index));
+    return ctrl::compute_cluster_geometry(system.clusters[static_cast<size_t>(cluster_index)],
+                                          options.gapOptions.horizontal,
+                                          options.gapOptions.vertical, options.zen_percentage);
+  };
 
   switch (action) {
   case HotkeyAction::NavigateLeft:
@@ -2188,8 +2341,7 @@ ActionResult Engine::process_action(HotkeyAction action,
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
         if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
-          auto updated_geom = ctrl::compute_cluster_geometry(
-              system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
+          auto updated_geom = compute_updated_cluster_geometry(ci);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
             result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
@@ -2210,8 +2362,7 @@ ActionResult Engine::process_action(HotkeyAction action,
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
         if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
-          auto updated_geom = ctrl::compute_cluster_geometry(
-              system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
+          auto updated_geom = compute_updated_cluster_geometry(ci);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
             result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
@@ -2233,8 +2384,7 @@ ActionResult Engine::process_action(HotkeyAction action,
         // Recompute geometry to get updated center
         int ci = system.selection->cluster_index;
         if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
-          auto updated_geom = ctrl::compute_cluster_geometry(
-              system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
+          auto updated_geom = compute_updated_cluster_geometry(ci);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
             result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
@@ -2279,8 +2429,7 @@ ActionResult Engine::process_action(HotkeyAction action,
       if (system.selection.has_value()) {
         int ci = system.selection->cluster_index;
         if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
-          auto updated_geom = ctrl::compute_cluster_geometry(
-              system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
+          auto updated_geom = compute_updated_cluster_geometry(ci);
           int cell_idx = system.selection->cell_index;
           if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
             result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);

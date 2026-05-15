@@ -282,6 +282,29 @@ std::optional<LayoutRule> parse_layout_rule(toml::table& table) {
   return rule;
 }
 
+LayoutOptions parse_layout_options(toml::table& table) {
+  LayoutOptions options;
+
+  if (auto enabled = table["enabled"].as_boolean()) {
+    options.enabled = enabled->get();
+  }
+
+  if (auto rules = table["rules"].as_array()) {
+    for (auto& rule_value : *rules) {
+      if (auto rule_table = rule_value.as_table()) {
+        auto rule = parse_layout_rule(*rule_table);
+        if (rule.has_value()) {
+          options.rules.push_back(std::move(*rule));
+        }
+      } else {
+        spdlog::error("Invalid layout rule: each rule must be a table.");
+      }
+    }
+  }
+
+  return options;
+}
+
 toml::table layout_tree_node_to_toml(const LayoutTreeNode& node) {
   toml::table result;
   result.insert("split", layout_split_dir_to_string(node.split_dir));
@@ -295,6 +318,113 @@ toml::table layout_tree_node_to_toml(const LayoutTreeNode& node) {
   }
 
   return result;
+}
+
+toml::table layout_options_to_toml(const LayoutOptions& options) {
+  toml::table layout;
+  layout.insert("enabled", options.enabled);
+
+  toml::array layout_rules;
+  for (const auto& rule : options.rules) {
+    toml::table rule_table;
+    rule_table.insert("window_count", static_cast<int64_t>(rule.window_count));
+    rule_table.insert("tree", layout_tree_node_to_toml(rule.tree));
+    layout_rules.push_back(rule_table);
+  }
+  layout.insert("rules", layout_rules);
+
+  return layout;
+}
+
+std::optional<GapOverrideOptions> parse_gap_override_options(toml::table& table) {
+  GapOverrideOptions options;
+
+  if (auto horizontal = get_number<float>(table["horizontal"])) {
+    if (*horizontal < 0.0f) {
+      spdlog::error("Invalid monitor profile gap.horizontal value ({}): must be non-negative. "
+                    "Using fallback.",
+                    *horizontal);
+    } else {
+      options.horizontal = *horizontal;
+    }
+  }
+
+  if (auto vertical = get_number<float>(table["vertical"])) {
+    if (*vertical < 0.0f) {
+      spdlog::error("Invalid monitor profile gap.vertical value ({}): must be non-negative. "
+                    "Using fallback.",
+                    *vertical);
+    } else {
+      options.vertical = *vertical;
+    }
+  }
+
+  if (!options.horizontal.has_value() && !options.vertical.has_value()) {
+    return std::nullopt;
+  }
+
+  return options;
+}
+
+float clamp_zen_percentage(float zen_percentage) {
+  if (zen_percentage < 0.1f) {
+    spdlog::error("Invalid zen_percentage value ({}): must be >= 0.1. Using 0.1.", zen_percentage);
+    return 0.1f;
+  }
+  if (zen_percentage > 1.0f) {
+    spdlog::error("Invalid zen_percentage value ({}): must be <= 1.0. Using 1.0.", zen_percentage);
+    return 1.0f;
+  }
+  return zen_percentage;
+}
+
+std::optional<MonitorProfileOptions> parse_monitor_profile(toml::table& table) {
+  MonitorProfileOptions profile;
+
+  if (auto name = table["name"].as_string()) {
+    profile.name = name->get();
+  }
+
+  if (auto match = table["match"].as_table()) {
+    if (auto device_name = (*match)["device_name"].as_string()) {
+      profile.match.device_name = device_name->get();
+    }
+    if (auto index = (*match)["index"].as_integer()) {
+      if (index->get() >= 0) {
+        profile.match.index = static_cast<size_t>(index->get());
+      } else {
+        spdlog::error("Invalid monitor profile match.index ({}): must be non-negative.",
+                      index->get());
+      }
+    }
+    if (auto primary = (*match)["primary"].as_boolean()) {
+      profile.match.primary = primary->get();
+    }
+  }
+
+  if (!profile.match.device_name.has_value() && !profile.match.index.has_value() &&
+      !profile.match.primary.has_value()) {
+    spdlog::error("Invalid monitor profile: match must include device_name, index, or primary.");
+    return std::nullopt;
+  }
+
+  if (auto gap = table["gap"].as_table()) {
+    profile.gapOptions = parse_gap_override_options(*gap);
+  }
+
+  if (auto layout = table["layout"].as_table()) {
+    profile.layoutOptions = parse_layout_options(*layout);
+  }
+
+  if (auto visualization = table["visualization"].as_table()) {
+    if (auto render = (*visualization)["render"].as_table()) {
+      if (auto zen_percentage = get_number<float>((*render)["zen_percentage"])) {
+        profile.zen_percentage = clamp_zen_percentage(*zen_percentage);
+      }
+    }
+  }
+
+  return profile;
 }
 
 } // anonymous namespace
@@ -442,17 +572,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     root.insert("loop", loop);
 
     // Build layout section
-    toml::table layout;
-    layout.insert("enabled", options.layoutOptions.enabled);
-    toml::array layout_rules;
-    for (const auto& rule : options.layoutOptions.rules) {
-      toml::table rule_table;
-      rule_table.insert("window_count", static_cast<int64_t>(rule.window_count));
-      rule_table.insert("tree", layout_tree_node_to_toml(rule.tree));
-      layout_rules.push_back(rule_table);
-    }
-    layout.insert("rules", layout_rules);
-    root.insert("layout", layout);
+    root.insert("layout", layout_options_to_toml(options.layoutOptions));
 
     // Build visualization section with nested render
     toml::table visualization;
@@ -475,6 +595,54 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     visualization.insert("render", render);
     visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
     root.insert("visualization", visualization);
+
+    toml::array monitor_profiles;
+    for (const auto& profile : options.monitorProfiles) {
+      toml::table profile_table;
+      if (!profile.name.empty()) {
+        profile_table.insert("name", profile.name);
+      }
+
+      toml::table match;
+      if (profile.match.device_name.has_value()) {
+        match.insert("device_name", *profile.match.device_name);
+      }
+      if (profile.match.index.has_value()) {
+        match.insert("index", static_cast<int64_t>(*profile.match.index));
+      }
+      if (profile.match.primary.has_value()) {
+        match.insert("primary", *profile.match.primary);
+      }
+      profile_table.insert("match", match);
+
+      if (profile.gapOptions.has_value()) {
+        toml::table profile_gap;
+        if (profile.gapOptions->horizontal.has_value()) {
+          profile_gap.insert("horizontal", *profile.gapOptions->horizontal);
+        }
+        if (profile.gapOptions->vertical.has_value()) {
+          profile_gap.insert("vertical", *profile.gapOptions->vertical);
+        }
+        profile_table.insert("gap", profile_gap);
+      }
+
+      if (profile.layoutOptions.has_value()) {
+        profile_table.insert("layout", layout_options_to_toml(*profile.layoutOptions));
+      }
+
+      if (profile.zen_percentage.has_value()) {
+        toml::table profile_visualization;
+        toml::table profile_render;
+        profile_render.insert("zen_percentage", *profile.zen_percentage);
+        profile_visualization.insert("render", profile_render);
+        profile_table.insert("visualization", profile_visualization);
+      }
+
+      monitor_profiles.push_back(profile_table);
+    }
+    if (!monitor_profiles.empty()) {
+      root.insert("monitor_profiles", monitor_profiles);
+    }
 
     // Write to file
     std::ofstream file(filepath);
@@ -719,22 +887,7 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 
     // Parse layout section
     if (auto layout = tbl["layout"].as_table()) {
-      if (auto enabled = (*layout)["enabled"].as_boolean()) {
-        options.layoutOptions.enabled = enabled->get();
-      }
-
-      if (auto rules = (*layout)["rules"].as_array()) {
-        for (auto& rule_value : *rules) {
-          if (auto rule_table = rule_value.as_table()) {
-            auto rule = parse_layout_rule(*rule_table);
-            if (rule.has_value()) {
-              options.layoutOptions.rules.push_back(std::move(*rule));
-            }
-          } else {
-            spdlog::error("Invalid layout rule: each rule must be a table.");
-          }
-        }
-      }
+      options.layoutOptions = parse_layout_options(*layout);
     }
 
     // Parse visualization section with nested render
@@ -816,15 +969,19 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       ro.toast_font_size = kDefaultToastFontSize;
     }
 
-    // Validate zen percentage - clamp to 0.1-1.0 range
-    if (ro.zen_percentage < 0.1f) {
-      spdlog::error("Invalid zen_percentage value ({}): must be >= 0.1. Using 0.1.",
-                    ro.zen_percentage);
-      ro.zen_percentage = 0.1f;
-    } else if (ro.zen_percentage > 1.0f) {
-      spdlog::error("Invalid zen_percentage value ({}): must be <= 1.0. Using 1.0.",
-                    ro.zen_percentage);
-      ro.zen_percentage = 1.0f;
+    ro.zen_percentage = clamp_zen_percentage(ro.zen_percentage);
+
+    if (auto monitor_profiles = tbl["monitor_profiles"].as_array()) {
+      for (auto& profile_value : *monitor_profiles) {
+        if (auto profile_table = profile_value.as_table()) {
+          auto profile = parse_monitor_profile(*profile_table);
+          if (profile.has_value()) {
+            options.monitorProfiles.push_back(std::move(*profile));
+          }
+        } else {
+          spdlog::error("Invalid monitor profile: each profile must be a table.");
+        }
+      }
     }
 
     return options;

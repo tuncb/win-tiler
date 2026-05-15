@@ -418,6 +418,29 @@ TEST_SUITE("Engine::compute_geometries") {
     CHECK(geoms_with_gaps[0][0].height < geoms_no_gaps[0][0].height);
   }
 
+  TEST_CASE("applies per-cluster gap and zen settings") {
+    Engine engine = create_test_engine();
+    engine.system.clusters[1].zen_cell_index = 0;
+
+    std::vector<ClusterTilingOptions> cluster_options(2);
+    cluster_options[0].gapOptions.horizontal = 0.0f;
+    cluster_options[0].gapOptions.vertical = 0.0f;
+    cluster_options[0].zen_percentage = 0.90f;
+    cluster_options[1].gapOptions.horizontal = 20.0f;
+    cluster_options[1].gapOptions.vertical = 20.0f;
+    cluster_options[1].zen_percentage = 0.50f;
+
+    auto geoms = engine.compute_geometries(cluster_options);
+
+    REQUIRE(geoms.size() == 2);
+    REQUIRE(geoms[0].size() == 3);
+    REQUIRE(geoms[1].size() == 1);
+    CHECK(geoms[0][0].x == doctest::Approx(0.0f));
+    CHECK(geoms[0][0].width == doctest::Approx(800.0f));
+    CHECK(geoms[1][0].x == doctest::Approx(1000.0f));
+    CHECK(geoms[1][0].width == doctest::Approx(400.0f));
+  }
+
   TEST_CASE("zero gaps produce full-size cells") {
     Engine engine = create_single_cluster_engine();
     auto geoms = engine.compute_geometries(0.0f, 0.0f, 0.0f);
@@ -698,6 +721,31 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.layout_changed == true);
     CHECK(output.apply_tiles == true);
     CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.30f));
+  }
+
+  TEST_CASE("reapplies per-cluster layout templates when requested") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}},
+        {800.0f, 0.0f, 800.0f, 600.0f, 800.0f, 0.0f, 800.0f, 600.0f, {3, 4}}};
+    engine.init(infos);
+
+    std::vector<ClusterTilingOptions> cluster_options(2);
+    cluster_options[0].layoutOptions = create_two_window_vertical_layout_options(0.30f);
+    cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.70f);
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.reapply_layout_templates = true;
+    input.cluster_options = cluster_options;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.30f));
+    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.70f));
   }
 
   TEST_CASE("exit hotkey returns loop control and final geometries") {

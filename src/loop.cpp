@@ -6,6 +6,7 @@
 #include <chrono>
 #include <iostream>
 #include <magic_enum/magic_enum.hpp>
+#include <utility>
 #include <vector>
 
 #include "engine.h"
@@ -198,8 +199,9 @@ std::optional<HotkeyAction> poll_hotkey_action() {
 }
 
 EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_state,
-                                          const LoopDesktopData& desktop_data, float gap_h,
-                                          float gap_v, float zen_pct, bool auto_zen_on_maximize,
+                                          const LoopDesktopData& desktop_data,
+                                          std::vector<ClusterTilingOptions> cluster_options,
+                                          bool auto_zen_on_maximize,
                                           std::optional<HotkeyAction> hotkey_action,
                                           const LayoutOptions& layout_options) {
   EngineFrameInput frame_input;
@@ -210,9 +212,7 @@ EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_st
   frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
   frame_input.reapply_layout_templates = desktop_data.reapply_layout_templates;
   frame_input.layout_options = &layout_options;
-  frame_input.gap_h = gap_h;
-  frame_input.gap_v = gap_v;
-  frame_input.zen_pct = zen_pct;
+  frame_input.cluster_options = std::move(cluster_options);
 
   if (input_state.cursor_pos.has_value()) {
     frame_input.cursor_pos = ctrl::Point{input_state.cursor_pos->x, input_state.cursor_pos->y};
@@ -339,11 +339,6 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   // MultiEngine manages separate tiling state per virtual desktop
   // Uses GUID strings as desktop identifiers
   MultiEngine<LoopDesktopData, std::string> multi_engine;
-
-  // Gap and zen settings (read per-frame from options in case of hot-reload)
-  float gap_h = options.gapOptions.horizontal;
-  float gap_v = options.gapOptions.vertical;
-  float zen_pct = options.visualizationOptions.renderOptions.zen_percentage;
 
   // Geometries computed per-frame after desktop is determined
   std::vector<std::vector<ctrl::Rect>> geometries;
@@ -498,14 +493,11 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto& current_desktop = multi_engine.current();
     auto& engine = current_desktop.engine;
 
-    // Update gap and zen settings (in case config was reloaded)
-    gap_h = provider.options.gapOptions.horizontal;
-    gap_v = provider.options.gapOptions.vertical;
-    zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
+    auto cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
 
     // Skip all processing while user is dragging a window - only render
     auto compute_geometry_start = std::chrono::steady_clock::now();
-    geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+    geometries = engine.compute_geometries(cluster_options);
     perf.record_stage(LoopPerfStage::ComputeGeometry,
                       std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
@@ -533,15 +525,14 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     if (handle_config_refresh(provider, toast)) {
       mark_all_desktops_for_layout_reapply(multi_engine);
     }
-    gap_h = provider.options.gapOptions.horizontal;
-    gap_v = provider.options.gapOptions.vertical;
-    zen_pct = provider.options.visualizationOptions.renderOptions.zen_percentage;
+    cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
 
     // Check for monitor configuration changes
     bool monitor_changed = handle_monitor_change(monitors, provider.options, multi_engine);
     if (monitor_changed) {
+      cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
       auto updated_geometry_start = std::chrono::steady_clock::now();
-      geometries = engine.compute_geometries(gap_h, gap_v, zen_pct);
+      geometries = engine.compute_geometries(cluster_options);
       perf.record_stage(LoopPerfStage::ComputeGeometry,
                         std::chrono::steady_clock::now() - updated_geometry_start);
       spdlog::debug("=== Updated Tile Layout After Monitor Change ===");
@@ -550,7 +541,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     auto build_frame_input_start = std::chrono::steady_clock::now();
     EngineFrameInput frame_input =
-        build_engine_frame_input(input_state, current_desktop.data, gap_h, gap_v, zen_pct,
+        build_engine_frame_input(input_state, current_desktop.data, cluster_options,
                                  provider.options.loopOptions.toggle_zen_on_window_maximize,
                                  poll_hotkey_action(), provider.options.layoutOptions);
     perf.record_stage(LoopPerfStage::BuildFrameInput,

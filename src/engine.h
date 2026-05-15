@@ -148,6 +148,7 @@ struct EngineFrameInput {
   bool has_completed_initial_tile_pass = false;
   bool reapply_layout_templates = false;
   const LayoutOptions* layout_options = nullptr;
+  std::vector<ClusterTilingOptions> cluster_options;
   float gap_h = 0.0f;
   float gap_v = 0.0f;
   float zen_pct = 0.0f;
@@ -188,6 +189,8 @@ struct Engine {
   // Compute geometry for all clusters (call once per frame)
   [[nodiscard]] std::vector<std::vector<ctrl::Rect>> compute_geometries(float gap_h, float gap_v,
                                                                         float zen_pct) const;
+  [[nodiscard]] std::vector<std::vector<ctrl::Rect>>
+  compute_geometries(const std::vector<ClusterTilingOptions>& cluster_options) const;
 
   // Get hover info from global mouse position (does not modify state)
   [[nodiscard]] HoverInfo
@@ -198,6 +201,10 @@ struct Engine {
   [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                                     std::optional<int> redirect_cluster_index = std::nullopt,
                                     const LayoutOptions* layout_options = nullptr,
+                                    bool reapply_layout_templates = false);
+  [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
+                                    std::optional<int> redirect_cluster_index,
+                                    const std::vector<ClusterTilingOptions>& cluster_options,
                                     bool reapply_layout_templates = false);
 
   // Update selection based on hover location
@@ -212,6 +219,9 @@ struct Engine {
   [[nodiscard]] ActionResult
   process_action(HotkeyAction action, const std::vector<std::vector<ctrl::Rect>>& global_geometries,
                  float gap_h, float gap_v, float zen_pct);
+  [[nodiscard]] ActionResult
+  process_action(HotkeyAction action, const std::vector<std::vector<ctrl::Rect>>& global_geometries,
+                 const std::vector<ClusterTilingOptions>& cluster_options);
 
   // Find a managed leaf by its window-backed leaf ID
   [[nodiscard]] std::optional<ctrl::CellIndicatorByIndex> find_leaf(size_t leaf_id) const;

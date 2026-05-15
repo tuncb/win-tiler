@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "options.h"
+#include "runtime_support.h"
 
 using namespace wintiler;
 
@@ -638,6 +639,105 @@ TEST_SUITE("Layout Options") {
 
     auto rule = find_layout_rule_for_window_count(result.value().layoutOptions, 2);
     CHECK(!rule.has_value());
+  }
+}
+
+TEST_SUITE("Monitor Profile Options") {
+  TEST_CASE("parses monitor profile tiling overrides") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[[monitor_profiles]]\n";
+      file << "name = \"External\"\n";
+      file << "\n";
+      file << "[monitor_profiles.match]\n";
+      file << "device_name = \"\\\\\\\\.\\\\DISPLAY2\"\n";
+      file << "index = 1\n";
+      file << "\n";
+      file << "[monitor_profiles.gap]\n";
+      file << "horizontal = 4\n";
+      file << "\n";
+      file << "[monitor_profiles.visualization.render]\n";
+      file << "zen_percentage = 0.75\n";
+      file << "\n";
+      file << "[[monitor_profiles.layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"horizontal\"\n";
+      file << "ratio = 0.40\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    REQUIRE(result.value().monitorProfiles.size() == 1);
+    const auto& profile = result.value().monitorProfiles[0];
+    CHECK(profile.name == "External");
+    REQUIRE(profile.match.device_name.has_value());
+    CHECK(*profile.match.device_name == "\\\\.\\DISPLAY2");
+    REQUIRE(profile.match.index.has_value());
+    CHECK(*profile.match.index == 1);
+    REQUIRE(profile.gapOptions.has_value());
+    REQUIRE(profile.gapOptions->horizontal.has_value());
+    CHECK(*profile.gapOptions->horizontal == 4.0f);
+    CHECK_FALSE(profile.gapOptions->vertical.has_value());
+    REQUIRE(profile.zen_percentage.has_value());
+    CHECK(*profile.zen_percentage == doctest::Approx(0.75f));
+    REQUIRE(profile.layoutOptions.has_value());
+    REQUIRE(profile.layoutOptions->rules.size() == 1);
+    CHECK(profile.layoutOptions->rules[0].tree.split_dir == LayoutSplitDir::Horizontal);
+  }
+
+  TEST_CASE("ignores monitor profile without match criteria") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[[monitor_profiles]]\n";
+      file << "name = \"No match\"\n";
+      file << "[monitor_profiles.gap]\n";
+      file << "horizontal = 4\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+    CHECK(result.value().monitorProfiles.empty());
+  }
+
+  TEST_CASE("resolves monitor profile overrides over global fallback") {
+    GlobalOptions options = get_default_global_options();
+    options.gapOptions.horizontal = 10.0f;
+    options.gapOptions.vertical = 12.0f;
+    options.visualizationOptions.renderOptions.zen_percentage = 0.90f;
+
+    MonitorProfileOptions profile;
+    profile.match.device_name = "\\\\.\\DISPLAY2";
+    GapOverrideOptions gap;
+    gap.horizontal = 4.0f;
+    profile.gapOptions = gap;
+    profile.zen_percentage = 0.75f;
+    LayoutRule rule;
+    rule.window_count = 2;
+    rule.tree.split_dir = LayoutSplitDir::Vertical;
+    rule.tree.split_ratio = 0.30f;
+    LayoutOptions layout;
+    layout.rules.push_back(rule);
+    profile.layoutOptions = layout;
+    options.monitorProfiles.push_back(profile);
+
+    winapi::MonitorInfo monitor;
+    monitor.deviceName = "\\\\.\\DISPLAY2";
+    monitor.isPrimary = false;
+
+    auto resolved = resolve_monitor_tiling_options(options, monitor, 1);
+
+    CHECK(resolved.gapOptions.horizontal == 4.0f);
+    CHECK(resolved.gapOptions.vertical == 12.0f);
+    CHECK(resolved.zen_percentage == doctest::Approx(0.75f));
+    REQUIRE(resolved.layoutOptions.rules.size() == 1);
+    CHECK(resolved.layoutOptions.rules[0].tree.split_ratio == doctest::Approx(0.30f));
   }
 }
 

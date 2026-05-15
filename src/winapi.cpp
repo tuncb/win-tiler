@@ -36,11 +36,12 @@ bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor,
                               LPARAM dwData) {
   std::vector<MonitorInfo>* monitors = reinterpret_cast<std::vector<MonitorInfo>*>(dwData);
-  MONITORINFO mi;
-  mi.cbSize = sizeof(MONITORINFO);
+  MONITORINFOEXA mi;
+  mi.cbSize = sizeof(MONITORINFOEXA);
   if (GetMonitorInfoA(hMonitor, &mi)) {
     MonitorInfo info;
     info.handle = (HMONITOR_T)hMonitor;
+    info.deviceName = mi.szDevice;
     info.rect = {mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom};
     info.workArea = {mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom};
     info.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY);
@@ -76,7 +77,8 @@ void log_monitors(const std::vector<MonitorInfo>& monitors) {
     long rectH = m.rect.bottom - m.rect.top;
     long workW = m.workArea.right - m.workArea.left;
     long workH = m.workArea.bottom - m.workArea.top;
-    spdlog::info("Monitor {}: handle={}, primary={}", i, m.handle, m.isPrimary);
+    spdlog::info("Monitor {}: handle={}, device={}, primary={}", i, m.handle, m.deviceName,
+                 m.isPrimary);
     spdlog::info("  rect: [{}, {}, {}, {}] ({}x{})", m.rect.left, m.rect.top, m.rect.right,
                  m.rect.bottom, rectW, rectH);
     spdlog::info("  workArea: [{}, {}, {}, {}] ({}x{})", m.workArea.left, m.workArea.top,
@@ -103,6 +105,9 @@ bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<Monitor
     }
     // Compare isPrimary
     if (ma.isPrimary != mb.isPrimary) {
+      return false;
+    }
+    if (ma.deviceName != mb.deviceName) {
       return false;
     }
     // Note: handle is not compared as it may change between enumerations

@@ -48,6 +48,20 @@ void apply_tile_positions_impl(const ctrl::System& system,
   }
 }
 
+bool monitor_profile_matches(const MonitorProfileOptions& profile,
+                             const winapi::MonitorInfo& monitor, size_t monitor_index) {
+  if (profile.match.device_name.has_value() && *profile.match.device_name != monitor.deviceName) {
+    return false;
+  }
+  if (profile.match.index.has_value() && *profile.match.index != monitor_index) {
+    return false;
+  }
+  if (profile.match.primary.has_value() && *profile.match.primary != monitor.isPrimary) {
+    return false;
+  }
+  return true;
+}
+
 } // namespace
 
 std::vector<ctrl::ClusterCellUpdateInfo>
@@ -99,11 +113,55 @@ extract_managed_window_states_from_input(const winapi::LoopInputState& input_sta
   return result;
 }
 
+ClusterTilingOptions resolve_monitor_tiling_options(const GlobalOptions& options,
+                                                    const winapi::MonitorInfo& monitor,
+                                                    size_t monitor_index) {
+  ClusterTilingOptions resolved;
+  resolved.gapOptions = options.gapOptions;
+  resolved.layoutOptions = options.layoutOptions;
+  resolved.zen_percentage = options.visualizationOptions.renderOptions.zen_percentage;
+
+  for (const auto& profile : options.monitorProfiles) {
+    if (!monitor_profile_matches(profile, monitor, monitor_index)) {
+      continue;
+    }
+
+    if (profile.gapOptions.has_value()) {
+      if (profile.gapOptions->horizontal.has_value()) {
+        resolved.gapOptions.horizontal = *profile.gapOptions->horizontal;
+      }
+      if (profile.gapOptions->vertical.has_value()) {
+        resolved.gapOptions.vertical = *profile.gapOptions->vertical;
+      }
+    }
+    if (profile.layoutOptions.has_value()) {
+      resolved.layoutOptions = *profile.layoutOptions;
+    }
+    if (profile.zen_percentage.has_value()) {
+      resolved.zen_percentage = *profile.zen_percentage;
+    }
+  }
+
+  return resolved;
+}
+
+std::vector<ClusterTilingOptions>
+resolve_cluster_tiling_options(const std::vector<winapi::MonitorInfo>& monitors,
+                               const GlobalOptions& options) {
+  std::vector<ClusterTilingOptions> cluster_options;
+  cluster_options.reserve(monitors.size());
+  for (size_t i = 0; i < monitors.size(); ++i) {
+    cluster_options.push_back(resolve_monitor_tiling_options(options, monitors[i], i));
+  }
+  return cluster_options;
+}
+
 std::vector<ctrl::ClusterInitInfo>
 create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,
                                    const GlobalOptions& options) {
   std::vector<ctrl::ClusterInitInfo> cluster_infos;
   cluster_infos.reserve(monitors.size());
+  auto cluster_options = resolve_cluster_tiling_options(monitors, options);
 
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];
@@ -123,7 +181,8 @@ create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monit
       cell_ids.push_back(reinterpret_cast<size_t>(hwnd));
     }
 
-    auto layout_rule = find_layout_rule_for_window_count(options.layoutOptions, cell_ids.size());
+    auto layout_rule =
+        find_layout_rule_for_window_count(cluster_options[i].layoutOptions, cell_ids.size());
     cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids, layout_rule});
   }
 

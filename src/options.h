@@ -91,6 +91,11 @@ struct GapOptions {
   float vertical = kDefaultGapVertical;
 };
 
+struct GapOverrideOptions {
+  std::optional<float> horizontal;
+  std::optional<float> vertical;
+};
+
 // Loop configuration
 struct LoopOptions {
   int intervalMs = kDefaultLoopIntervalMs;
@@ -116,6 +121,12 @@ struct LayoutOptions {
   std::vector<LayoutRule> rules;
 };
 
+struct MonitorMatchOptions {
+  std::optional<std::string> device_name;
+  std::optional<size_t> index;
+  std::optional<bool> primary;
+};
+
 // Render-specific options used by the renderer
 namespace renderer {
 struct RenderOptions {
@@ -134,6 +145,20 @@ struct VisualizationOptions {
   int toastDurationMs = kDefaultToastDurationMs;
 };
 
+struct MonitorProfileOptions {
+  std::string name;
+  MonitorMatchOptions match;
+  std::optional<GapOverrideOptions> gapOptions;
+  std::optional<LayoutOptions> layoutOptions;
+  std::optional<float> zen_percentage;
+};
+
+struct ClusterTilingOptions {
+  GapOptions gapOptions;
+  LayoutOptions layoutOptions;
+  float zen_percentage = kDefaultZenPercentage;
+};
+
 // Global options container
 struct GlobalOptions {
   IgnoreOptions ignoreOptions;
@@ -142,6 +167,7 @@ struct GlobalOptions {
   LoopOptions loopOptions;
   LayoutOptions layoutOptions;
   VisualizationOptions visualizationOptions;
+  std::vector<MonitorProfileOptions> monitorProfiles;
 };
 
 // Get default global options
