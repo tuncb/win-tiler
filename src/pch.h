@@ -1,0 +1,36 @@
+#pragma once
+
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cassert>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <initializer_list>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <magic_enum/magic_enum.hpp>
+#include <map>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tl/expected.hpp>
+#include <toml++/toml.hpp>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
