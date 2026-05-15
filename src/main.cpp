@@ -19,6 +19,7 @@
 #include "startup.h"
 #include "track_windows.h"
 #include "version.h"
+#include "winapi.h"
 
 namespace {
 
@@ -126,8 +127,10 @@ int main(int argc, char* argv[]) {
     applyLogLevel(*result.args.options.log_level);
   }
 
-  // Log version at startup
-  spdlog::info("win-tiler v{}", get_version_string());
+  // Log version at startup for long-running/management commands.
+  if (!std::holds_alternative<MonitorInfoCommand>(command)) {
+    spdlog::info("win-tiler v{}", get_version_string());
+  }
 
   GlobalOptionsProvider optionsProvider;
   if (command_uses_options_provider(command)) {
@@ -172,6 +175,7 @@ int main(int argc, char* argv[]) {
                  [&](const LoopCommand&) {
                    run_loop_mode(optionsProvider, LoopRunOptions{result.args.options.perf_stats});
                  },
+                 [](const MonitorInfoCommand&) { winapi::log_monitors(winapi::get_monitors()); },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
                  [&](const AgentCommand& cmd) { run_agent_mode(optionsProvider, cmd); },
                  [&](const InitConfigCommand& cmd) {

@@ -67,6 +67,22 @@ TEST_SUITE("argument_parser") {
     CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
   }
 
+  TEST_CASE("parses monitor info option") {
+    auto result = parse({"win-tiler", "--monitor-info"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<MonitorInfoCommand>(*result.args.command));
+  }
+
+  TEST_CASE("parses monitor info command") {
+    auto result = parse({"win-tiler", "monitor-info"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<MonitorInfoCommand>(*result.args.command));
+  }
+
   TEST_CASE("help still overrides the default loop command") {
     auto result = parse({"win-tiler", "--help"});
 

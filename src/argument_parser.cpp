@@ -58,6 +58,11 @@ ParseResult parse_args(int argc, char* argv[]) {
       return make_success(args);
     }
 
+    if (arg == "--monitor-info") {
+      args.command = MonitorInfoCommand{};
+      return make_success(args);
+    }
+
     // Check if it's an option (starts with --)
     if (arg.rfind("--", 0) == 0) {
       std::string option_name = arg.substr(2);
@@ -102,6 +107,8 @@ ParseResult parse_args(int argc, char* argv[]) {
       args.command = VersionCommand{};
     } else if (cmd == "loop") {
       args.command = LoopCommand{};
+    } else if (cmd == "monitor-info") {
+      args.command = MonitorInfoCommand{};
     } else if (cmd == "track-windows") {
       args.command = TrackWindowsCommand{};
     } else if (cmd == "agent") {
@@ -167,6 +174,7 @@ void print_usage() {
             << "Options:\n"
             << "  --help, -h              Show this help message\n"
             << "  --version, -v           Show version information\n"
+            << "  --monitor-info          Show monitor information and exit\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
             << "  --config <filepath>     Load configuration from a TOML file\n"
             << "  --perf-stats            Print periodic loop performance summaries\n"
@@ -174,6 +182,7 @@ void print_usage() {
             << "Commands:\n"
             << "  version                 Show version information\n"
             << "  loop                    Run in loop mode (hotkey-driven, default)\n"
+            << "  monitor-info            Show monitor information and exit\n"
             << "  track-windows           Track and log windows per monitor in a loop\n"
             << "  agent [stdio]           Run persistent agent mode over stdio JSON lines\n"
             << "  init-config [filepath]  Create default configuration TOML file\n"
@@ -183,6 +192,7 @@ void print_usage() {
             << "\n"
             << "Examples:\n"
             << "  win-tiler --logmode debug loop\n"
+            << "  win-tiler --monitor-info\n"
             << "  win-tiler init-config config.toml\n"
             << "  win-tiler --config config.toml loop\n"
             << "  win-tiler startup enable\n";

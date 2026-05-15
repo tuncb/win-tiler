@@ -188,6 +188,7 @@ If no command is supplied, `win-tiler` defaults to `loop`.
 | --- | --- |
 | `--help`, `-h` | Print help text and exit immediately. |
 | `--version`, `-v` | Print version information and exit immediately. |
+| `--monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. |
 | `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
 | `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
 | `--perf-stats` | In `loop` mode, print periodic stage timing summaries for the active portion of the main loop so before/after optimization runs are easier to compare. |
@@ -200,6 +201,7 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 | --- | --- |
 | `loop` | Start the main tiling loop. This mode registers hotkeys, tracks monitor and window changes, applies tiling, and renders the overlay. This is the default command. |
 | `version` | Print version information. This is the command form of `--version`. |
+| `monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. This is the command form of `--monitor-info`. |
 | `track-windows` | Log the windows found on each monitor once per second until the configured exit hotkey is pressed. |
 | `agent [stdio]` | Start persistent agent mode over stdio JSON lines. The current implementation supports `list_windows`, `get_state`, `focus_window`, `send_action`, `swap_windows`, `move_window_to_monitor`, and `retile`. |
 | `init-config [filepath]` | Write a default TOML config file. If `filepath` is omitted, the file is written as `win-tiler.toml` next to the executable. |

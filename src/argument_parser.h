@@ -12,6 +12,8 @@ struct VersionCommand {}; // --version or version
 
 struct LoopCommand {};
 
+struct MonitorInfoCommand {}; // --monitor-info or monitor-info
+
 struct TrackWindowsCommand {};
 
 enum class AgentTransport { Stdio };
@@ -31,8 +33,8 @@ struct StartupCommand {
 };
 
 // Variant holding all possible commands
-using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, TrackWindowsCommand,
-                             AgentCommand, InitConfigCommand, StartupCommand>;
+using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, MonitorInfoCommand,
+                             TrackWindowsCommand, AgentCommand, InitConfigCommand, StartupCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };
