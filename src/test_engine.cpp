@@ -57,6 +57,14 @@ Engine create_two_window_engine() {
   return engine;
 }
 
+Engine create_three_window_engine() {
+  Engine engine;
+  std::vector<ClusterInitInfo> infos = {
+      {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2, 3}}};
+  engine.init(infos);
+  return engine;
+}
+
 // Create empty engine
 Engine create_empty_engine() {
   Engine engine;
@@ -1454,14 +1462,17 @@ TEST_SUITE("Engine::process_action - SplitRatio") {
 // =============================================================================
 
 TEST_SUITE("Engine::process_action - ExchangeSiblings") {
-  TEST_CASE("swaps cell with its sibling") {
+  TEST_CASE("exchanges leaf siblings structurally") {
     Engine engine = create_two_window_engine();
     auto geoms = compute_default_geometries(engine);
 
     set_selection(engine, 0, 1);
 
-    size_t cell1_leaf = *engine.system.clusters[0].tree[1].leaf_id;
-    size_t cell2_leaf = *engine.system.clusters[0].tree[2].leaf_id;
+    auto& tree = engine.system.clusters[0].tree;
+    REQUIRE(tree.get_first_child(0) == std::optional<int>{1});
+    REQUIRE(tree.get_second_child(0) == std::optional<int>{2});
+    size_t selected_leaf = *tree[1].leaf_id;
+    size_t sibling_leaf = *tree[2].leaf_id;
 
     ActionResult result =
         engine.process_action(HotkeyAction::ExchangeSiblings, geoms, 10.0f, 10.0f, 0.0f);
@@ -1473,9 +1484,43 @@ TEST_SUITE("Engine::process_action - ExchangeSiblings") {
     CHECK(result.cursor_pos.has_value());
     CHECK(result.focus_leaf_id.has_value());
 
-    // Verify swap
-    CHECK(*engine.system.clusters[0].tree[1].leaf_id == cell2_leaf);
-    CHECK(*engine.system.clusters[0].tree[2].leaf_id == cell1_leaf);
+    CHECK(tree.get_first_child(0) == std::optional<int>{2});
+    CHECK(tree.get_second_child(0) == std::optional<int>{1});
+    CHECK(*tree[1].leaf_id == selected_leaf);
+    CHECK(*tree[2].leaf_id == sibling_leaf);
+    CHECK(result.focus_leaf_id == std::optional<size_t>{selected_leaf});
+  }
+
+  TEST_CASE("exchanges selected leaf with sibling subtree") {
+    Engine engine = create_three_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    auto& tree = engine.system.clusters[0].tree;
+    REQUIRE(tree.get_first_child(0) == std::optional<int>{1});
+    REQUIRE(tree.get_second_child(0) == std::optional<int>{2});
+    REQUIRE(tree.is_leaf(1));
+    REQUIRE_FALSE(tree.is_leaf(2));
+
+    set_selection(engine, 0, 1);
+    size_t selected_leaf = *tree[1].leaf_id;
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ExchangeSiblings, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.selection_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(result.cursor_pos.has_value());
+    CHECK(result.focus_leaf_id == std::optional<size_t>{selected_leaf});
+
+    CHECK(tree.get_first_child(0) == std::optional<int>{2});
+    CHECK(tree.get_second_child(0) == std::optional<int>{1});
+    CHECK(tree.get_parent(1) == std::optional<int>{0});
+    CHECK(tree.get_parent(2) == std::optional<int>{0});
+    CHECK(tree.get_first_child(2) == std::optional<int>{3});
+    CHECK(tree.get_second_child(2) == std::optional<int>{4});
+    CHECK(*tree[1].leaf_id == selected_leaf);
   }
 
   TEST_CASE("fails when no sibling exists") {
@@ -1499,6 +1544,20 @@ TEST_SUITE("Engine::process_action - ExchangeSiblings") {
         engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
     REQUIRE(zen_result.success == true);
     REQUIRE(engine.system.clusters[0].zen_cell_index == std::optional<int>{1});
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ExchangeSiblings, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("clears zen when sibling subtree contains zen cell") {
+    Engine engine = create_three_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 0, 1);
+    engine.system.clusters[0].zen_cell_index = 3;
 
     ActionResult result =
         engine.process_action(HotkeyAction::ExchangeSiblings, geoms, 10.0f, 10.0f, 0.0f);

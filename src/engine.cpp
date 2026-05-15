@@ -241,6 +241,56 @@ bool swap_cells(System& system, int cluster_index1, int cell_index1, int cluster
   return true;
 }
 
+bool subtree_contains_cell(const Cluster& cluster, int root_index, int target_index) {
+  if (!cluster.tree.is_valid_index(root_index) || !cluster.tree.is_valid_index(target_index)) {
+    return false;
+  }
+  if (root_index == target_index) {
+    return true;
+  }
+
+  auto first_child = cluster.tree.get_first_child(root_index);
+  if (first_child.has_value() && subtree_contains_cell(cluster, *first_child, target_index)) {
+    return true;
+  }
+
+  auto second_child = cluster.tree.get_second_child(root_index);
+  return second_child.has_value() && subtree_contains_cell(cluster, *second_child, target_index);
+}
+
+bool exchange_siblings(System& system, int cluster_index, int cell_index) {
+  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
+  if (!cluster.tree.is_valid_index(cell_index)) {
+    return false;
+  }
+
+  auto parent_opt = cluster.tree.get_parent(cell_index);
+  if (!parent_opt.has_value()) {
+    return false;
+  }
+
+  int parent_index = *parent_opt;
+  auto sibling_opt = cluster.tree.get_sibling(cell_index);
+  if (!sibling_opt.has_value()) {
+    return false;
+  }
+
+  if (cluster.zen_cell_index.has_value()) {
+    int zen_cell_index = *cluster.zen_cell_index;
+    if (subtree_contains_cell(cluster, cell_index, zen_cell_index) ||
+        subtree_contains_cell(cluster, *sibling_opt, zen_cell_index)) {
+      cluster.zen_cell_index = std::nullopt;
+    }
+  }
+
+  cluster.tree.swap_children(parent_index);
+  return true;
+}
+
 bool move_cell(System& system, int source_cluster_index, int source_cell_index,
                int target_cluster_index, int target_cell_index) {
   if (source_cluster_index < 0 ||
@@ -1334,21 +1384,6 @@ bool store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& 
   return false;
 }
 
-std::optional<int> get_selected_sibling_index(const ctrl::System& system) {
-  if (!system.selection.has_value()) {
-    return std::nullopt;
-  }
-
-  int cluster_index = system.selection->cluster_index;
-  int cell_index = system.selection->cell_index;
-  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
-    return std::nullopt;
-  }
-
-  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
-  return cluster.tree.get_sibling(cell_index);
-}
-
 std::optional<ctrl::Point>
 get_selected_center(const ctrl::System& system,
                     const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -2008,23 +2043,20 @@ ActionResult Engine::process_action(HotkeyAction action,
   case HotkeyAction::ExchangeSiblings:
     spdlog::info("ExchangeSiblings: exchanging selected cell with its sibling");
     if (system.selection.has_value()) {
-      if (auto sibling_idx = get_selected_sibling_index(system)) {
-        if (ctrl::swap_cells(system, system.selection->cluster_index, system.selection->cell_index,
-                             system.selection->cluster_index, *sibling_idx)) {
-          result.success = true;
-          result.layout_changed = true;
-          result.selection_changed = true;
-          result.apply_tiles = true;
-          // Recompute geometry to get updated center
-          int ci = system.selection->cluster_index;
-          if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
-            auto updated_geom = ctrl::compute_cluster_geometry(
-                system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
-            int cell_idx = system.selection->cell_index;
-            if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
-              result.cursor_pos =
-                  ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
-            }
+      if (ctrl::exchange_siblings(system, system.selection->cluster_index,
+                                  system.selection->cell_index)) {
+        result.success = true;
+        result.layout_changed = true;
+        result.selection_changed = true;
+        result.apply_tiles = true;
+        // Recompute geometry to get updated center
+        int ci = system.selection->cluster_index;
+        if (ci >= 0 && static_cast<size_t>(ci) < system.clusters.size()) {
+          auto updated_geom = ctrl::compute_cluster_geometry(
+              system.clusters[static_cast<size_t>(ci)], gap_h, gap_v, zen_pct);
+          int cell_idx = system.selection->cell_index;
+          if (cell_idx >= 0 && static_cast<size_t>(cell_idx) < updated_geom.size()) {
+            result.cursor_pos = ctrl::get_rect_center(updated_geom[static_cast<size_t>(cell_idx)]);
           }
         }
       }
