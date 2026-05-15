@@ -724,9 +724,6 @@ bool toggle_selected_split_dir(System& system) {
   if (!first_child.has_value() || !second_child.has_value()) {
     return false;
   }
-  if (!cluster.tree.is_leaf(*first_child) || !cluster.tree.is_leaf(*second_child)) {
-    return false;
-  }
 
   CellData& parent_data = cluster.tree[parent_index];
   parent_data.split_dir =

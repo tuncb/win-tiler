@@ -1225,6 +1225,62 @@ TEST_SUITE("Engine::process_action - ToggleSplit") {
     CHECK(new_dir != initial_dir);
   }
 
+  TEST_CASE("toggles parent split when selected leaf has sibling subtree") {
+    Engine engine = create_three_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    auto& tree = engine.system.clusters[0].tree;
+    REQUIRE(tree.get_first_child(0) == std::optional<int>{1});
+    REQUIRE(tree.get_second_child(0) == std::optional<int>{2});
+    REQUIRE(tree.is_leaf(1));
+    REQUIRE_FALSE(tree.is_leaf(2));
+
+    set_selection(engine, 0, 1);
+    SplitDir initial_parent_dir = tree[0].split_dir;
+    SplitDir initial_subtree_dir = tree[2].split_dir;
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ToggleSplit, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(tree[0].split_dir != initial_parent_dir);
+    CHECK(tree[2].split_dir == initial_subtree_dir);
+    CHECK(tree.get_first_child(0) == std::optional<int>{1});
+    CHECK(tree.get_second_child(0) == std::optional<int>{2});
+  }
+
+  TEST_CASE("toggles parent split when selected leaf follows sibling subtree") {
+    Engine engine = create_three_window_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    auto& tree = engine.system.clusters[0].tree;
+    REQUIRE(tree.get_first_child(0) == std::optional<int>{1});
+    REQUIRE(tree.get_second_child(0) == std::optional<int>{2});
+
+    tree.swap_children(0);
+    REQUIRE(tree.get_first_child(0) == std::optional<int>{2});
+    REQUIRE(tree.get_second_child(0) == std::optional<int>{1});
+    REQUIRE_FALSE(tree.is_leaf(2));
+    REQUIRE(tree.is_leaf(1));
+
+    set_selection(engine, 0, 1);
+    SplitDir initial_parent_dir = tree[0].split_dir;
+    SplitDir initial_subtree_dir = tree[2].split_dir;
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ToggleSplit, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+    CHECK(tree[0].split_dir != initial_parent_dir);
+    CHECK(tree[2].split_dir == initial_subtree_dir);
+    CHECK(tree.get_first_child(0) == std::optional<int>{2});
+    CHECK(tree.get_second_child(0) == std::optional<int>{1});
+  }
+
   TEST_CASE("returns failure when no selection") {
     Engine engine = create_empty_engine();
     auto geoms = compute_default_geometries(engine);
