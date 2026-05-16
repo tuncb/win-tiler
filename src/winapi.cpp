@@ -50,10 +50,9 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
   return TRUE;
 }
 
-std::vector<MonitorInfo> get_monitors() {
-  std::vector<MonitorInfo> monitors;
+void fill_monitors(std::vector<MonitorInfo>& monitors) {
+  monitors.clear();
   EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)&monitors);
-  return monitors;
 }
 
 static bool visible_size_differs_from_target(const WindowPosition& target_visible_position,
@@ -263,21 +262,20 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   return TRUE;
 }
 
-static std::vector<HWND_T> get_windows_list(const wintiler::IgnoreOptions& ignore_options) {
-  std::vector<HWND_T> handles;
+static void fill_windows_list(const wintiler::IgnoreOptions& ignore_options,
+                              std::vector<HWND_T>& handles) {
+  handles.clear();
   WindowEnumContext ctx{&handles, &ignore_options};
   EnumWindows(WindowEnumProc, (LPARAM)&ctx);
-  return handles;
 }
 
-static std::vector<HWND_T> gather_raw_window_data(const wintiler::IgnoreOptions& ignore_options) {
-  auto handles = get_windows_list(ignore_options);
+static void gather_raw_window_data_into(const wintiler::IgnoreOptions& ignore_options,
+                                        std::vector<HWND_T>& handles) {
+  fill_windows_list(ignore_options, handles);
 
   std::sort(handles.begin(), handles.end(), [](HWND_T lhs, HWND_T rhs) {
     return reinterpret_cast<uintptr_t>(lhs) < reinterpret_cast<uintptr_t>(rhs);
   });
-
-  return handles;
 }
 
 static bool is_window_fullscreen(HWND_T hwnd);
@@ -513,8 +511,10 @@ gather_window_management_states(const wintiler::IgnoreOptions& ignore_options,
 
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index) {
-  auto monitors = get_monitors();
-  auto handles = gather_raw_window_data(ignore_options);
+  std::vector<MonitorInfo> monitors;
+  fill_monitors(monitors);
+  std::vector<HWND_T> handles;
+  gather_raw_window_data_into(ignore_options, handles);
 
   if (monitor_index.has_value() && *monitor_index >= monitors.size()) {
     spdlog::error("Monitor index {} is out of bounds. Available monitors: 0-{}", *monitor_index,
@@ -552,7 +552,8 @@ void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
 }
 
 void dump_window_management_state(const wintiler::IgnoreOptions& ignore_options) {
-  auto monitors = get_monitors();
+  std::vector<MonitorInfo> monitors;
+  fill_monitors(monitors);
   auto windows = gather_window_management_states(ignore_options, monitors);
 
   spdlog::info("=== Window Management Dump ({} windows, {} monitors) ===", windows.size(),
@@ -667,13 +668,15 @@ void update_window_position(const TileInfo& tile_info) {
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
                                           const wintiler::IgnoreOptions& ignore_options) {
   std::vector<HWND_T> hwnds;
-  auto monitors = get_monitors();
+  std::vector<MonitorInfo> monitors;
+  fill_monitors(monitors);
 
   if (monitor_index >= monitors.size()) {
     return hwnds;
   }
 
-  auto handles = gather_raw_window_data(ignore_options);
+  std::vector<HWND_T> handles;
+  gather_raw_window_data_into(ignore_options, handles);
   const auto& monitor = monitors[monitor_index];
 
   for (const auto& hwnd : handles) {
@@ -1356,18 +1359,18 @@ static bool is_window_fullscreen(HWND_T hwnd) {
          windowRect.right >= mi.rcMonitor.right && windowRect.bottom >= mi.rcMonitor.bottom;
 }
 
-LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_options) {
-  LoopInputState state;
-
+void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
+                                  LoopInputState& state, std::vector<HWND_T>& all_handles) {
   // Gather monitor and window data
-  state.monitors = get_monitors();
-  state.windows_per_monitor.reserve(state.monitors.size());
+  fill_monitors(state.monitors);
+  state.windows_per_monitor.resize(state.monitors.size());
 
-  auto all_handles = gather_raw_window_data(ignore_options);
+  gather_raw_window_data_into(ignore_options, all_handles);
 
   for (size_t i = 0; i < state.monitors.size(); ++i) {
     const auto& monitor = state.monitors[i];
-    std::vector<ManagedWindowInfo> monitor_windows;
+    auto& monitor_windows = state.windows_per_monitor[i];
+    monitor_windows.clear();
 
     for (const auto& hwnd : all_handles) {
       HMONITOR winMonitor = MonitorFromWindow((HWND)hwnd, MONITOR_DEFAULTTONULL);
@@ -1381,8 +1384,6 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
         monitor_windows.push_back(managed_info);
       }
     }
-
-    state.windows_per_monitor.push_back(std::move(monitor_windows));
   }
 
   // Gather input state
@@ -1391,6 +1392,7 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
   state.cursor_pos = get_cursor_pos();
   state.is_ctrl_pressed = is_ctrl_pressed();
   state.foreground_window = get_foreground_window();
+  state.desktop_id.reset();
 
   // Get desktop ID from first managed window
   if (g_vdm && !all_handles.empty()) {
@@ -1407,8 +1409,6 @@ LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_opt
       state.desktop_id = guid_str;
     }
   }
-
-  return state;
 }
 
 } // namespace winapi

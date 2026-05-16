@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include "winapi.h"
 
@@ -63,7 +64,8 @@ void run_track_windows_mode(GlobalOptionsProvider& optionsProvider) {
     }
 
     // Get monitors and windows
-    auto monitors = winapi::get_monitors();
+    std::vector<winapi::MonitorInfo> monitors;
+    winapi::fill_monitors(monitors);
     for (size_t i = 0; i < monitors.size(); ++i) {
       const auto& monitor = monitors[i];
       auto hwnds = winapi::get_hwnds_for_monitor(i, options.ignoreOptions);

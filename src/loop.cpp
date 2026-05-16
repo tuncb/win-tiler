@@ -198,21 +198,25 @@ std::optional<HotkeyAction> poll_hotkey_action() {
   return id_to_hotkey_action(*hotkey_id);
 }
 
-EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_state,
-                                          const LoopDesktopData& desktop_data,
-                                          std::vector<ClusterTilingOptions> cluster_options,
-                                          bool auto_zen_on_maximize,
-                                          std::optional<HotkeyAction> hotkey_action,
-                                          const LayoutOptions& layout_options) {
-  EngineFrameInput frame_input;
-  frame_input.cluster_updates = extract_cluster_updates_from_input(input_state);
-  frame_input.managed_windows = extract_managed_window_states_from_input(input_state);
+void fill_engine_frame_input(const winapi::LoopInputState& input_state,
+                             const LoopDesktopData& desktop_data,
+                             const std::vector<ClusterTilingOptions>& cluster_options,
+                             bool auto_zen_on_maximize, std::optional<HotkeyAction> hotkey_action,
+                             const LayoutOptions& layout_options, EngineFrameInput& frame_input) {
+  extract_cluster_updates_from_input_into(input_state, frame_input.cluster_updates);
+  extract_managed_window_states_from_input_into(input_state, frame_input.managed_windows);
   frame_input.hotkey_action = hotkey_action;
+  frame_input.cursor_pos.reset();
+  frame_input.completed_drag.reset();
   frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
+  frame_input.update_hover_selection = true;
   frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
   frame_input.reapply_layout_templates = desktop_data.reapply_layout_templates;
   frame_input.layout_options = &layout_options;
-  frame_input.cluster_options = std::move(cluster_options);
+  frame_input.cluster_options = cluster_options;
+  frame_input.gap_h = 0.0f;
+  frame_input.gap_v = 0.0f;
+  frame_input.zen_pct = 0.0f;
 
   if (input_state.cursor_pos.has_value()) {
     frame_input.cursor_pos = ctrl::Point{input_state.cursor_pos->x, input_state.cursor_pos->y};
@@ -233,8 +237,6 @@ EngineFrameInput build_engine_frame_input(const winapi::LoopInputState& input_st
 
     frame_input.completed_drag = drag_request;
   }
-
-  return frame_input;
 }
 
 void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
@@ -289,9 +291,11 @@ bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
 }
 
 // Handle monitor configuration changes, returns true if change occurred
-bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors, const GlobalOptions& options,
+bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors,
+                           std::vector<winapi::MonitorInfo>& current_monitors,
+                           const GlobalOptions& options,
                            MultiEngine<LoopDesktopData, std::string>& multi_engine) {
-  auto current_monitors = winapi::get_monitors();
+  winapi::fill_monitors(current_monitors);
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
   }
@@ -333,7 +337,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   const auto& options = provider.options;
 
   // Get initial monitor configuration and create engine
-  auto monitors = winapi::get_monitors();
+  std::vector<winapi::MonitorInfo> monitors;
+  winapi::fill_monitors(monitors);
   winapi::log_monitors(monitors);
 
   // MultiEngine manages separate tiling state per virtual desktop
@@ -384,6 +389,12 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     std::cout.flush();
   }
 
+  winapi::LoopInputState input_state;
+  std::vector<winapi::HWND_T> input_handles;
+  std::vector<winapi::MonitorInfo> current_monitors;
+  std::vector<ClusterTilingOptions> cluster_options;
+  EngineFrameInput frame_input;
+
   while (true) {
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
@@ -421,7 +432,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Gather all Windows API input state in a single call
     auto gather_start = std::chrono::steady_clock::now();
-    auto input_state = winapi::gather_loop_input_state(options.ignoreOptions);
+    winapi::gather_loop_input_state_into(options.ignoreOptions, input_state, input_handles);
     perf.record_stage(LoopPerfStage::GatherInput, std::chrono::steady_clock::now() - gather_start);
 
     // Virtual desktop handling via desktop_id from managed windows
@@ -493,7 +504,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto& current_desktop = multi_engine.current();
     auto& engine = current_desktop.engine;
 
-    auto cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
+    resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
 
     // Skip all processing while user is dragging a window - only render
     auto compute_geometry_start = std::chrono::steady_clock::now();
@@ -525,12 +536,13 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     if (handle_config_refresh(provider, toast)) {
       mark_all_desktops_for_layout_reapply(multi_engine);
     }
-    cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
+    resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
 
     // Check for monitor configuration changes
-    bool monitor_changed = handle_monitor_change(monitors, provider.options, multi_engine);
+    bool monitor_changed =
+        handle_monitor_change(monitors, current_monitors, provider.options, multi_engine);
     if (monitor_changed) {
-      cluster_options = resolve_cluster_tiling_options(monitors, provider.options);
+      resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
       auto updated_geometry_start = std::chrono::steady_clock::now();
       geometries = engine.compute_geometries(cluster_options);
       perf.record_stage(LoopPerfStage::ComputeGeometry,
@@ -540,10 +552,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     }
 
     auto build_frame_input_start = std::chrono::steady_clock::now();
-    EngineFrameInput frame_input =
-        build_engine_frame_input(input_state, current_desktop.data, cluster_options,
-                                 provider.options.loopOptions.toggle_zen_on_window_maximize,
-                                 poll_hotkey_action(), provider.options.layoutOptions);
+    fill_engine_frame_input(input_state, current_desktop.data, cluster_options,
+                            provider.options.loopOptions.toggle_zen_on_window_maximize,
+                            poll_hotkey_action(), provider.options.layoutOptions, frame_input);
     perf.record_stage(LoopPerfStage::BuildFrameInput,
                       std::chrono::steady_clock::now() - build_frame_input_start);
 

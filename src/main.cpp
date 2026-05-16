@@ -175,7 +175,11 @@ int main(int argc, char* argv[]) {
                  [&](const LoopCommand&) {
                    run_loop_mode(optionsProvider, LoopRunOptions{result.args.options.perf_stats});
                  },
-                 [](const MonitorInfoCommand&) { winapi::log_monitors(winapi::get_monitors()); },
+                 [](const MonitorInfoCommand&) {
+                   std::vector<winapi::MonitorInfo> monitors;
+                   winapi::fill_monitors(monitors);
+                   winapi::log_monitors(monitors);
+                 },
                  [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
                  [&](const AgentCommand& cmd) { run_agent_mode(optionsProvider, cmd); },
                  [&](const InitConfigCommand& cmd) {

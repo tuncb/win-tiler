@@ -60,7 +60,9 @@ AgentRect make_agent_rect(const ctrl::Rect& rect) {
 
 void retile_engine(const Engine& engine, const std::vector<winapi::MonitorInfo>& monitors,
                    const GlobalOptions& options) {
-  auto geometries = engine.compute_geometries(resolve_cluster_tiling_options(monitors, options));
+  std::vector<ClusterTilingOptions> cluster_options;
+  resolve_cluster_tiling_options_into(monitors, options, cluster_options);
+  auto geometries = engine.compute_geometries(cluster_options);
   apply_tile_positions(engine.system, geometries);
 }
 
@@ -178,8 +180,9 @@ AgentStateResponse build_state_response(const AgentSyncSnapshot& snapshot,
 
   std::vector<std::vector<ctrl::Rect>> geometries;
   if (include_layout) {
-    geometries = snapshot.engine->compute_geometries(
-        resolve_cluster_tiling_options(snapshot.input_state.monitors, options));
+    std::vector<ClusterTilingOptions> cluster_options;
+    resolve_cluster_tiling_options_into(snapshot.input_state.monitors, options, cluster_options);
+    geometries = snapshot.engine->compute_geometries(cluster_options);
   }
 
   for (size_t monitor_index = 0; monitor_index < snapshot.input_state.windows_per_monitor.size();
@@ -259,8 +262,10 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
     }
   }
 
-  AgentSyncSnapshot snapshot{
-      winapi::gather_loop_input_state(options_provider.options.ignoreOptions), "", {}, {}, nullptr};
+  AgentSyncSnapshot snapshot;
+  std::vector<winapi::HWND_T> input_handles;
+  winapi::gather_loop_input_state_into(options_provider.options.ignoreOptions, snapshot.input_state,
+                                       input_handles);
   snapshot.desktop_id = resolve_desktop_id(snapshot.input_state);
 
   if (!runtime.multi_engine.has_desktop(snapshot.desktop_id)) {
@@ -290,11 +295,13 @@ sync_runtime_state(AgentRuntimeState& runtime, GlobalOptionsProvider& options_pr
     current_desktop.data.reapply_layout_templates = false;
   }
 
-  snapshot.cluster_updates = extract_cluster_updates_from_input(snapshot.input_state);
-  snapshot.update_result = current_desktop.engine.update(
-      snapshot.cluster_updates, std::nullopt,
-      resolve_cluster_tiling_options(snapshot.input_state.monitors, options_provider.options),
-      current_desktop.data.reapply_layout_templates);
+  extract_cluster_updates_from_input_into(snapshot.input_state, snapshot.cluster_updates);
+  std::vector<ClusterTilingOptions> cluster_options;
+  resolve_cluster_tiling_options_into(snapshot.input_state.monitors, options_provider.options,
+                                      cluster_options);
+  snapshot.update_result =
+      current_desktop.engine.update(snapshot.cluster_updates, std::nullopt, cluster_options,
+                                    current_desktop.data.reapply_layout_templates);
   current_desktop.data.reapply_layout_templates = false;
   snapshot.engine = &current_desktop.engine;
   return snapshot;
@@ -349,8 +356,9 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
 
   if (std::holds_alternative<AgentSendActionRequest>(request.payload)) {
     const auto& send_action = std::get<AgentSendActionRequest>(request.payload);
-    auto cluster_options = resolve_cluster_tiling_options(sync_snapshot->input_state.monitors,
-                                                          options_provider.options);
+    std::vector<ClusterTilingOptions> cluster_options;
+    resolve_cluster_tiling_options_into(sync_snapshot->input_state.monitors,
+                                        options_provider.options, cluster_options);
     auto geometries = sync_snapshot->engine->compute_geometries(cluster_options);
     auto action_result =
         sync_snapshot->engine->process_action(send_action.action, geometries, cluster_options);
@@ -402,10 +410,11 @@ AgentResponse execute_agent_request(AgentRuntimeState& runtime,
 
       auto moved_updates = build_move_cluster_updates(
           sync_snapshot->cluster_updates, move_window.leaf_id, move_window.target_monitor_index);
-      UpdateResult move_result = sync_snapshot->engine->update(
-          moved_updates, std::nullopt,
-          resolve_cluster_tiling_options(sync_snapshot->input_state.monitors,
-                                         options_provider.options));
+      std::vector<ClusterTilingOptions> cluster_options;
+      resolve_cluster_tiling_options_into(sync_snapshot->input_state.monitors,
+                                          options_provider.options, cluster_options);
+      UpdateResult move_result =
+          sync_snapshot->engine->update(moved_updates, std::nullopt, cluster_options);
       if (!move_result.topology_changed) {
         return make_error_response(request.id, "failed to move window to target monitor");
       }

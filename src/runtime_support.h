@@ -8,19 +8,20 @@
 
 namespace wintiler {
 
-[[nodiscard]] std::vector<ctrl::ClusterCellUpdateInfo>
-extract_cluster_updates_from_input(const winapi::LoopInputState& input_state);
+void extract_cluster_updates_from_input_into(const winapi::LoopInputState& input_state,
+                                             std::vector<ctrl::ClusterCellUpdateInfo>& result);
 
-[[nodiscard]] std::vector<std::vector<ManagedWindowState>>
-extract_managed_window_states_from_input(const winapi::LoopInputState& input_state);
+void extract_managed_window_states_from_input_into(
+    const winapi::LoopInputState& input_state,
+    std::vector<std::vector<ManagedWindowState>>& result);
 
 [[nodiscard]] ClusterTilingOptions
 resolve_monitor_tiling_options(const GlobalOptions& options, const winapi::MonitorInfo& monitor,
                                size_t monitor_index);
 
-[[nodiscard]] std::vector<ClusterTilingOptions>
-resolve_cluster_tiling_options(const std::vector<winapi::MonitorInfo>& monitors,
-                               const GlobalOptions& options);
+void resolve_cluster_tiling_options_into(const std::vector<winapi::MonitorInfo>& monitors,
+                                         const GlobalOptions& options,
+                                         std::vector<ClusterTilingOptions>& cluster_options);
 
 [[nodiscard]] std::vector<ctrl::ClusterInitInfo>
 create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monitors,

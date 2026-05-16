@@ -51,7 +51,7 @@ struct WindowInfo {
 // Standard Win32 dialogs use the predefined "#32770" class and are commonly owned popups.
 bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name);
 
-std::vector<MonitorInfo> get_monitors();
+void fill_monitors(std::vector<MonitorInfo>& monitors);
 void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
@@ -144,15 +144,15 @@ struct ManagedWindowInfo {
 // Consolidated input state for the main loop
 struct LoopInputState {
   // Window movement state
-  bool is_any_window_being_moved;
+  bool is_any_window_being_moved = false;
   std::optional<DragInfo> drag_info;
 
   // Cursor and keyboard state
   std::optional<Point> cursor_pos;
-  bool is_ctrl_pressed;
+  bool is_ctrl_pressed = false;
 
   // Window state
-  HWND_T foreground_window;
+  HWND_T foreground_window = nullptr;
 
   // Monitor data (index in vector = monitor index)
   std::vector<MonitorInfo> monitors;
@@ -165,6 +165,7 @@ struct LoopInputState {
 };
 
 // Gather all input state for the main loop in a single call
-LoopInputState gather_loop_input_state(const wintiler::IgnoreOptions& ignore_options);
+void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
+                                  LoopInputState& state, std::vector<HWND_T>& all_handles);
 
 } // namespace winapi

@@ -64,34 +64,35 @@ bool monitor_profile_matches(const MonitorProfileOptions& profile,
 
 } // namespace
 
-std::vector<ctrl::ClusterCellUpdateInfo>
-extract_cluster_updates_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<ctrl::ClusterCellUpdateInfo> result;
-  result.reserve(input_state.windows_per_monitor.size());
+void extract_cluster_updates_from_input_into(const winapi::LoopInputState& input_state,
+                                             std::vector<ctrl::ClusterCellUpdateInfo>& result) {
+  result.resize(input_state.windows_per_monitor.size());
 
-  for (const auto& windows : input_state.windows_per_monitor) {
-    std::vector<size_t> cell_ids;
+  for (size_t i = 0; i < input_state.windows_per_monitor.size(); ++i) {
+    const auto& windows = input_state.windows_per_monitor[i];
+    auto& update = result[i];
+    update.leaf_ids.clear();
+    auto& cell_ids = update.leaf_ids;
     cell_ids.reserve(windows.size());
-    bool has_fullscreen = false;
+    update.has_fullscreen_cell = false;
     for (const auto& win : windows) {
       cell_ids.push_back(reinterpret_cast<size_t>(win.handle));
       if (win.is_fullscreen) {
-        has_fullscreen = true;
+        update.has_fullscreen_cell = true;
       }
     }
-    result.push_back({cell_ids, has_fullscreen});
   }
-
-  return result;
 }
 
-std::vector<std::vector<ManagedWindowState>>
-extract_managed_window_states_from_input(const winapi::LoopInputState& input_state) {
-  std::vector<std::vector<ManagedWindowState>> result;
-  result.reserve(input_state.windows_per_monitor.size());
+void extract_managed_window_states_from_input_into(
+    const winapi::LoopInputState& input_state,
+    std::vector<std::vector<ManagedWindowState>>& result) {
+  result.resize(input_state.windows_per_monitor.size());
 
-  for (const auto& windows : input_state.windows_per_monitor) {
-    std::vector<ManagedWindowState> monitor_state;
+  for (size_t i = 0; i < input_state.windows_per_monitor.size(); ++i) {
+    const auto& windows = input_state.windows_per_monitor[i];
+    auto& monitor_state = result[i];
+    monitor_state.clear();
     monitor_state.reserve(windows.size());
     for (const auto& win : windows) {
       if (win.handle == nullptr) {
@@ -107,10 +108,7 @@ extract_managed_window_states_from_input(const winapi::LoopInputState& input_sta
       monitor_state.push_back({reinterpret_cast<size_t>(win.handle), win.is_fullscreen,
                                win.is_maximized, win.is_minimized, actual_rect});
     }
-    result.push_back(std::move(monitor_state));
   }
-
-  return result;
 }
 
 ClusterTilingOptions resolve_monitor_tiling_options(const GlobalOptions& options,
@@ -145,15 +143,14 @@ ClusterTilingOptions resolve_monitor_tiling_options(const GlobalOptions& options
   return resolved;
 }
 
-std::vector<ClusterTilingOptions>
-resolve_cluster_tiling_options(const std::vector<winapi::MonitorInfo>& monitors,
-                               const GlobalOptions& options) {
-  std::vector<ClusterTilingOptions> cluster_options;
+void resolve_cluster_tiling_options_into(const std::vector<winapi::MonitorInfo>& monitors,
+                                         const GlobalOptions& options,
+                                         std::vector<ClusterTilingOptions>& cluster_options) {
+  cluster_options.clear();
   cluster_options.reserve(monitors.size());
   for (size_t i = 0; i < monitors.size(); ++i) {
     cluster_options.push_back(resolve_monitor_tiling_options(options, monitors[i], i));
   }
-  return cluster_options;
 }
 
 std::vector<ctrl::ClusterInitInfo>
@@ -161,7 +158,8 @@ create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monit
                                    const GlobalOptions& options) {
   std::vector<ctrl::ClusterInitInfo> cluster_infos;
   cluster_infos.reserve(monitors.size());
-  auto cluster_options = resolve_cluster_tiling_options(monitors, options);
+  std::vector<ClusterTilingOptions> cluster_options;
+  resolve_cluster_tiling_options_into(monitors, options, cluster_options);
 
   for (size_t i = 0; i < monitors.size(); ++i) {
     const auto& monitor = monitors[i];

@@ -119,7 +119,8 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
 
   // Draw message if provided
   if (message.has_value()) {
-    auto monitors = winapi::get_monitors();
+    std::vector<winapi::MonitorInfo> monitors;
+    winapi::fill_monitors(monitors);
     for (const auto& monitor : monitors) {
       if (monitor.isPrimary) {
         // Position at bottom-right of work area with padding
