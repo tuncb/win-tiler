@@ -6,6 +6,7 @@
 #include <cctype>
 #include <fstream>
 #include <magic_enum/magic_enum.hpp>
+#include <system_error>
 #include <toml++/toml.hpp>
 
 namespace wintiler {
@@ -994,11 +995,17 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 
 GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path> path)
     : configPath(std::move(path)), options(get_default_global_options()), lastModified{} {
-  if (configPath.has_value() && std::filesystem::exists(*configPath)) {
+  if (configPath.has_value()) {
+    std::error_code error;
+    auto currentModified = std::filesystem::last_write_time(*configPath, error);
+    if (error) {
+      return;
+    }
+
     auto result = read_options_toml(*configPath);
     if (result.has_value()) {
       options = result.value();
-      lastModified = std::filesystem::last_write_time(*configPath);
+      lastModified = currentModified;
     } else {
       spdlog::error("Failed to load config: {}", result.error());
     }
@@ -1009,11 +1016,13 @@ bool GlobalOptionsProvider::refresh() {
   if (!configPath.has_value()) {
     return false; // No file to monitor
   }
-  if (!std::filesystem::exists(*configPath)) {
-    return false; // File doesn't exist (yet)
+
+  std::error_code error;
+  auto currentModified = std::filesystem::last_write_time(*configPath, error);
+  if (error) {
+    return false; // File missing or unavailable
   }
 
-  auto currentModified = std::filesystem::last_write_time(*configPath);
   if (currentModified == lastModified) {
     return false; // No change
   }
