@@ -23,13 +23,15 @@ std::filesystem::path create_temp_file_path() {
 }
 
 // Helper to write a simple valid TOML config
-void write_valid_config(const std::filesystem::path& path, float gap_h = 20.0f,
-                        float gap_v = 25.0f) {
+void write_valid_config(const std::filesystem::path& path, float gap_h = 20.0f, float gap_v = 25.0f,
+                        int config_refresh_interval_ms = 0) {
   std::ofstream file(path);
   file << std::fixed << std::setprecision(1);
   file << "[gap]\n";
   file << "horizontal = " << gap_h << "\n";
   file << "vertical = " << gap_v << "\n";
+  file << "\n[loop]\n";
+  file << "config_refresh_interval_ms = " << config_refresh_interval_ms << "\n";
 }
 
 // RAII helper to clean up temp files
@@ -80,13 +82,14 @@ TEST_SUITE("GlobalOptionsProvider") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);
 
-    write_valid_config(temp_path, 30.0f, 35.0f);
+    write_valid_config(temp_path, 30.0f, 35.0f, 750);
 
     GlobalOptionsProvider provider(temp_path);
 
     CHECK(provider.configPath.has_value());
     CHECK(provider.options.gapOptions.horizontal == 30.0f);
     CHECK(provider.options.gapOptions.vertical == 35.0f);
+    CHECK(provider.options.loopOptions.configRefreshIntervalMs == 750);
   }
 
   TEST_CASE("refresh returns false when no config path") {
@@ -124,6 +127,30 @@ TEST_SUITE("GlobalOptionsProvider") {
 
     // Modify the file
     write_valid_config(temp_path, 40.0f, 45.0f);
+
+    CHECK(provider.refresh() == true);
+    CHECK(provider.options.gapOptions.horizontal == 40.0f);
+    CHECK(provider.options.gapOptions.vertical == 45.0f);
+  }
+
+  TEST_CASE("refresh is throttled by configured interval") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    write_valid_config(temp_path, 20.0f, 25.0f, 1000);
+
+    GlobalOptionsProvider provider(temp_path);
+    CHECK(provider.options.gapOptions.horizontal == 20.0f);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    write_valid_config(temp_path, 40.0f, 45.0f, 1000);
+    provider.lastModified = std::filesystem::file_time_type{};
+
+    CHECK(provider.refresh() == false);
+    CHECK(provider.options.gapOptions.horizontal == 20.0f);
+
+    provider.nextConfigRefreshCheck =
+        std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
 
     CHECK(provider.refresh() == true);
     CHECK(provider.options.gapOptions.horizontal == 40.0f);
@@ -931,6 +958,54 @@ TEST_SUITE("Type Coercion") {
     REQUIRE(result.has_value());
 
     CHECK(result.value().loopOptions.intervalMs == 100);
+  }
+
+  TEST_CASE("loop config refresh interval defaults to 1000 ms") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "interval_ms = 100\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.configRefreshIntervalMs == kDefaultConfigRefreshIntervalMs);
+  }
+
+  TEST_CASE("loop config refresh interval can be configured") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "config_refresh_interval_ms = 250\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.configRefreshIntervalMs == 250);
+  }
+
+  TEST_CASE("negative loop config refresh interval falls back to default") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "config_refresh_interval_ms = -1\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.configRefreshIntervalMs == kDefaultConfigRefreshIntervalMs);
   }
 }
 

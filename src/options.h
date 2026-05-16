@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -71,6 +72,7 @@ constexpr float kDefaultGapVertical = 10.0f;
 
 // Default loop interval
 constexpr int kDefaultLoopIntervalMs = 100;
+constexpr int kDefaultConfigRefreshIntervalMs = 1000;
 constexpr bool kDefaultToggleZenOnWindowMaximize = true;
 
 // Default zen percentage (0.0-1.0 range, 1.0 = full cluster)
@@ -99,6 +101,7 @@ struct GapOverrideOptions {
 // Loop configuration
 struct LoopOptions {
   int intervalMs = kDefaultLoopIntervalMs;
+  int configRefreshIntervalMs = kDefaultConfigRefreshIntervalMs;
   bool toggle_zen_on_window_maximize = kDefaultToggleZenOnWindowMaximize;
 };
 
@@ -198,6 +201,7 @@ public:
   std::optional<std::filesystem::path> configPath;
   GlobalOptions options;
   std::filesystem::file_time_type lastModified;
+  std::chrono::steady_clock::time_point nextConfigRefreshCheck;
 
   explicit GlobalOptionsProvider(std::optional<std::filesystem::path> configPath = std::nullopt);
 

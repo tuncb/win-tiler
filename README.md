@@ -91,6 +91,7 @@ vertical = 10.0
 
 [loop]
 interval_ms = 100
+config_refresh_interval_ms = 1000
 toggle_zen_on_window_maximize = true
 
 [layout]

@@ -13,6 +13,14 @@ namespace wintiler {
 
 namespace {
 
+std::chrono::steady_clock::time_point
+next_config_refresh_check(std::chrono::steady_clock::time_point now, const GlobalOptions& options) {
+  if (options.loopOptions.configRefreshIntervalMs <= 0) {
+    return std::chrono::steady_clock::time_point::min();
+  }
+  return now + std::chrono::milliseconds(options.loopOptions.configRefreshIntervalMs);
+}
+
 std::string hotkey_action_to_string(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
@@ -569,6 +577,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     // Build loop section
     toml::table loop;
     loop.insert("interval_ms", options.loopOptions.intervalMs);
+    loop.insert("config_refresh_interval_ms", options.loopOptions.configRefreshIntervalMs);
     loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
     root.insert("loop", loop);
 
@@ -874,6 +883,10 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       if (auto intervalMs = (*loop)["interval_ms"].as_integer()) {
         options.loopOptions.intervalMs = static_cast<int>(intervalMs->get());
       }
+      if (auto configRefreshIntervalMs = (*loop)["config_refresh_interval_ms"].as_integer()) {
+        options.loopOptions.configRefreshIntervalMs =
+            static_cast<int>(configRefreshIntervalMs->get());
+      }
       if (auto toggleZenOnWindowMaximize = (*loop)["toggle_zen_on_window_maximize"].as_boolean()) {
         options.loopOptions.toggle_zen_on_window_maximize = toggleZenOnWindowMaximize->get();
       }
@@ -884,6 +897,13 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       spdlog::error("Invalid loop.interval_ms value ({}): must be non-negative. Using default.",
                     options.loopOptions.intervalMs);
       options.loopOptions.intervalMs = kDefaultLoopIntervalMs;
+    }
+
+    if (options.loopOptions.configRefreshIntervalMs < 0) {
+      spdlog::error("Invalid loop.config_refresh_interval_ms value ({}): must be non-negative. "
+                    "Using default.",
+                    options.loopOptions.configRefreshIntervalMs);
+      options.loopOptions.configRefreshIntervalMs = kDefaultConfigRefreshIntervalMs;
     }
 
     // Parse layout section
@@ -994,7 +1014,8 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 }
 
 GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path> path)
-    : configPath(std::move(path)), options(get_default_global_options()), lastModified{} {
+    : configPath(std::move(path)),
+      options(get_default_global_options()), lastModified{}, nextConfigRefreshCheck{} {
   if (configPath.has_value()) {
     std::error_code error;
     auto currentModified = std::filesystem::last_write_time(*configPath, error);
@@ -1006,6 +1027,7 @@ GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path
     if (result.has_value()) {
       options = result.value();
       lastModified = currentModified;
+      nextConfigRefreshCheck = next_config_refresh_check(std::chrono::steady_clock::now(), options);
     } else {
       spdlog::error("Failed to load config: {}", result.error());
     }
@@ -1016,6 +1038,12 @@ bool GlobalOptionsProvider::refresh() {
   if (!configPath.has_value()) {
     return false; // No file to monitor
   }
+
+  auto now = std::chrono::steady_clock::now();
+  if (now < nextConfigRefreshCheck) {
+    return false; // Refresh check is throttled
+  }
+  nextConfigRefreshCheck = next_config_refresh_check(now, options);
 
   std::error_code error;
   auto currentModified = std::filesystem::last_write_time(*configPath, error);
@@ -1031,6 +1059,7 @@ bool GlobalOptionsProvider::refresh() {
   if (result.has_value()) {
     options = result.value();
     lastModified = currentModified;
+    nextConfigRefreshCheck = next_config_refresh_check(now, options);
     spdlog::info("Config reloaded from: {}", configPath->string());
     return true;
   }
