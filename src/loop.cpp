@@ -20,6 +20,126 @@
 
 namespace wintiler {
 
+bool operator==(const OverlayRenderRect& lhs, const OverlayRenderRect& rhs) {
+  return lhs.x == rhs.x && lhs.y == rhs.y && lhs.width == rhs.width && lhs.height == rhs.height &&
+         lhs.color.r == rhs.color.r && lhs.color.g == rhs.color.g && lhs.color.b == rhs.color.b &&
+         lhs.color.a == rhs.color.a && lhs.border_width == rhs.border_width;
+}
+
+bool operator==(const OverlayRenderSnapshot& lhs, const OverlayRenderSnapshot& rhs) {
+  return lhs.rects == rhs.rects && lhs.message == rhs.message &&
+         lhs.toast_font_size == rhs.toast_font_size;
+}
+
+OverlayRenderSnapshot make_overlay_render_snapshot(
+    const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
+    const renderer::RenderOptions& config, std::optional<StoredCell> stored_cell,
+    const std::optional<std::string>& message) {
+  OverlayRenderSnapshot snapshot;
+  snapshot.message = message;
+  snapshot.toast_font_size = message.has_value() ? config.toast_font_size : 0.0f;
+
+  size_t rect_capacity = 0;
+  for (const auto& cluster : system.clusters) {
+    rect_capacity += cluster.tree.size();
+  }
+  snapshot.rects.reserve(rect_capacity);
+
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& cluster = system.clusters[cluster_idx];
+    if (cluster.zen_cell_index.has_value() || cluster.has_fullscreen_cell) {
+      continue;
+    }
+
+    if (cluster_idx >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[cluster_idx];
+
+    for (int i = 0; i < cluster.tree.size(); ++i) {
+      if (!cluster.tree.is_leaf(i)) {
+        continue;
+      }
+
+      if (static_cast<size_t>(i) >= rects.size()) {
+        continue;
+      }
+
+      const auto& cell_data = cluster.tree[i];
+      const auto& rect = rects[static_cast<size_t>(i)];
+      overlay::Color color = config.normal_color;
+
+      if (system.selection.has_value() &&
+          static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
+          system.selection->cell_index == i) {
+        color = config.selected_color;
+      }
+
+      if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx &&
+          cell_data.leaf_id.has_value() && *cell_data.leaf_id == stored_cell->leaf_id) {
+        color = config.stored_color;
+      }
+
+      snapshot.rects.push_back(
+          {rect.x, rect.y, rect.width, rect.height, color, config.border_width});
+    }
+  }
+
+  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
+    const auto& cluster = system.clusters[cluster_idx];
+    if (!cluster.zen_cell_index.has_value() || cluster.has_fullscreen_cell) {
+      continue;
+    }
+
+    int zen_cell_index = *cluster.zen_cell_index;
+    if (cluster_idx >= geometries.size()) {
+      continue;
+    }
+    const auto& rects = geometries[cluster_idx];
+    if (static_cast<size_t>(zen_cell_index) >= rects.size()) {
+      continue;
+    }
+
+    const auto& zen_rect = rects[static_cast<size_t>(zen_cell_index)];
+    overlay::Color color = config.normal_color;
+    if (system.selection.has_value() &&
+        static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
+        system.selection->cell_index == zen_cell_index) {
+      color = config.selected_color;
+    }
+
+    if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
+      const auto& cell_data = cluster.tree[zen_cell_index];
+      if (cell_data.leaf_id.has_value() && *cell_data.leaf_id == stored_cell->leaf_id) {
+        color = config.stored_color;
+      }
+    }
+
+    snapshot.rects.push_back(
+        {zen_rect.x, zen_rect.y, zen_rect.width, zen_rect.height, color, config.border_width});
+  }
+
+  return snapshot;
+}
+
+bool should_render_overlay(OverlayRenderCache& cache, OverlayRenderSnapshot snapshot) {
+  if (cache.last_presented.has_value() && *cache.last_presented == snapshot) {
+    return false;
+  }
+
+  cache.last_presented = std::move(snapshot);
+  return true;
+}
+
+bool should_clear_overlay(OverlayRenderCache& cache) {
+  if (!cache.last_presented.has_value()) {
+    return false;
+  }
+
+  cache.last_presented.reset();
+  return true;
+}
+
 NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hotkey_action) {
   if (!hotkey_action.has_value()) {
     return NoDesktopHotkeyAction::None;
@@ -378,6 +498,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   // Toast message state
   ToastState toast(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
+  OverlayRenderCache overlay_render_cache;
 
   // Manual pause state (toggled by hotkey)
   bool is_manually_paused = false;
@@ -456,7 +577,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         maybe_print_perf_report(perf, loop_end);
         is_manually_paused = true;
         spdlog::info("Manual pause activated without a desktop ID");
-        overlay::clear();
+        if (should_clear_overlay(overlay_render_cache)) {
+          overlay::clear();
+        }
         continue;
       }
       case NoDesktopHotkeyAction::DumpWindowManagement:
@@ -476,7 +599,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
       // No windows - skip iteration
       spdlog::debug("No desktop ID (no windows), skipping iteration");
-      overlay::clear();
+      if (should_clear_overlay(overlay_render_cache)) {
+        overlay::clear();
+      }
       perf.note_active_frame();
       auto loop_end = std::chrono::steady_clock::now();
       perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
@@ -517,10 +642,16 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         spdlog::debug("Ignoring hotkey during move/resize frame");
       }
 
-      auto render_start = std::chrono::steady_clock::now();
-      renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
-                       engine.stored_cell, toast.get_visible_message());
-      perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
+      auto visible_message = toast.get_visible_message();
+      auto render_snapshot = make_overlay_render_snapshot(
+          engine.system, geometries, options.visualizationOptions.renderOptions, engine.stored_cell,
+          visible_message);
+      if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
+        auto render_start = std::chrono::steady_clock::now();
+        renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
+                         engine.stored_cell, visible_message);
+        perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
+      }
       perf.note_active_frame();
       perf.note_drag_only_frame();
       auto loop_end = std::chrono::steady_clock::now();
@@ -596,7 +727,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       maybe_print_perf_report(perf, loop_end);
       is_manually_paused = true;
       spdlog::info("Manual pause activated");
-      overlay::clear();
+      if (should_clear_overlay(overlay_render_cache)) {
+        overlay::clear();
+      }
       continue;
     }
 
@@ -606,10 +739,17 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     geometries = std::move(frame_output.geometries);
 
     // Render cell system overlay
-    auto render_start = std::chrono::steady_clock::now();
-    renderer::render(engine.system, geometries, provider.options.visualizationOptions.renderOptions,
-                     engine.stored_cell, toast.get_visible_message());
-    perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
+    auto visible_message = toast.get_visible_message();
+    auto render_snapshot = make_overlay_render_snapshot(
+        engine.system, geometries, provider.options.visualizationOptions.renderOptions,
+        engine.stored_cell, visible_message);
+    if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
+      auto render_start = std::chrono::steady_clock::now();
+      renderer::render(engine.system, geometries,
+                       provider.options.visualizationOptions.renderOptions, engine.stored_cell,
+                       visible_message);
+      perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
+    }
 
     auto loop_end = std::chrono::steady_clock::now();
     perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);

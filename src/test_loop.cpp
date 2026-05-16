@@ -121,6 +121,76 @@ TEST_SUITE("loop") {
     CHECK(cluster_options.capacity() >= retained_capacity);
     CHECK(cluster_options.size() == monitors.size());
   }
+
+  TEST_CASE("overlay render cache skips unchanged snapshots") {
+    OverlayRenderCache cache;
+    OverlayRenderSnapshot snapshot;
+    snapshot.rects.push_back({1.0f, 2.0f, 300.0f, 400.0f, {255, 255, 255, 100}, 3.0f});
+
+    CHECK(should_render_overlay(cache, snapshot));
+    CHECK_FALSE(should_render_overlay(cache, snapshot));
+
+    snapshot.message = "Split mode: vertical";
+    snapshot.toast_font_size = 60.0f;
+    CHECK(should_render_overlay(cache, snapshot));
+    CHECK_FALSE(should_render_overlay(cache, snapshot));
+
+    snapshot.message = std::nullopt;
+    snapshot.toast_font_size = 0.0f;
+    CHECK(should_render_overlay(cache, snapshot));
+  }
+
+  TEST_CASE("overlay clear is needed only after visible content was presented") {
+    OverlayRenderCache cache;
+    OverlayRenderSnapshot snapshot;
+    snapshot.rects.push_back({1.0f, 2.0f, 300.0f, 400.0f, {255, 255, 255, 100}, 3.0f});
+
+    CHECK_FALSE(should_clear_overlay(cache));
+    CHECK(should_render_overlay(cache, snapshot));
+    CHECK(should_clear_overlay(cache));
+    CHECK_FALSE(should_clear_overlay(cache));
+  }
+
+  TEST_CASE("overlay render snapshot captures selected and stored cell colors") {
+    ctrl::System system;
+    ctrl::Cluster cluster;
+
+    ctrl::CellData parent;
+    ctrl::CellData first_child;
+    first_child.leaf_id = 10;
+    ctrl::CellData second_child;
+    second_child.leaf_id = 20;
+
+    int parent_index = cluster.tree.add_node(parent);
+    int first_index = cluster.tree.add_node(first_child);
+    int second_index = cluster.tree.add_node(second_child);
+    cluster.tree.set_children(parent_index, first_index, second_index);
+    system.clusters.push_back(cluster);
+    system.selection = ctrl::CellIndicatorByIndex{0, first_index};
+
+    std::vector<std::vector<ctrl::Rect>> geometries = {{{0.0f, 0.0f, 800.0f, 600.0f},
+                                                        {10.0f, 20.0f, 300.0f, 400.0f},
+                                                        {320.0f, 20.0f, 300.0f, 400.0f}}};
+
+    renderer::RenderOptions options;
+    options.normal_color = {1, 2, 3, 4};
+    options.selected_color = {5, 6, 7, 8};
+    options.stored_color = {9, 10, 11, 12};
+    options.border_width = 4.0f;
+
+    auto snapshot =
+        make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 20}, std::nullopt);
+
+    REQUIRE(snapshot.rects.size() == 2);
+    CHECK(snapshot.rects[0].x == doctest::Approx(10.0f));
+    CHECK(snapshot.rects[0].color.r == 5);
+    CHECK(snapshot.rects[0].color.g == 6);
+    CHECK(snapshot.rects[0].border_width == doctest::Approx(4.0f));
+    CHECK(snapshot.rects[1].x == doctest::Approx(320.0f));
+    CHECK(snapshot.rects[1].color.r == 9);
+    CHECK(snapshot.rects[1].color.g == 10);
+    CHECK_FALSE(snapshot.message.has_value());
+  }
 }
 
 } // namespace wintiler
