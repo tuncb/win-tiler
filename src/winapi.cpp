@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cctype>
 #include <limits>
+#include <unordered_map>
 
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
@@ -123,17 +124,148 @@ static std::optional<DWORD_T> get_window_pid(HWND_T hwnd) {
   return std::nullopt;
 }
 
-static std::string get_process_name_from_pid(DWORD_T pid) {
+struct CachedProcessName {
+  HANDLE process_handle = nullptr;
+  std::string process_name;
+  size_t last_seen_generation = 0;
+};
+
+struct CachedWindowClassName {
+  std::optional<DWORD_T> pid;
+  ULONG_PTR class_atom = 0;
+  std::string class_name;
+  size_t last_seen_generation = 0;
+};
+
+static std::unordered_map<DWORD_T, CachedProcessName> g_process_name_cache;
+static std::unordered_map<HWND_T, CachedWindowClassName> g_window_class_name_cache;
+static size_t g_metadata_cache_generation = 0;
+
+static void close_cached_process_handle(HANDLE process_handle, DWORD_T pid) {
+  if (process_handle == nullptr) {
+    return;
+  }
+  if (CloseHandle(process_handle) == 0) {
+    spdlog::debug("Failed to close cached process handle for pid {}, error={}", pid,
+                  GetLastError());
+  }
+}
+
+static bool cached_process_handle_is_alive(HANDLE process_handle, DWORD_T pid) {
+  if (process_handle == nullptr) {
+    return false;
+  }
+
+  DWORD wait_result = WaitForSingleObject(process_handle, 0);
+  if (wait_result == WAIT_TIMEOUT) {
+    return true;
+  }
+
+  if (wait_result == WAIT_FAILED) {
+    spdlog::debug("Failed to query cached process handle for pid {}, error={}", pid,
+                  GetLastError());
+  }
+
+  return false;
+}
+
+static void mark_seen_generation(size_t& last_seen_generation,
+                                 std::optional<size_t> seen_generation) {
+  if (seen_generation.has_value()) {
+    last_seen_generation = *seen_generation;
+  }
+}
+
+static std::string get_process_name_from_pid(DWORD_T pid,
+                                             std::optional<size_t> seen_generation = std::nullopt) {
+  auto cached = g_process_name_cache.find(pid);
+  if (cached != g_process_name_cache.end()) {
+    if (cached_process_handle_is_alive(cached->second.process_handle, pid)) {
+      mark_seen_generation(cached->second.last_seen_generation, seen_generation);
+      return cached->second.process_name;
+    }
+
+    close_cached_process_handle(cached->second.process_handle, pid);
+    g_process_name_cache.erase(cached);
+  }
+
   std::string processName;
-  HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+  HANDLE hProcess =
+      OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE, FALSE, pid);
+  bool can_cache_process_handle = hProcess != nullptr;
+  if (hProcess == nullptr) {
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+  }
+
   if (hProcess) {
     char buffer[MAX_PATH];
     if (GetModuleBaseNameA(hProcess, NULL, buffer, MAX_PATH)) {
       processName = buffer;
     }
-    CloseHandle(hProcess);
+
+    if (can_cache_process_handle && !processName.empty()) {
+      CachedProcessName entry;
+      entry.process_handle = hProcess;
+      entry.process_name = processName;
+      entry.last_seen_generation = seen_generation.value_or(0);
+      g_process_name_cache[pid] = std::move(entry);
+    } else {
+      close_cached_process_handle(hProcess, pid);
+    }
   }
   return processName;
+}
+
+static std::string
+get_window_class_name_for_pid(HWND hwnd, std::optional<DWORD_T> pid,
+                              std::optional<size_t> seen_generation = std::nullopt) {
+  if (!IsWindow(hwnd)) {
+    return {};
+  }
+
+  HWND_T cache_key = reinterpret_cast<HWND_T>(hwnd);
+  ULONG_PTR class_atom = static_cast<ULONG_PTR>(GetClassLongPtrA(hwnd, GCW_ATOM));
+
+  auto cached = g_window_class_name_cache.find(cache_key);
+  if (cached != g_window_class_name_cache.end() && class_atom != 0 && cached->second.pid == pid &&
+      cached->second.class_atom == class_atom) {
+    mark_seen_generation(cached->second.last_seen_generation, seen_generation);
+    return cached->second.class_name;
+  }
+
+  char class_name_buf[256] = {};
+  if (GetClassNameA(hwnd, class_name_buf, sizeof(class_name_buf)) <= 0) {
+    g_window_class_name_cache.erase(cache_key);
+    return {};
+  }
+
+  CachedWindowClassName entry;
+  entry.pid = pid;
+  entry.class_atom = class_atom;
+  entry.class_name = class_name_buf;
+  entry.last_seen_generation = seen_generation.value_or(0);
+  g_window_class_name_cache[cache_key] = entry;
+  return entry.class_name;
+}
+
+static void prune_metadata_caches_after_enumeration(size_t seen_generation) {
+  for (auto it = g_window_class_name_cache.begin(); it != g_window_class_name_cache.end();) {
+    if (it->second.last_seen_generation != seen_generation || !IsWindow((HWND)it->first)) {
+      it = g_window_class_name_cache.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  for (auto it = g_process_name_cache.begin(); it != g_process_name_cache.end();) {
+    if (it->second.last_seen_generation != seen_generation ||
+        !cached_process_handle_is_alive(it->second.process_handle, it->first)) {
+      close_cached_process_handle(it->second.process_handle, it->first);
+      it = g_process_name_cache.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 static bool is_window_maximized(HWND_T hwnd) {
@@ -147,6 +279,7 @@ static bool is_window_minimized(HWND_T hwnd) {
 struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
+  size_t generation;
 };
 
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
@@ -166,11 +299,8 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  char class_name_buf[256];
-  std::string class_name;
-  if (GetClassNameA(hwnd, class_name_buf, sizeof(class_name_buf)) > 0) {
-    class_name = class_name_buf;
-  }
+  auto pid = get_window_pid(reinterpret_cast<HWND_T>(hwnd));
+  std::string class_name = get_window_class_name_for_pid(hwnd, pid, ctx->generation);
 
   if (class_name == "SysDragImage") {
     return TRUE;
@@ -203,10 +333,9 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  auto pid = get_window_pid(reinterpret_cast<HWND_T>(hwnd));
   std::string process_name;
   if (pid.has_value()) {
-    process_name = get_process_name_from_pid(*pid);
+    process_name = get_process_name_from_pid(*pid, ctx->generation);
   }
 
   if (process_name.empty()) {
@@ -265,8 +394,10 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
 static void fill_windows_list(const wintiler::IgnoreOptions& ignore_options,
                               std::vector<HWND_T>& handles) {
   handles.clear();
-  WindowEnumContext ctx{&handles, &ignore_options};
+  size_t generation = ++g_metadata_cache_generation;
+  WindowEnumContext ctx{&handles, &ignore_options, generation};
   EnumWindows(WindowEnumProc, (LPARAM)&ctx);
+  prune_metadata_caches_after_enumeration(generation);
 }
 
 static void gather_raw_window_data_into(const wintiler::IgnoreOptions& ignore_options,
@@ -387,10 +518,8 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   }
   state.has_title = title_length > 0;
 
-  char class_name_buf[256] = {};
-  if (GetClassNameA(hwnd, class_name_buf, sizeof(class_name_buf)) > 0) {
-    state.class_name = class_name_buf;
-  }
+  state.pid = get_window_pid(state.handle);
+  state.class_name = get_window_class_name_for_pid(hwnd, state.pid);
 
   state.is_sys_drag_image = state.class_name == "SysDragImage";
   state.is_tooltip = state.class_name == "tooltips_class32";
@@ -402,7 +531,6 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   state.is_no_activate = (state.ex_style & WS_EX_NOACTIVATE) != 0;
   state.is_hung = IsHungAppWindow(hwnd) != 0;
 
-  state.pid = get_window_pid(state.handle);
   if (state.pid.has_value()) {
     state.process_name = get_process_name_from_pid(*state.pid);
   }
@@ -698,12 +826,8 @@ WindowInfo get_window_info(HWND_T hwnd) {
     info.title = title;
   }
 
-  char classNameBuf[256];
-  if (GetClassNameA((HWND)hwnd, classNameBuf, sizeof(classNameBuf)) > 0) {
-    info.className = classNameBuf;
-  }
-
   info.pid = get_window_pid(hwnd);
+  info.className = get_window_class_name_for_pid((HWND)hwnd, info.pid);
   if (info.pid.has_value()) {
     info.processName = get_process_name_from_pid(info.pid.value());
   }
