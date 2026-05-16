@@ -122,6 +122,32 @@ TEST_SUITE("loop") {
     CHECK(cluster_options.size() == monitors.size());
   }
 
+  TEST_CASE("monitor enumeration uses cached snapshots until invalidated") {
+    std::vector<winapi::MonitorInfo> cached_monitors = {{reinterpret_cast<winapi::HMONITOR_T>(1),
+                                                         "DISPLAY1",
+                                                         {0, 0, 800, 600},
+                                                         {0, 0, 800, 560},
+                                                         true},
+                                                        {reinterpret_cast<winapi::HMONITOR_T>(2),
+                                                         "DISPLAY2",
+                                                         {800, 0, 1600, 600},
+                                                         {800, 0, 1600, 560},
+                                                         false}};
+
+    winapi::set_monitor_cache_for_test(cached_monitors);
+
+    std::vector<winapi::MonitorInfo> monitors;
+    winapi::fill_monitors(monitors);
+
+    CHECK(monitors.size() == cached_monitors.size());
+    CHECK(winapi::monitors_equal(monitors, cached_monitors));
+    CHECK_FALSE(winapi::is_monitor_cache_dirty_for_test());
+
+    winapi::invalidate_monitor_cache();
+
+    CHECK(winapi::is_monitor_cache_dirty_for_test());
+  }
+
   TEST_CASE("overlay render cache skips unchanged snapshots") {
     OverlayRenderCache cache;
     OverlayRenderSnapshot snapshot;

@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cctype>
 #include <limits>
+#include <mutex>
 #include <unordered_map>
 
 // Link with Psapi.lib
@@ -51,10 +52,43 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
   return TRUE;
 }
 
-void fill_monitors(std::vector<MonitorInfo>& monitors) {
+namespace {
+std::mutex g_monitor_cache_mutex;
+std::vector<MonitorInfo> g_monitor_cache;
+bool g_monitor_cache_dirty = true;
+
+void fill_monitors_uncached(std::vector<MonitorInfo>& monitors) {
   monitors.clear();
   EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)&monitors);
 }
+} // namespace
+
+void fill_monitors(std::vector<MonitorInfo>& monitors) {
+  std::scoped_lock lock(g_monitor_cache_mutex);
+  if (g_monitor_cache_dirty) {
+    fill_monitors_uncached(g_monitor_cache);
+    g_monitor_cache_dirty = false;
+  }
+  monitors = g_monitor_cache;
+}
+
+void invalidate_monitor_cache() {
+  std::scoped_lock lock(g_monitor_cache_mutex);
+  g_monitor_cache_dirty = true;
+}
+
+#ifndef DOCTEST_CONFIG_DISABLE
+void set_monitor_cache_for_test(const std::vector<MonitorInfo>& monitors) {
+  std::scoped_lock lock(g_monitor_cache_mutex);
+  g_monitor_cache = monitors;
+  g_monitor_cache_dirty = false;
+}
+
+bool is_monitor_cache_dirty_for_test() {
+  std::scoped_lock lock(g_monitor_cache_mutex);
+  return g_monitor_cache_dirty;
+}
+#endif // !DOCTEST_CONFIG_DISABLE
 
 static bool visible_size_differs_from_target(const WindowPosition& target_visible_position,
                                              const WindowPosition& actual_visible_position) {
@@ -1277,6 +1311,11 @@ LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     }
     return TRUE; // Must return TRUE for power messages
 
+  case WM_DISPLAYCHANGE:
+    invalidate_monitor_cache();
+    spdlog::info("Display configuration changed - monitor cache invalidated");
+    return 0;
+
   default:
     return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
@@ -1299,7 +1338,7 @@ bool create_notification_window() {
 
   g_notification_hwnd =
       CreateWindowExW(0, NOTIFICATION_WINDOW_CLASS, L"WinTiler Notifications", 0, 0, 0, 0, 0,
-                      HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+                      nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
 
   if (!g_notification_hwnd) {
     spdlog::error("Failed to create notification window, error={}", GetLastError());

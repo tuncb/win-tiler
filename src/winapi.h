@@ -52,6 +52,7 @@ struct WindowInfo {
 bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name);
 
 void fill_monitors(std::vector<MonitorInfo>& monitors);
+void invalidate_monitor_cache();
 void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
@@ -167,5 +168,10 @@ struct LoopInputState {
 // Gather all input state for the main loop in a single call
 void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
                                   LoopInputState& state, std::vector<HWND_T>& all_handles);
+
+#ifndef DOCTEST_CONFIG_DISABLE
+void set_monitor_cache_for_test(const std::vector<MonitorInfo>& monitors);
+bool is_monitor_cache_dirty_for_test();
+#endif // !DOCTEST_CONFIG_DISABLE
 
 } // namespace winapi
