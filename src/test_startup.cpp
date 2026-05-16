@@ -58,6 +58,15 @@ TEST_SUITE("winapi") {
   TEST_CASE("power messages are not deferred to hotkey polling") {
     CHECK_FALSE(winapi::should_defer_message_to_hotkey_poll(0x0218));
   }
+
+  TEST_CASE("display and setting changes invalidate monitor cache") {
+    CHECK(winapi::should_invalidate_monitor_cache_for_message(0x007E));
+    CHECK(winapi::should_invalidate_monitor_cache_for_message(0x001A));
+  }
+
+  TEST_CASE("unrelated messages do not invalidate monitor cache") {
+    CHECK_FALSE(winapi::should_invalidate_monitor_cache_for_message(0x0312));
+  }
 }
 
 #endif // !DOCTEST_CONFIG_DISABLE

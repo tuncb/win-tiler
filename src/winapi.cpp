@@ -35,6 +35,10 @@ bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_
   return has_owner && class_name == "#32770";
 }
 
+bool should_invalidate_monitor_cache_for_message(unsigned int message) {
+  return message == WM_DISPLAYCHANGE || message == WM_SETTINGCHANGE;
+}
+
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor,
                               LPARAM dwData) {
   std::vector<MonitorInfo>* monitors = reinterpret_cast<std::vector<MonitorInfo>*>(dwData);
@@ -1256,6 +1260,12 @@ HANDLE g_resume_event = nullptr;
 const wchar_t* NOTIFICATION_WINDOW_CLASS = L"WinTilerNotificationWindow";
 
 LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  if (should_invalidate_monitor_cache_for_message(msg)) {
+    invalidate_monitor_cache();
+    spdlog::info("Display or work-area configuration changed - monitor cache invalidated");
+    return 0;
+  }
+
   switch (msg) {
   case WM_WTSSESSION_CHANGE:
     if (wParam == WTS_SESSION_LOCK) {
@@ -1310,11 +1320,6 @@ LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
       }
     }
     return TRUE; // Must return TRUE for power messages
-
-  case WM_DISPLAYCHANGE:
-    invalidate_monitor_cache();
-    spdlog::info("Display configuration changed - monitor cache invalidated");
-    return 0;
 
   default:
     return DefWindowProcW(hwnd, msg, wParam, lParam);

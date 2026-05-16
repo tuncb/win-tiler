@@ -98,6 +98,9 @@ std::optional<int> check_keyboard_action();
 // Returns true for messages that should remain queued for check_keyboard_action().
 [[nodiscard]] bool should_defer_message_to_hotkey_poll(unsigned int message);
 
+// Returns true for messages that can change monitor geometry or work-area bounds.
+[[nodiscard]] bool should_invalidate_monitor_cache_for_message(unsigned int message);
+
 // Process queued window messages while leaving hotkeys queued for check_keyboard_action().
 void process_pending_non_hotkey_messages();
 
