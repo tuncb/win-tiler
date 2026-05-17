@@ -992,6 +992,70 @@ TEST_SUITE("Type Coercion") {
     CHECK(result.value().loopOptions.configRefreshIntervalMs == 250);
   }
 
+  TEST_CASE("mouse drag drop defaults to exchange") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "interval_ms = 100\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.mouse_drag_drop == MouseDragDropAction::Exchange);
+  }
+
+  TEST_CASE("mouse drag drop can be configured to split") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "mouse_drag_drop = \"split\"\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.mouse_drag_drop == MouseDragDropAction::Split);
+  }
+
+  TEST_CASE("invalid mouse drag drop falls back to default") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[loop]\n";
+      file << "mouse_drag_drop = \"move\"\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().loopOptions.mouse_drag_drop == MouseDragDropAction::Exchange);
+  }
+
+  TEST_CASE("mouse drag drop option is written to TOML") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    GlobalOptions options = get_default_global_options();
+    options.loopOptions.mouse_drag_drop = MouseDragDropAction::Split;
+
+    auto writeResult = write_options_toml(options, temp_path);
+    REQUIRE(writeResult.has_value());
+
+    auto readResult = read_options_toml(temp_path);
+    REQUIRE(readResult.has_value());
+
+    CHECK(readResult.value().loopOptions.mouse_drag_drop == MouseDragDropAction::Split);
+  }
+
   TEST_CASE("negative loop config refresh interval falls back to default") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);

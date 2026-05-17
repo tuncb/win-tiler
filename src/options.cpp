@@ -126,6 +126,29 @@ std::optional<LayoutSplitDir> string_to_layout_split_dir(std::string value) {
   return std::nullopt;
 }
 
+std::string mouse_drag_drop_action_to_string(MouseDragDropAction action) {
+  switch (action) {
+  case MouseDragDropAction::Exchange:
+    return "exchange";
+  case MouseDragDropAction::Split:
+    return "split";
+  }
+  return "exchange";
+}
+
+std::optional<MouseDragDropAction> string_to_mouse_drag_drop_action(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+  if (value == "exchange") {
+    return MouseDragDropAction::Exchange;
+  }
+  if (value == "split") {
+    return MouseDragDropAction::Split;
+  }
+  return std::nullopt;
+}
+
 std::string get_default_hotkey(HotkeyAction action) {
   switch (action) {
   case HotkeyAction::NavigateLeft:
@@ -579,6 +602,8 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     loop.insert("interval_ms", options.loopOptions.intervalMs);
     loop.insert("config_refresh_interval_ms", options.loopOptions.configRefreshIntervalMs);
     loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
+    loop.insert("mouse_drag_drop",
+                mouse_drag_drop_action_to_string(options.loopOptions.mouse_drag_drop));
     root.insert("loop", loop);
 
     // Build layout section
@@ -889,6 +914,17 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       }
       if (auto toggleZenOnWindowMaximize = (*loop)["toggle_zen_on_window_maximize"].as_boolean()) {
         options.loopOptions.toggle_zen_on_window_maximize = toggleZenOnWindowMaximize->get();
+      }
+      if (auto mouseDragDrop = (*loop)["mouse_drag_drop"].as_string()) {
+        auto action = string_to_mouse_drag_drop_action(std::string(mouseDragDrop->get()));
+        if (action.has_value()) {
+          options.loopOptions.mouse_drag_drop = *action;
+        } else {
+          spdlog::error(
+              "Invalid loop.mouse_drag_drop value ({}): must be \"exchange\" or \"split\". "
+              "Using default.",
+              mouseDragDrop->get());
+        }
       }
     }
 

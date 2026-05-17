@@ -51,6 +51,16 @@ TEST_SUITE("loop") {
     CHECK(classify_manual_pause_hotkey(std::nullopt) == ManualPauseHotkeyAction::None);
   }
 
+  TEST_CASE("mouse drag drop exchanges by default and splits with modifier") {
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, false) == true);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true) == false);
+  }
+
+  TEST_CASE("mouse drag drop split option exchanges with modifier") {
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, false) == false);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, true) == true);
+  }
+
   TEST_CASE("cluster update extraction reuses retained leaf buffers") {
     winapi::LoopInputState input;
     input.windows_per_monitor.resize(1);

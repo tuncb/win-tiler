@@ -30,7 +30,7 @@ Top-level sections:
 - `ignore`: ignored processes, ignored window titles, ignored process/title pairs, ignored child windows, and the minimum small-window size barrier.
 - `keyboard`: maps actions to hotkeys.
 - `gap`: horizontal and vertical spacing between tiled windows.
-- `loop`: loop timing and automatic zen toggling on maximize.
+- `loop`: loop timing, automatic zen toggling on maximize, and mouse drag/drop behavior.
 - `layout`: optional declarative tiling rules selected by managed window count.
 - `visualization`: toast timing and overlay rendering settings, including zen mode sizing.
 - `monitor_profiles`: optional per-monitor overrides for gap, layout, and zen mode sizing.
@@ -93,6 +93,7 @@ vertical = 10.0
 interval_ms = 100
 config_refresh_interval_ms = 1000
 toggle_zen_on_window_maximize = true
+mouse_drag_drop = "exchange"
 
 [layout]
 enabled = true
@@ -170,6 +171,9 @@ ratio = 0.50
 `vertical` splits left/right and `horizontal` splits top/bottom. The ratio belongs to the first
 side of the split, so `ratio = 0.30` gives the first side 30% and the second side 70%. Rules whose
 tree leaf count does not match `window_count` are ignored.
+
+Mouse-based window drag/drop uses `loop.mouse_drag_drop` for the plain drag action. Set it to
+`"exchange"` or `"split"`; Ctrl+drag/drop performs the other action.
 
 ## Command Line Arguments
 

@@ -95,6 +95,9 @@ enum class ManualPauseHotkeyAction {
 [[nodiscard]] ManualPauseHotkeyAction
 classify_manual_pause_hotkey(std::optional<HotkeyAction> hotkey_action);
 
+[[nodiscard]] bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action,
+                                                   bool is_modifier_pressed);
+
 void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_options = {});
 
 } // namespace wintiler

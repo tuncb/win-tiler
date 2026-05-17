@@ -98,11 +98,14 @@ struct GapOverrideOptions {
   std::optional<float> vertical;
 };
 
+enum class MouseDragDropAction { Exchange, Split };
+
 // Loop configuration
 struct LoopOptions {
   int intervalMs = kDefaultLoopIntervalMs;
   int configRefreshIntervalMs = kDefaultConfigRefreshIntervalMs;
   bool toggle_zen_on_window_maximize = kDefaultToggleZenOnWindowMaximize;
+  MouseDragDropAction mouse_drag_drop = MouseDragDropAction::Exchange;
 };
 
 enum class LayoutSplitDir { Vertical, Horizontal };

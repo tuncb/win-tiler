@@ -205,6 +205,16 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
   return ManualPauseHotkeyAction::Ignore;
 }
 
+bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action, bool is_modifier_pressed) {
+  switch (base_action) {
+  case MouseDragDropAction::Exchange:
+    return !is_modifier_pressed;
+  case MouseDragDropAction::Split:
+    return is_modifier_pressed;
+  }
+  return !is_modifier_pressed;
+}
+
 namespace {
 
 // Toast message display state
@@ -322,7 +332,9 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
                              const LoopDesktopData& desktop_data,
                              const std::vector<ClusterTilingOptions>& cluster_options,
                              bool auto_zen_on_maximize, std::optional<HotkeyAction> hotkey_action,
-                             const LayoutOptions& layout_options, EngineFrameInput& frame_input) {
+                             const LayoutOptions& layout_options,
+                             MouseDragDropAction mouse_drag_drop_action,
+                             EngineFrameInput& frame_input) {
   extract_cluster_updates_from_input_into(input_state, frame_input.cluster_updates);
   extract_managed_window_states_from_input_into(input_state, frame_input.managed_windows);
   frame_input.hotkey_action = hotkey_action;
@@ -345,7 +357,8 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
     CompletedDragRequest drag_request;
     drag_request.leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-    drag_request.do_exchange = input_state.is_ctrl_pressed;
+    drag_request.do_exchange =
+        should_exchange_mouse_drag_drop(mouse_drag_drop_action, input_state.is_ctrl_pressed);
     drag_request.cursor_pos = frame_input.cursor_pos;
 
     auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);
@@ -685,7 +698,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto build_frame_input_start = std::chrono::steady_clock::now();
     fill_engine_frame_input(input_state, current_desktop.data, cluster_options,
                             provider.options.loopOptions.toggle_zen_on_window_maximize,
-                            poll_hotkey_action(), provider.options.layoutOptions, frame_input);
+                            poll_hotkey_action(), provider.options.layoutOptions,
+                            provider.options.loopOptions.mouse_drag_drop, frame_input);
     perf.record_stage(LoopPerfStage::BuildFrameInput,
                       std::chrono::steady_clock::now() - build_frame_input_start);
 
