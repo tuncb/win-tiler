@@ -155,6 +155,30 @@ std::optional<int> rebuild_cluster_from_layout_rule(Cluster& cluster,
   return state.last_leaf_index;
 }
 
+void collect_leaf_ids_in_layout_order(const Cluster& cluster, int cell_index,
+                                      std::vector<size_t>& leaf_ids) {
+  if (!cluster.tree.is_valid_index(cell_index)) {
+    return;
+  }
+
+  if (cluster.tree.is_leaf(cell_index)) {
+    if (cluster.tree[cell_index].leaf_id.has_value()) {
+      leaf_ids.push_back(*cluster.tree[cell_index].leaf_id);
+    }
+    return;
+  }
+
+  auto first_child = cluster.tree.get_first_child(cell_index);
+  if (first_child.has_value()) {
+    collect_leaf_ids_in_layout_order(cluster, *first_child, leaf_ids);
+  }
+
+  auto second_child = cluster.tree.get_second_child(cell_index);
+  if (second_child.has_value()) {
+    collect_leaf_ids_in_layout_order(cluster, *second_child, leaf_ids);
+  }
+}
+
 int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids, SplitMode mode) {
   int current_selection = -1;
 
@@ -569,12 +593,37 @@ std::optional<int> find_cell_by_leaf_id(const Cluster& cluster, size_t leaf_id) 
 
 std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster) {
   std::vector<size_t> leaf_ids;
-  for (int i = 0; i < static_cast<int>(cluster.tree.size()); ++i) {
-    if (cluster.tree.is_leaf(i) && cluster.tree[i].leaf_id.has_value()) {
-      leaf_ids.push_back(*cluster.tree[i].leaf_id);
-    }
+  leaf_ids.reserve(cluster.tree.size());
+  if (!cluster.tree.empty()) {
+    collect_leaf_ids_in_layout_order(cluster, 0, leaf_ids);
   }
   return leaf_ids;
+}
+
+std::vector<size_t> build_layout_rule_leaf_order(const Cluster& cluster,
+                                                 const std::vector<size_t>& desired_leaf_ids) {
+  std::vector<size_t> ordered_leaf_ids;
+  ordered_leaf_ids.reserve(desired_leaf_ids.size());
+
+  for (size_t leaf_id : get_cluster_leaf_ids(cluster)) {
+    bool still_exists = std::find(desired_leaf_ids.begin(), desired_leaf_ids.end(), leaf_id) !=
+                        desired_leaf_ids.end();
+    bool already_added = std::find(ordered_leaf_ids.begin(), ordered_leaf_ids.end(), leaf_id) !=
+                         ordered_leaf_ids.end();
+    if (still_exists && !already_added) {
+      ordered_leaf_ids.push_back(leaf_id);
+    }
+  }
+
+  for (size_t leaf_id : desired_leaf_ids) {
+    bool already_added = std::find(ordered_leaf_ids.begin(), ordered_leaf_ids.end(), leaf_id) !=
+                         ordered_leaf_ids.end();
+    if (!already_added) {
+      ordered_leaf_ids.push_back(leaf_id);
+    }
+  }
+
+  return ordered_leaf_ids;
 }
 
 void compute_children_rects(const Cluster& cluster, int node_index, std::vector<Rect>& rects,
@@ -1080,8 +1129,9 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
             system.selection.has_value() &&
             system.selection->cluster_index == static_cast<int>(cluster_idx);
         auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
+        auto ordered_leaf_ids = build_layout_rule_leaf_order(cluster, cluster_update.leaf_ids);
         auto fallback_leaf_index =
-            rebuild_cluster_from_layout_rule(cluster, cluster_update.leaf_ids, *layout_rule);
+            rebuild_cluster_from_layout_rule(cluster, ordered_leaf_ids, *layout_rule);
         if (fallback_leaf_index.has_value()) {
           if (selection_was_in_cluster || !system.selection.has_value()) {
             select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id,

@@ -2,6 +2,8 @@
 
 #include <doctest/doctest.h>
 
+#include <memory>
+
 #include "engine.h"
 
 using namespace wintiler;
@@ -68,6 +70,25 @@ LayoutRule create_two_window_vertical_layout_rule(float ratio) {
 LayoutOptions create_two_window_vertical_layout_options(float ratio) {
   LayoutOptions options;
   options.rules.push_back(create_two_window_vertical_layout_rule(ratio));
+  return options;
+}
+
+LayoutRule create_three_window_vertical_right_horizontal_layout_rule() {
+  LayoutRule rule;
+  rule.window_count = 3;
+  rule.tree.split_dir = LayoutSplitDir::Vertical;
+  rule.tree.split_ratio = 0.5f;
+
+  auto right = std::make_shared<LayoutTreeNode>();
+  right->split_dir = LayoutSplitDir::Horizontal;
+  right->split_ratio = 0.5f;
+  rule.tree.second = right;
+  return rule;
+}
+
+LayoutOptions create_three_window_vertical_right_horizontal_layout_options() {
+  LayoutOptions options;
+  options.rules.push_back(create_three_window_vertical_right_horizontal_layout_rule());
   return options;
 }
 
@@ -696,6 +717,41 @@ TEST_SUITE("Engine::update") {
     REQUIRE(cluster.tree.size() == 3);
     CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
     CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.30f));
+  }
+
+  TEST_CASE("layout rule rebuild preserves existing leaf order before appending new windows") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {40, 30, 10, 20}}};
+    engine.init(infos);
+
+    LayoutOptions layout_options = create_three_window_vertical_right_horizontal_layout_options();
+    std::vector<ClusterCellUpdateInfo> updates = {{{10, 20, 30}, false}};
+
+    UpdateResult result = engine.update(updates, std::nullopt, &layout_options);
+
+    CHECK(result.topology_changed == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+
+    auto left_child = cluster.tree.get_first_child(0);
+    auto right_child = cluster.tree.get_second_child(0);
+    REQUIRE(left_child.has_value());
+    REQUIRE(right_child.has_value());
+    REQUIRE(cluster.tree[*left_child].leaf_id.has_value());
+    CHECK(*cluster.tree[*left_child].leaf_id == 30);
+
+    auto right_top_child = cluster.tree.get_first_child(*right_child);
+    auto right_bottom_child = cluster.tree.get_second_child(*right_child);
+    REQUIRE(right_top_child.has_value());
+    REQUIRE(right_bottom_child.has_value());
+    REQUIRE(cluster.tree[*right_top_child].leaf_id.has_value());
+    REQUIRE(cluster.tree[*right_bottom_child].leaf_id.has_value());
+    CHECK(*cluster.tree[*right_top_child].leaf_id == 10);
+    CHECK(*cluster.tree[*right_bottom_child].leaf_id == 20);
   }
 }
 
