@@ -52,13 +52,19 @@ TEST_SUITE("loop") {
   }
 
   TEST_CASE("mouse drag drop exchanges by default and splits with modifier") {
-    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, false) == true);
-    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true) == false);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, false, false) == true);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true, false) == false);
   }
 
   TEST_CASE("mouse drag drop split option exchanges with modifier") {
-    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, false) == false);
-    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, true) == true);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, false, false) == false);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, true, false) == true);
+  }
+
+  TEST_CASE("mouse drag drop treats the right mouse button as a modifier") {
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, false, true) == false);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, false, true) == true);
+    CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true, true) == false);
   }
 
   TEST_CASE("cluster update extraction reuses retained leaf buffers") {

@@ -1491,6 +1491,10 @@ static bool is_ctrl_pressed() {
   return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 }
 
+static bool is_right_mouse_pressed() {
+  return (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+}
+
 static bool is_window_fullscreen(HWND_T hwnd) {
   if (hwnd == nullptr) {
     return false;
@@ -1559,6 +1563,7 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.drag_info = get_drag_info();
   state.cursor_pos = get_cursor_pos();
   state.is_ctrl_pressed = is_ctrl_pressed();
+  state.is_right_mouse_pressed = is_right_mouse_pressed();
   state.foreground_window = get_foreground_window();
   state.desktop_id.reset();
 

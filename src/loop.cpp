@@ -205,7 +205,10 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
   return ManualPauseHotkeyAction::Ignore;
 }
 
-bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action, bool is_modifier_pressed) {
+bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action, bool is_ctrl_pressed,
+                                     bool is_right_mouse_pressed) {
+  bool is_modifier_pressed = is_ctrl_pressed || is_right_mouse_pressed;
+
   switch (base_action) {
   case MouseDragDropAction::Exchange:
     return !is_modifier_pressed;
@@ -357,8 +360,8 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   if (input_state.drag_info.has_value() && input_state.drag_info->move_ended) {
     CompletedDragRequest drag_request;
     drag_request.leaf_id = reinterpret_cast<size_t>(input_state.drag_info->hwnd);
-    drag_request.do_exchange =
-        should_exchange_mouse_drag_drop(mouse_drag_drop_action, input_state.is_ctrl_pressed);
+    drag_request.do_exchange = should_exchange_mouse_drag_drop(
+        mouse_drag_drop_action, input_state.is_ctrl_pressed, input_state.is_right_mouse_pressed);
     drag_request.cursor_pos = frame_input.cursor_pos;
 
     auto actual_rect_opt = winapi::get_window_rect(input_state.drag_info->hwnd);

@@ -173,7 +173,7 @@ side of the split, so `ratio = 0.30` gives the first side 30% and the second sid
 tree leaf count does not match `window_count` are ignored.
 
 Mouse-based window drag/drop uses `loop.mouse_drag_drop` for the plain drag action. Set it to
-`"exchange"` or `"split"`; Ctrl+drag/drop performs the other action.
+`"exchange"` or `"split"`; Ctrl+drag/drop or right-button drag/drop performs the other action.
 
 ## Command Line Arguments
 

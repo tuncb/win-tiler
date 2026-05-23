@@ -96,7 +96,8 @@ enum class ManualPauseHotkeyAction {
 classify_manual_pause_hotkey(std::optional<HotkeyAction> hotkey_action);
 
 [[nodiscard]] bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action,
-                                                   bool is_modifier_pressed);
+                                                   bool is_ctrl_pressed,
+                                                   bool is_right_mouse_pressed);
 
 void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_options = {});
 

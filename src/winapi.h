@@ -154,6 +154,7 @@ struct LoopInputState {
   // Cursor and keyboard state
   std::optional<Point> cursor_pos;
   bool is_ctrl_pressed = false;
+  bool is_right_mouse_pressed = false;
 
   // Window state
   HWND_T foreground_window = nullptr;
