@@ -564,8 +564,7 @@ void maybe_print_perf_report(LoopPerfCollector& perf,
     return;
   }
 
-  std::cout << perf.format_report(report_time);
-  std::cout.flush();
+  spdlog::info("{}", perf.format_report(report_time));
   perf.reset_window(report_time);
 }
 
@@ -575,8 +574,7 @@ void flush_perf_report(LoopPerfCollector& perf) {
   }
 
   auto report_time = std::chrono::steady_clock::now();
-  std::cout << perf.format_report(report_time);
-  std::cout.flush();
+  spdlog::info("{}", perf.format_report(report_time));
   perf.reset_window(report_time);
 }
 
@@ -635,9 +633,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   LoopPerfCollector perf(run_options.perf_stats);
   if (perf.enabled) {
-    std::cout << "[perf] reporting every " << perf.report_interval.count()
-              << "s for loop mode stage timings\n";
-    std::cout.flush();
+    spdlog::info("[perf] reporting every {}s for loop mode stage timings",
+                 perf.report_interval.count());
   }
 
   winapi::LoopInputState input_state;

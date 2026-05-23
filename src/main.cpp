@@ -1,5 +1,6 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
+#include <Shellapi.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 #include <Windows.h>
@@ -14,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "app_console.h"
 #include "argument_parser.h"
 #include "loop.h"
 #include "options.h"
@@ -83,6 +85,21 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 using namespace wintiler;
 
+namespace {
+
+void ensure_console_logger_for_error(bool& console_attached) {
+  if (!console_attached) {
+    console_attached = attach_parent_console();
+  }
+  if (console_attached) {
+    configure_default_console_logger();
+  } else {
+    configure_default_null_logger();
+  }
+}
+
+} // namespace
+
 void applyLogLevel(LogLevel level) {
   switch (level) {
   case LogLevel::Trace:
@@ -122,21 +139,33 @@ tl::expected<void, std::string> configureLogFile(const CliOptions& options) {
   return {};
 }
 
-int main(int argc, char* argv[]) {
+int run_app(int argc, char* argv[]) {
   // Set DPI awareness before any Windows API calls that return coordinates
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
   // Parse command-line arguments
   auto result = parse_args(argc, argv);
+  bool console_attached = false;
   if (!result.success) {
+    ensure_console_logger_for_error(console_attached);
     spdlog::error("{}", result.error);
     return 1;
   }
 
   Command command = result.args.command.value_or(Command{LoopCommand{}});
 
+  if (command_should_attach_console(command, result.args.options)) {
+    console_attached = attach_parent_console();
+  }
+  if (console_attached) {
+    configure_default_console_logger();
+  } else {
+    configure_default_null_logger();
+  }
+
   auto logging_result = configureLogFile(result.args.options);
   if (!logging_result.has_value()) {
+    ensure_console_logger_for_error(console_attached);
     spdlog::error("{}", logging_result.error());
     return 1;
   }
@@ -172,6 +201,9 @@ int main(int argc, char* argv[]) {
       auto loaded = read_options_toml(configPath);
       if (!loaded.has_value()) {
         if (configExplicitlySpecified) {
+          if (!result.args.options.log_file_path.has_value()) {
+            ensure_console_logger_for_error(console_attached);
+          }
           spdlog::error("Failed to load config: {}", loaded.error());
           return 1;
         }
@@ -290,6 +322,38 @@ int main(int argc, char* argv[]) {
              },
              command);
   return exitCode;
+}
+
+int main(int argc, char* argv[]) {
+  return run_app(argc, argv);
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+  int argc = 0;
+  LPWSTR* wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+  if (wide_argv == nullptr) {
+    bool console_attached = false;
+    ensure_console_logger_for_error(console_attached);
+    spdlog::error("Failed to parse command line");
+    return 1;
+  }
+
+  auto storage = wide_args_to_utf8(argc, wide_argv);
+  HLOCAL free_result = LocalFree(wide_argv);
+  if (free_result != nullptr) {
+    bool console_attached = false;
+    ensure_console_logger_for_error(console_attached);
+    spdlog::error("Failed to release command-line argument storage");
+    return 1;
+  }
+
+  std::vector<char*> argv;
+  argv.reserve(storage.size());
+  for (auto& arg : storage) {
+    argv.push_back(arg.data());
+  }
+
+  return run_app(static_cast<int>(argv.size()), argv.data());
 }
 
 #endif

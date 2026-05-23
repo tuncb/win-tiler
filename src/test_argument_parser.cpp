@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "app_console.h"
 #include "argument_parser.h"
 #include "version.h"
 
@@ -168,6 +169,26 @@ TEST_SUITE("argument_parser") {
 
     CHECK_FALSE(result.success);
     CHECK(result.error == "--log-file requires a filepath");
+  }
+
+  TEST_CASE("terminal-oriented commands attach to a parent console") {
+    CliOptions options;
+
+    CHECK(command_should_attach_console(Command{HelpCommand{}}, options));
+    CHECK(command_should_attach_console(Command{VersionCommand{}}, options));
+    CHECK(command_should_attach_console(Command{MonitorInfoCommand{}}, options));
+    CHECK(command_should_attach_console(Command{TrackWindowsCommand{}}, options));
+    CHECK(command_should_attach_console(Command{InitConfigCommand{}}, options));
+    CHECK(command_should_attach_console(Command{StartupCommand{StartupAction::Status}}, options));
+  }
+
+  TEST_CASE("loop mode only attaches to a parent console for perf stats") {
+    CliOptions options;
+
+    CHECK_FALSE(command_should_attach_console(Command{LoopCommand{}}, options));
+
+    options.perf_stats = true;
+    CHECK(command_should_attach_console(Command{LoopCommand{}}, options));
   }
 }
 

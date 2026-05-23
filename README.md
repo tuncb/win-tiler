@@ -188,6 +188,12 @@ Global options are parsed before the command, so place `--logmode`, `--log-file`
 
 If no command is supplied, `win-tiler` defaults to `loop`.
 
+The application build uses the Windows subsystem so `loop` can be launched from
+Explorer or startup registration without opening a console window. Commands that
+produce terminal output attach to the parent console when one exists. For
+long-running `loop` diagnostics, prefer `--log-file`; `--perf-stats` writes
+performance summaries through the logger.
+
 ### Global Options
 
 | Option | Meaning |

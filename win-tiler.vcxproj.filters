@@ -18,6 +18,9 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\app_console.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\runtime_support.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -71,6 +74,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\app_console.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\runtime_support.h">
       <Filter>Header Files</Filter>
     </ClInclude>
