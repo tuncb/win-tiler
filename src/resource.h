@@ -1,0 +1,6 @@
+#ifndef WINTILER_RESOURCE_H
+#define WINTILER_RESOURCE_H
+
+#define IDI_APP_ICON 101
+
+#endif

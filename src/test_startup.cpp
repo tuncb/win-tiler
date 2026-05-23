@@ -1,9 +1,11 @@
 #ifndef DOCTEST_CONFIG_DISABLE
 
 #include <doctest/doctest.h>
+#include <windows.h>
 
 #include <filesystem>
 
+#include "resource.h"
 #include "startup.h"
 #include "winapi.h"
 
@@ -97,6 +99,12 @@ TEST_SUITE("winapi") {
     CHECK(availability.can_open_config);
     CHECK(availability.can_show_log);
     CHECK(availability.can_exit);
+  }
+
+  TEST_CASE("application icon resource is available") {
+    HICON icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
+
+    CHECK(icon != nullptr);
   }
 }
 

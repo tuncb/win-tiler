@@ -16,6 +16,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "resource.h"
+
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "Dwmapi.lib")
@@ -1442,7 +1444,12 @@ bool add_notification_area_icon() {
   g_notification_area_icon.uID = NOTIFICATION_AREA_ICON_ID;
   g_notification_area_icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID;
   g_notification_area_icon.uCallbackMessage = WM_WINTILER_NOTIFICATION_ICON;
-  g_notification_area_icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+  g_notification_area_icon.hIcon =
+      LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
+  if (g_notification_area_icon.hIcon == nullptr) {
+    spdlog::error("Failed to load notification area icon resource, error={}", GetLastError());
+    return false;
+  }
   g_notification_area_icon.guidItem = NOTIFICATION_AREA_ICON_GUID;
   wcscpy_s(g_notification_area_icon.szTip, L"win-tiler");
 
@@ -1571,6 +1578,8 @@ bool create_notification_window() {
   wc.cbSize = sizeof(wc);
   wc.lpfnWndProc = notification_wnd_proc;
   wc.hInstance = GetModuleHandleW(nullptr);
+  wc.hIcon = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+  wc.hIconSm = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
   wc.lpszClassName = NOTIFICATION_WINDOW_CLASS;
 
   if (!RegisterClassExW(&wc)) {
