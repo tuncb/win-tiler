@@ -1397,7 +1397,7 @@ void show_notification_area_menu(HWND hwnd) {
   bool menu_ok =
       append_notification_menu_item(menu, open_config_flags, ID_OPEN_CONFIG, L"Open config file");
   menu_ok =
-      append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Show log") && menu_ok;
+      append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Open log file") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;
   if (!menu_ok) {
