@@ -211,6 +211,7 @@ int run_app(int argc, char* argv[]) {
   }
 
   GlobalOptionsProvider optionsProvider;
+  std::optional<std::filesystem::path> resolved_config_path;
   if (command_uses_options_provider(command)) {
     // Determine config path to load
     std::filesystem::path configPath;
@@ -222,6 +223,7 @@ int run_app(int argc, char* argv[]) {
     } else {
       configPath = getDefaultConfigPath();
     }
+    resolved_config_path = configPath;
 
     // Load config once here so explicit config errors are surfaced before entering the command
     if (configExplicitlySpecified || std::filesystem::exists(configPath)) {
@@ -254,7 +256,9 @@ int run_app(int argc, char* argv[]) {
                    std::cout << "win-tiler v" << get_version_string() << std::endl;
                  },
                  [&](const LoopCommand&) {
-                   run_loop_mode(optionsProvider, LoopRunOptions{result.args.options.perf_stats});
+                   run_loop_mode(optionsProvider,
+                                 LoopRunOptions{result.args.options.perf_stats,
+                                                resolved_config_path, *log_file_path});
                  },
                  [](const MonitorInfoCommand&) {
                    std::vector<winapi::MonitorInfo> monitors;

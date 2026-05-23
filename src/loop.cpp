@@ -458,6 +458,10 @@ void print_tile_layout(const ctrl::System& system,
 }
 
 std::optional<HotkeyAction> poll_hotkey_action() {
+  if (winapi::consume_notification_area_exit_requested()) {
+    return HotkeyAction::Exit;
+  }
+
   auto hotkey_id = winapi::check_keyboard_action();
   if (!hotkey_id.has_value()) {
     return std::nullopt;
@@ -603,6 +607,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   // Register session/power notifications for pause on lock/sleep/display-off
   winapi::register_session_power_notifications();
+
+  winapi::register_notification_area_icon({run_options.config_path, run_options.log_file_path});
 
   // Initialize virtual desktop manager for desktop ID detection
   winapi::register_virtual_desktop_notifications();
@@ -930,6 +936,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   // Cleanup hotkeys, hooks, and overlay before exit
   unregister_navigation_hotkeys(provider.options.keyboardOptions);
   winapi::unregister_virtual_desktop_notifications();
+  winapi::unregister_notification_area_icon();
   winapi::unregister_session_power_notifications();
   winapi::unregister_move_size_hook();
   overlay::shutdown();

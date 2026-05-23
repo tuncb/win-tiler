@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <objbase.h>
 #include <psapi.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 #include <spdlog/spdlog.h>
 #include <windows.h>
@@ -20,6 +21,7 @@
 #pragma comment(lib, "Dwmapi.lib")
 #pragma comment(lib, "Wtsapi32.lib")
 #pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Shell32.lib")
 
 namespace winapi {
 
@@ -1287,6 +1289,11 @@ static const GUID GUID_CONSOLE_DISPLAY_STATE_LOCAL = {
 // Hidden window for receiving notifications
 HWND g_notification_hwnd = nullptr;
 HPOWERNOTIFY g_power_notify_handle = nullptr;
+NOTIFYICONDATAW g_notification_area_icon = {};
+bool g_notification_area_icon_added = false;
+NotificationAreaIconOptions g_notification_area_icon_options;
+std::atomic<bool> g_notification_area_exit_requested{false};
+UINT g_taskbar_created_message = 0;
 
 // Pause state flags (atomic for thread safety)
 std::atomic<bool> g_session_locked{false};
@@ -1300,8 +1307,182 @@ std::atomic<bool> g_display_state_initialized{false};
 HANDLE g_resume_event = nullptr;
 
 const wchar_t* NOTIFICATION_WINDOW_CLASS = L"WinTilerNotificationWindow";
+constexpr UINT WM_WINTILER_NOTIFICATION_ICON = WM_APP + 1;
+constexpr UINT_PTR NOTIFICATION_AREA_ICON_ID = 1;
+constexpr UINT ID_OPEN_CONFIG = 1001;
+constexpr UINT ID_SHOW_LOG = 1002;
+constexpr UINT ID_EXIT = 1003;
+const GUID NOTIFICATION_AREA_ICON_GUID = {
+    0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
+
+bool is_non_empty_path(const std::optional<std::filesystem::path>& path) {
+  return path.has_value() && !path->empty();
+}
+
+bool shell_open_path(HWND owner, const std::filesystem::path& path, const char* label) {
+  std::wstring wide_path = path.wstring();
+  HINSTANCE result =
+      ShellExecuteW(owner, L"open", wide_path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  if (reinterpret_cast<INT_PTR>(result) <= 32) {
+    spdlog::error("Failed to open {} '{}', ShellExecute result={}", label, path.string(),
+                  reinterpret_cast<INT_PTR>(result));
+    return false;
+  }
+
+  spdlog::info("Opened {}: {}", label, path.string());
+  return true;
+}
+
+bool append_notification_menu_item(HMENU menu, UINT flags, UINT_PTR id, const wchar_t* text) {
+  if (AppendMenuW(menu, flags, id, text) == 0) {
+    spdlog::error("Failed to append notification area menu item, error={}", GetLastError());
+    return false;
+  }
+  return true;
+}
+
+void handle_notification_menu_command(HWND hwnd, UINT command) {
+  switch (command) {
+  case ID_OPEN_CONFIG:
+    if (g_notification_area_icon_options.config_path.has_value()) {
+      shell_open_path(hwnd, *g_notification_area_icon_options.config_path, "config file");
+    }
+    return;
+
+  case ID_SHOW_LOG:
+    if (g_notification_area_icon_options.log_file_path.has_value()) {
+      shell_open_path(hwnd, *g_notification_area_icon_options.log_file_path, "log file");
+    }
+    return;
+
+  case ID_EXIT:
+    g_notification_area_exit_requested = true;
+    spdlog::info("Exit requested from notification area menu");
+    return;
+
+  default:
+    return;
+  }
+}
+
+void show_notification_area_menu(HWND hwnd) {
+  HMENU menu = CreatePopupMenu();
+  if (menu == nullptr) {
+    spdlog::error("Failed to create notification area menu, error={}", GetLastError());
+    return;
+  }
+
+  auto availability = get_notification_area_menu_availability(g_notification_area_icon_options);
+  UINT open_config_flags = MF_STRING;
+  if (!availability.can_open_config) {
+    open_config_flags |= MF_GRAYED;
+  }
+  UINT show_log_flags = MF_STRING;
+  if (!availability.can_show_log) {
+    show_log_flags |= MF_GRAYED;
+  }
+
+  bool menu_ok =
+      append_notification_menu_item(menu, open_config_flags, ID_OPEN_CONFIG, L"Open config file");
+  menu_ok =
+      append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Show log") && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;
+  if (!menu_ok) {
+    if (DestroyMenu(menu) == 0) {
+      spdlog::error("Failed to destroy notification area menu, error={}", GetLastError());
+    }
+    return;
+  }
+
+  POINT cursor_pos = {};
+  if (GetCursorPos(&cursor_pos) == 0) {
+    spdlog::error("Failed to get cursor position for notification area menu, error={}",
+                  GetLastError());
+    if (DestroyMenu(menu) == 0) {
+      spdlog::error("Failed to destroy notification area menu, error={}", GetLastError());
+    }
+    return;
+  }
+
+  if (SetForegroundWindow(hwnd) == 0) {
+    spdlog::debug("Failed to foreground notification window before menu, error={}", GetLastError());
+  }
+
+  UINT command = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, cursor_pos.x,
+                                cursor_pos.y, 0, hwnd, nullptr);
+  if (command != 0) {
+    handle_notification_menu_command(hwnd, command);
+  }
+
+  if (PostMessageW(hwnd, WM_NULL, 0, 0) == 0) {
+    spdlog::debug("Failed to post notification menu cleanup message, error={}", GetLastError());
+  }
+
+  if (DestroyMenu(menu) == 0) {
+    spdlog::error("Failed to destroy notification area menu, error={}", GetLastError());
+  }
+}
+
+bool should_show_notification_area_menu(LPARAM lParam) {
+  UINT message = LOWORD(lParam);
+  return message == WM_CONTEXTMENU || message == WM_RBUTTONUP || message == NIN_SELECT ||
+         message == NIN_KEYSELECT;
+}
+
+bool add_notification_area_icon() {
+  if (g_notification_hwnd == nullptr) {
+    spdlog::error("Cannot add notification area icon without a notification window");
+    return false;
+  }
+
+  g_notification_area_icon = {};
+  g_notification_area_icon.cbSize = sizeof(g_notification_area_icon);
+  g_notification_area_icon.hWnd = g_notification_hwnd;
+  g_notification_area_icon.uID = NOTIFICATION_AREA_ICON_ID;
+  g_notification_area_icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_GUID;
+  g_notification_area_icon.uCallbackMessage = WM_WINTILER_NOTIFICATION_ICON;
+  g_notification_area_icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+  g_notification_area_icon.guidItem = NOTIFICATION_AREA_ICON_GUID;
+  wcscpy_s(g_notification_area_icon.szTip, L"win-tiler");
+
+  if (Shell_NotifyIconW(NIM_ADD, &g_notification_area_icon) == 0) {
+    spdlog::error("Failed to add notification area icon, error={}", GetLastError());
+    return false;
+  }
+
+  g_notification_area_icon.uVersion = NOTIFYICON_VERSION_4;
+  if (Shell_NotifyIconW(NIM_SETVERSION, &g_notification_area_icon) == 0) {
+    spdlog::error("Failed to set notification area icon version, error={}", GetLastError());
+    if (Shell_NotifyIconW(NIM_DELETE, &g_notification_area_icon) == 0) {
+      spdlog::error("Failed to remove notification area icon after version failure, error={}",
+                    GetLastError());
+    }
+    return false;
+  }
+
+  g_notification_area_icon_added = true;
+  spdlog::info("Added notification area icon");
+  return true;
+}
+
+void readd_notification_area_icon_after_taskbar_restart() {
+  if (!g_notification_area_icon_added) {
+    return;
+  }
+
+  g_notification_area_icon_added = false;
+  if (!add_notification_area_icon()) {
+    spdlog::error("Failed to re-add notification area icon after taskbar restart");
+  }
+}
 
 LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  if (g_taskbar_created_message != 0 && msg == g_taskbar_created_message) {
+    readd_notification_area_icon_after_taskbar_restart();
+    return 0;
+  }
+
   if (should_invalidate_monitor_cache_for_message(msg)) {
     invalidate_monitor_cache();
     spdlog::info("Display or work-area configuration changed - monitor cache invalidated");
@@ -1309,6 +1490,16 @@ LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
   }
 
   switch (msg) {
+  case WM_WINTILER_NOTIFICATION_ICON:
+    if (should_show_notification_area_menu(lParam)) {
+      show_notification_area_menu(hwnd);
+    }
+    return 0;
+
+  case WM_COMMAND:
+    handle_notification_menu_command(hwnd, LOWORD(wParam));
+    return 0;
+
   case WM_WTSSESSION_CHANGE:
     if (wParam == WTS_SESSION_LOCK) {
       g_session_locked = true;
@@ -1369,6 +1560,13 @@ LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 }
 
 bool create_notification_window() {
+  if (g_taskbar_created_message == 0) {
+    g_taskbar_created_message = RegisterWindowMessageW(L"TaskbarCreated");
+    if (g_taskbar_created_message == 0) {
+      spdlog::error("Failed to register TaskbarCreated message, error={}", GetLastError());
+    }
+  }
+
   WNDCLASSEXW wc = {};
   wc.cbSize = sizeof(wc);
   wc.lpfnWndProc = notification_wnd_proc;
@@ -1395,6 +1593,11 @@ bool create_notification_window() {
   return true;
 }
 } // namespace
+
+NotificationAreaMenuAvailability
+get_notification_area_menu_availability(const NotificationAreaIconOptions& options) {
+  return {is_non_empty_path(options.config_path), is_non_empty_path(options.log_file_path), true};
+}
 
 void register_session_power_notifications() {
   // Create event for blocking wait (manual reset, initially signaled)
@@ -1427,7 +1630,40 @@ void register_session_power_notifications() {
   spdlog::info("Registered session/power notifications");
 }
 
+void register_notification_area_icon(const NotificationAreaIconOptions& options) {
+  g_notification_area_icon_options = options;
+  if (g_notification_area_icon_added) {
+    if (Shell_NotifyIconW(NIM_DELETE, &g_notification_area_icon) == 0) {
+      spdlog::error("Failed to replace notification area icon, error={}", GetLastError());
+    }
+    g_notification_area_icon_added = false;
+  }
+
+  if (!add_notification_area_icon()) {
+    spdlog::error("Failed to register notification area icon");
+  }
+}
+
+void unregister_notification_area_icon() {
+  if (!g_notification_area_icon_added) {
+    return;
+  }
+
+  if (Shell_NotifyIconW(NIM_DELETE, &g_notification_area_icon) == 0) {
+    spdlog::error("Failed to remove notification area icon, error={}", GetLastError());
+  }
+  g_notification_area_icon_added = false;
+  g_notification_area_icon = {};
+  spdlog::info("Removed notification area icon");
+}
+
+bool consume_notification_area_exit_requested() {
+  return g_notification_area_exit_requested.exchange(false);
+}
+
 void unregister_session_power_notifications() {
+  unregister_notification_area_icon();
+
   if (g_notification_hwnd) {
     WTSUnRegisterSessionNotification(g_notification_hwnd);
 

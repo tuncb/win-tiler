@@ -78,6 +78,26 @@ TEST_SUITE("winapi") {
   TEST_CASE("unrelated messages do not invalidate monitor cache") {
     CHECK_FALSE(winapi::should_invalidate_monitor_cache_for_message(0x0312));
   }
+
+  TEST_CASE("notification area menu enables only available file actions") {
+    winapi::NotificationAreaIconOptions options;
+    auto availability = winapi::get_notification_area_menu_availability(options);
+    CHECK_FALSE(availability.can_open_config);
+    CHECK_FALSE(availability.can_show_log);
+    CHECK(availability.can_exit);
+
+    options.config_path = R"(C:\Users\Test User\AppData\Roaming\win-tiler\config.toml)";
+    availability = winapi::get_notification_area_menu_availability(options);
+    CHECK(availability.can_open_config);
+    CHECK_FALSE(availability.can_show_log);
+    CHECK(availability.can_exit);
+
+    options.log_file_path = R"(C:\Users\Test User\AppData\Local\Temp\win-tiler.log)";
+    availability = winapi::get_notification_area_menu_availability(options);
+    CHECK(availability.can_open_config);
+    CHECK(availability.can_show_log);
+    CHECK(availability.can_exit);
+  }
 }
 
 #endif // !DOCTEST_CONFIG_DISABLE

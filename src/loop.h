@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -11,6 +12,8 @@ namespace wintiler {
 
 struct LoopRunOptions {
   bool perf_stats = false;
+  std::optional<std::filesystem::path> config_path;
+  std::optional<std::filesystem::path> log_file_path;
 };
 
 struct OverlayRenderRect {

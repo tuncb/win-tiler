@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
@@ -120,6 +121,24 @@ void unregister_move_size_hook();
 // Session/Power state management - pauses loop on lock/sleep/display-off
 void register_session_power_notifications();
 void unregister_session_power_notifications();
+
+struct NotificationAreaIconOptions {
+  std::optional<std::filesystem::path> config_path;
+  std::optional<std::filesystem::path> log_file_path;
+};
+
+struct NotificationAreaMenuAvailability {
+  bool can_open_config = false;
+  bool can_show_log = false;
+  bool can_exit = true;
+};
+
+[[nodiscard]] NotificationAreaMenuAvailability
+get_notification_area_menu_availability(const NotificationAreaIconOptions& options);
+
+void register_notification_area_icon(const NotificationAreaIconOptions& options);
+void unregister_notification_area_icon();
+[[nodiscard]] bool consume_notification_area_exit_requested();
 
 // Blocks until session is active (unlocked, awake, display on)
 // Returns immediately if already active
