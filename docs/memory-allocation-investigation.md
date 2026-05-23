@@ -163,8 +163,8 @@ Relevant code:
 Current behavior:
 
 Enumeration uses stack buffers for title/class names, but then copies class and process names into
-`std::string`. Process name queries open a process handle and return a string. Debug and agent paths
-also materialize title, class, and process strings.
+`std::string`. Process name queries open a process handle and return a string. Debug paths also
+materialize title, class, and process strings.
 
 Risk:
 
@@ -176,7 +176,7 @@ Recommended direction:
 - Cache process names by PID.
 - Cache static-ish window metadata by `HWND`, invalidated on destroy/title/name-related events or
   refreshed periodically.
-- Keep full metadata out of the hot frame snapshot unless needed by agent/debug output.
+- Keep full metadata out of the hot frame snapshot unless needed by debug output.
 
 ### Renderer And Overlay Resources
 
@@ -211,31 +211,28 @@ Recommended direction:
 - Cache toast text layout while the toast message is unchanged.
 - Reuse known monitor data from the loop instead of calling `get_monitors()` inside rendering.
 
-### Config, Startup, And Agent Paths
+### Config And Startup Paths
 
 Relevant code:
 
 - `src/options.cpp`: TOML parsing and `LayoutTreeNode` construction.
-- `src/agent_protocol.cpp`: JSON parsing and serialization.
-- `src/agent_mode.cpp`: state response construction.
 - `src/startup.cpp`: startup registration helpers.
 
 Current behavior:
 
-These paths use strings, vectors, JSON/TOML values, `std::ostringstream`, `std::istringstream`, and
+These paths use strings, vectors, TOML values, `std::ostringstream`, `std::istringstream`, and
 `std::shared_ptr<LayoutTreeNode>`.
 
 Risk:
 
-These allocations are acceptable because they occur on startup, config reload, explicit CLI/agent
-requests, or startup-management commands. They are not the primary frame-loop allocation source.
+These allocations are acceptable because they occur on startup, config reload, explicit CLI requests,
+or startup-management commands. They are not the primary frame-loop allocation source.
 
 Recommended direction:
 
 - Do not prioritize arenas here.
 - Layout parsing could eventually use value-owned tree storage instead of `shared_ptr`, but this is
   not urgent unless config reload becomes frequent or layout rule counts become large.
-- Agent protocol can stay allocation-heavy unless agent request throughput becomes a real workload.
 
 ## Arena And Pool Suitability
 
@@ -297,10 +294,9 @@ Recommended prerequisite:
 - Then consider exposing allocator-aware cluster/tree construction if profiling still shows tree
   allocation as relevant.
 
-### Poor Fit: Config And Agent JSON/TOML
+### Poor Fit: Config TOML
 
-TOML/JSON allocations are request-scoped or reload-scoped. They are not important enough to justify
-arena complexity unless the agent mode is expected to process high request volume.
+TOML allocations are reload-scoped. They are not important enough to justify arena complexity.
 
 ## Recommended Implementation Order
 

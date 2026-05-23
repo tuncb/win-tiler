@@ -4,7 +4,6 @@
     "spdlog",
     "tomlplusplus",
     "magic-enum",
-    "tl-expected",
-    "nlohmann-json"
+    "tl-expected"
   ]
 }

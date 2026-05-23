@@ -20,7 +20,6 @@
 #include <magic_enum/magic_enum.hpp>
 #include <map>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <sstream>

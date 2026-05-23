@@ -1,4 +1,0 @@
-{"id":"retile-1","command":"retile"}
-{"id":"swap-1","command":"swap_windows","first_window_id":"hwnd:REPLACE_WITH_FIRST_WINDOW_ID","second_window_id":"hwnd:REPLACE_WITH_SECOND_WINDOW_ID"}
-{"id":"move-1","command":"move_window_to_monitor","window_id":"hwnd:REPLACE_WITH_WINDOW_ID","target_monitor_index":1,"anchor_window_id":"hwnd:REPLACE_WITH_TARGET_MONITOR_ANCHOR_ID"}
-{"id":"state-1","command":"get_state","include_layout":true}

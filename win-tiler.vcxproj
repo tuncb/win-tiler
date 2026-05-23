@@ -223,8 +223,6 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\agent_mode.cpp" />
-    <ClCompile Include="src\agent_protocol.cpp" />
     <ClCompile Include="src\argument_parser.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\loop.cpp" />
@@ -239,7 +237,6 @@
     <ClCompile Include="src\runtime_support.cpp" />
     <ClCompile Include="src\startup.cpp" />
     <ClCompile Include="src\test_argument_parser.cpp" />
-    <ClCompile Include="src\test_agent_protocol.cpp" />
     <ClCompile Include="src\test_binary_tree.cpp" />
     <ClCompile Include="src\test_engine.cpp" />
     <ClCompile Include="src\test_loop.cpp" />
@@ -251,8 +248,6 @@
     <ClCompile Include="src\track_windows.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\agent_mode.h" />
-    <ClInclude Include="src\agent_protocol.h" />
     <ClInclude Include="src\binary_tree.h" />
     <ClInclude Include="src\engine.h" />
     <ClInclude Include="src\argument_parser.h" />

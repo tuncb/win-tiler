@@ -16,12 +16,6 @@ struct MonitorInfoCommand {}; // --monitor-info or monitor-info
 
 struct TrackWindowsCommand {};
 
-enum class AgentTransport { Stdio };
-
-struct AgentCommand {
-  AgentTransport transport = AgentTransport::Stdio;
-};
-
 struct InitConfigCommand {
   std::optional<std::string> filepath; // Empty = use default (win-tiler.toml next to exe)
 };
@@ -34,7 +28,7 @@ struct StartupCommand {
 
 // Variant holding all possible commands
 using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, MonitorInfoCommand,
-                             TrackWindowsCommand, AgentCommand, InitConfigCommand, StartupCommand>;
+                             TrackWindowsCommand, InitConfigCommand, StartupCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

@@ -29,9 +29,10 @@ std::optional<ctrl::Rect> find_actual_window_rect(const winapi::LoopInputState& 
 
 } // namespace
 
-std::optional<LoopDesktopActivation> activate_loop_desktop(
-    MultiEngine<LoopDesktopData, std::string>& multi_engine, const std::string& desktop_id,
-    const std::vector<ctrl::ClusterInitInfo>& cluster_infos) {
+std::optional<LoopDesktopActivation>
+activate_loop_desktop(MultiEngine<LoopDesktopData, std::string>& multi_engine,
+                      const std::string& desktop_id,
+                      const std::vector<ctrl::ClusterInitInfo>& cluster_infos) {
   bool created = false;
   if (!multi_engine.has_desktop(desktop_id)) {
     auto created_desktop = multi_engine.create_desktop(desktop_id, cluster_infos);

@@ -1,5 +1,0 @@
-{"id":"focus-1","command":"focus_window","window_id":"hwnd:REPLACE_WITH_WINDOW_ID","select":true}
-{"id":"zen-on-1","command":"send_action","action":"ToggleZen"}
-{"id":"state-zen-on","command":"get_state","include_layout":true}
-{"id":"zen-off-1","command":"send_action","action":"ToggleZen"}
-{"id":"state-zen-off","command":"get_state","include_layout":true}

@@ -49,9 +49,10 @@ struct LoopDesktopActivation {
   bool switched = false;
 };
 
-[[nodiscard]] std::optional<LoopDesktopActivation> activate_loop_desktop(
-    MultiEngine<LoopDesktopData, std::string>& multi_engine, const std::string& desktop_id,
-    const std::vector<ctrl::ClusterInitInfo>& cluster_infos);
+[[nodiscard]] std::optional<LoopDesktopActivation>
+activate_loop_desktop(MultiEngine<LoopDesktopData, std::string>& multi_engine,
+                      const std::string& desktop_id,
+                      const std::vector<ctrl::ClusterInitInfo>& cluster_infos);
 
 [[nodiscard]] bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action,
                                                    bool is_ctrl_pressed,
