@@ -84,6 +84,7 @@ bindings = [
   { action = "TogglePause", hotkey = "super+shift+\\" },
   { action = "DumpWindowManagement", hotkey = "super+shift+d" },
   { action = "RestartSystem", hotkey = "super+shift+r" },
+  { action = "ToggleFloating", hotkey = "super+shift+f" },
 ]
 
 [gap]

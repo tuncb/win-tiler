@@ -143,6 +143,10 @@ apply_action_result(Engine& engine, const ActionResult& action_result,
     return tl::unexpected("agent mode does not support system restart actions");
   }
 
+  if (action_result.toggle_floating) {
+    return tl::unexpected("agent mode does not support session floating actions");
+  }
+
   AgentMutationResponse mutation;
   mutation.selection_changed = action_result.selection_changed;
   mutation.layout_changed = action_result.layout_changed;

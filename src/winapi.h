@@ -63,6 +63,11 @@ std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
                                           const wintiler::IgnoreOptions& ignore_options);
 WindowInfo get_window_info(HWND_T hwnd);
 
+// Lightweight HWND helpers used by session-scoped runtime ignore rules.
+bool is_window_valid(HWND_T hwnd);
+std::optional<DWORD_T> get_window_process_id(HWND_T hwnd);
+bool is_window_or_owned_or_parented_by(HWND_T hwnd, HWND_T root);
+
 // Get window position and size (returns nullopt if window is invalid)
 std::optional<WindowPosition> get_window_rect(HWND_T hwnd);
 

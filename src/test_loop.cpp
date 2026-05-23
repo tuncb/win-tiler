@@ -29,6 +29,11 @@ TEST_SUITE("loop") {
           NoDesktopHotkeyAction::DumpWindowManagement);
   }
 
+  TEST_CASE("frames without a desktop id can unfloat foreground windows") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::ToggleFloating) ==
+          NoDesktopHotkeyAction::ToggleFloating);
+  }
+
   TEST_CASE("frames without a desktop id do nothing when there is no queued hotkey") {
     CHECK(classify_no_desktop_hotkey(std::nullopt) == NoDesktopHotkeyAction::None);
   }
@@ -47,6 +52,8 @@ TEST_SUITE("loop") {
     CHECK(classify_manual_pause_hotkey(HotkeyAction::NavigateLeft) ==
           ManualPauseHotkeyAction::Ignore);
     CHECK(classify_manual_pause_hotkey(HotkeyAction::RestartSystem) ==
+          ManualPauseHotkeyAction::Ignore);
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::ToggleFloating) ==
           ManualPauseHotkeyAction::Ignore);
   }
 

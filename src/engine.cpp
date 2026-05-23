@@ -2130,8 +2130,12 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     output.dump_window_management =
         output.dump_window_management || action_result.dump_window_management;
     output.restart_system = output.restart_system || action_result.restart_system;
+    output.toggle_floating = output.toggle_floating || action_result.toggle_floating;
     if (action_result.focus_leaf_id.has_value()) {
       output.focus_leaf_id = action_result.focus_leaf_id;
+    }
+    if (action_result.floating_leaf_id.has_value()) {
+      output.floating_leaf_id = action_result.floating_leaf_id;
     }
     if (action_result.cursor_pos.has_value()) {
       output.cursor_pos = action_result.cursor_pos;
@@ -2512,6 +2516,13 @@ ActionResult Engine::process_action(HotkeyAction action,
     result.success = true;
     result.restart_system = true;
     result.toast_message = "System restarted";
+    break;
+
+  case HotkeyAction::ToggleFloating:
+    spdlog::info("ToggleFloating: toggling selected window floating state");
+    result.success = true;
+    result.toggle_floating = true;
+    result.floating_leaf_id = get_selected_leaf_id(system);
     break;
   }
 

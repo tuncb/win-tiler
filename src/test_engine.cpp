@@ -2001,6 +2001,22 @@ TEST_SUITE("Engine::process_action - Exit") {
     REQUIRE(result.toast_message.has_value());
     CHECK(*result.toast_message == "System restarted");
   }
+
+  TEST_CASE("ToggleFloating action requests selected leaf floating toggle") {
+    Engine engine = create_test_engine();
+    auto selected_leaf_id = engine.selected_leaf_id();
+    auto geoms = compute_default_geometries(engine);
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ToggleFloating, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::Continue);
+    CHECK(result.toggle_floating == true);
+    CHECK(result.floating_leaf_id == selected_leaf_id);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+  }
 }
 
 // =============================================================================

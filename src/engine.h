@@ -104,7 +104,9 @@ struct ActionResult {
   bool apply_tiles = false;
   bool dump_window_management = false;
   bool restart_system = false;
+  bool toggle_floating = false;
   std::optional<size_t> focus_leaf_id;
+  std::optional<size_t> floating_leaf_id;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<std::string> toast_message;
   LoopControl control = LoopControl::Continue;
@@ -163,9 +165,11 @@ struct EngineFrameOutput {
   bool apply_tiles = false;
   bool dump_window_management = false;
   bool restart_system = false;
+  bool toggle_floating = false;
   bool clear_drag_ended = false;
   bool has_completed_initial_tile_pass = false;
   std::optional<size_t> focus_leaf_id;
+  std::optional<size_t> floating_leaf_id;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<std::string> toast_message;
   std::vector<size_t> placement_correction_leaf_ids;

@@ -250,6 +250,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::ToggleSplit) == "super+shift+y");
     CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
     CHECK(find_binding(HotkeyAction::RestartSystem) == "super+shift+r");
+    CHECK(find_binding(HotkeyAction::ToggleFloating) == "super+shift+f");
   }
 
   TEST_CASE("empty keyboard section uses all default bindings") {
@@ -284,6 +285,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::Exit) == "super+shift+escape");
     CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
     CHECK(find_binding(HotkeyAction::RestartSystem) == "super+shift+r");
+    CHECK(find_binding(HotkeyAction::ToggleFloating) == "super+shift+f");
   }
 
   TEST_CASE("restart system keyboard binding can be configured") {

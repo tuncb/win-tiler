@@ -54,7 +54,8 @@ enum class HotkeyAction {
   ResetSplitRatio,
   TogglePause,
   DumpWindowManagement,
-  RestartSystem
+  RestartSystem,
+  ToggleFloating
 };
 
 // Maps a hotkey action to its keyboard shortcut string

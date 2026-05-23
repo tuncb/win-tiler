@@ -80,6 +80,7 @@ enum class NoDesktopHotkeyAction {
   Exit,
   EnterManualPause,
   DumpWindowManagement,
+  ToggleFloating,
 };
 
 [[nodiscard]] NoDesktopHotkeyAction

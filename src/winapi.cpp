@@ -873,6 +873,48 @@ WindowInfo get_window_info(HWND_T hwnd) {
   return info;
 }
 
+bool is_window_valid(HWND_T hwnd) {
+  return hwnd != nullptr && IsWindow(reinterpret_cast<HWND>(hwnd));
+}
+
+std::optional<DWORD_T> get_window_process_id(HWND_T hwnd) {
+  return get_window_pid(hwnd);
+}
+
+static bool window_chain_contains(HWND hwnd, HWND root, HWND (*next_window)(HWND)) {
+  HWND current = next_window(hwnd);
+  for (int depth = 0; current != nullptr && depth < 64; ++depth) {
+    if (current == root) {
+      return true;
+    }
+    current = next_window(current);
+  }
+  return false;
+}
+
+static HWND get_owner_window(HWND hwnd) {
+  return GetWindow(hwnd, GW_OWNER);
+}
+
+static HWND get_parent_window(HWND hwnd) {
+  return GetParent(hwnd);
+}
+
+bool is_window_or_owned_or_parented_by(HWND_T hwnd, HWND_T root) {
+  if (!is_window_valid(hwnd) || !is_window_valid(root)) {
+    return false;
+  }
+
+  HWND window = reinterpret_cast<HWND>(hwnd);
+  HWND root_window = reinterpret_cast<HWND>(root);
+  if (window == root_window) {
+    return true;
+  }
+
+  return window_chain_contains(window, root_window, get_owner_window) ||
+         window_chain_contains(window, root_window, get_parent_window);
+}
+
 std::optional<WindowPosition> get_window_rect(HWND_T hwnd) {
   if (hwnd == nullptr) {
     return std::nullopt;

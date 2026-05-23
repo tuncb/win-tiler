@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <iostream>
 #include <magic_enum/magic_enum.hpp>
 #include <string_view>
@@ -170,6 +171,8 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
     return NoDesktopHotkeyAction::Ignore;
   case HotkeyAction::DumpWindowManagement:
     return NoDesktopHotkeyAction::DumpWindowManagement;
+  case HotkeyAction::ToggleFloating:
+    return NoDesktopHotkeyAction::ToggleFloating;
   }
 
   return NoDesktopHotkeyAction::Ignore;
@@ -202,6 +205,7 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
   case HotkeyAction::ToggleZen:
   case HotkeyAction::ResetSplitRatio:
   case HotkeyAction::RestartSystem:
+  case HotkeyAction::ToggleFloating:
     return ManualPauseHotkeyAction::Ignore;
   }
 
@@ -249,6 +253,146 @@ struct ToastState {
     return std::nullopt;
   }
 };
+
+struct SessionFloatingGroup {
+  winapi::HWND_T root = nullptr;
+  std::optional<winapi::DWORD_T> pid;
+};
+
+struct SessionFloatingState {
+  std::vector<SessionFloatingGroup> groups;
+};
+
+enum class ToggleFloatingResult {
+  NoTarget,
+  Floated,
+  Unfloated,
+};
+
+bool floating_group_root_is_current(const SessionFloatingGroup& group) {
+  if (!winapi::is_window_valid(group.root)) {
+    return false;
+  }
+
+  if (!group.pid.has_value()) {
+    return true;
+  }
+
+  auto current_pid = winapi::get_window_process_id(group.root);
+  return current_pid.has_value() && *current_pid == *group.pid;
+}
+
+void prune_session_floating_groups(SessionFloatingState& state) {
+  state.groups.erase(std::remove_if(state.groups.begin(), state.groups.end(),
+                                    [](const SessionFloatingGroup& group) {
+                                      return !floating_group_root_is_current(group);
+                                    }),
+                     state.groups.end());
+}
+
+bool floating_group_matches_window(const SessionFloatingGroup& group, winapi::HWND_T hwnd) {
+  return floating_group_root_is_current(group) &&
+         winapi::is_window_or_owned_or_parented_by(hwnd, group.root);
+}
+
+std::optional<size_t> find_session_floating_group_for_window(const SessionFloatingState& state,
+                                                             winapi::HWND_T hwnd) {
+  if (hwnd == nullptr) {
+    return std::nullopt;
+  }
+
+  for (size_t i = 0; i < state.groups.size(); ++i) {
+    if (floating_group_matches_window(state.groups[i], hwnd)) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+bool is_session_floating_window(const SessionFloatingState& state, winapi::HWND_T hwnd) {
+  return find_session_floating_group_for_window(state, hwnd).has_value();
+}
+
+ToggleFloatingResult toggle_session_floating(SessionFloatingState& state,
+                                             winapi::HWND_T foreground_window,
+                                             std::optional<size_t> selected_leaf_id) {
+  prune_session_floating_groups(state);
+
+  auto foreground_group = find_session_floating_group_for_window(state, foreground_window);
+  if (foreground_group.has_value()) {
+    state.groups.erase(state.groups.begin() + static_cast<std::ptrdiff_t>(*foreground_group));
+    return ToggleFloatingResult::Unfloated;
+  }
+
+  if (!selected_leaf_id.has_value()) {
+    return ToggleFloatingResult::NoTarget;
+  }
+
+  auto root = reinterpret_cast<winapi::HWND_T>(*selected_leaf_id);
+  if (!winapi::is_window_valid(root)) {
+    return ToggleFloatingResult::NoTarget;
+  }
+
+  auto existing_group = find_session_floating_group_for_window(state, root);
+  if (existing_group.has_value()) {
+    state.groups.erase(state.groups.begin() + static_cast<std::ptrdiff_t>(*existing_group));
+    return ToggleFloatingResult::Unfloated;
+  }
+
+  state.groups.push_back(SessionFloatingGroup{root, winapi::get_window_process_id(root)});
+  return ToggleFloatingResult::Floated;
+}
+
+void filter_session_floating_windows_from_input_state(SessionFloatingState& floating_state,
+                                                      winapi::LoopInputState& input_state) {
+  prune_session_floating_groups(floating_state);
+  if (floating_state.groups.empty()) {
+    return;
+  }
+
+  for (auto& monitor_windows : input_state.windows_per_monitor) {
+    monitor_windows.erase(std::remove_if(monitor_windows.begin(), monitor_windows.end(),
+                                         [&](const winapi::ManagedWindowInfo& window) {
+                                           return is_session_floating_window(floating_state,
+                                                                             window.handle);
+                                         }),
+                          monitor_windows.end());
+  }
+}
+
+void filter_session_floating_windows_from_cluster_infos(
+    SessionFloatingState& floating_state, std::vector<ctrl::ClusterInitInfo>& cluster_infos) {
+  prune_session_floating_groups(floating_state);
+  if (floating_state.groups.empty()) {
+    return;
+  }
+
+  for (auto& info : cluster_infos) {
+    size_t original_size = info.initial_cell_ids.size();
+    info.initial_cell_ids.erase(
+        std::remove_if(info.initial_cell_ids.begin(), info.initial_cell_ids.end(),
+                       [&](size_t leaf_id) {
+                         return is_session_floating_window(
+                             floating_state, reinterpret_cast<winapi::HWND_T>(leaf_id));
+                       }),
+        info.initial_cell_ids.end());
+    if (info.initial_cell_ids.size() != original_size) {
+      info.initial_layout_rule.reset();
+    }
+  }
+}
+
+std::optional<std::string> make_toggle_floating_toast(ToggleFloatingResult result) {
+  switch (result) {
+  case ToggleFloatingResult::Floated:
+    return "Floating";
+  case ToggleFloatingResult::Unfloated:
+    return "Tiling";
+  case ToggleFloatingResult::NoTarget:
+    return "No window to toggle";
+  }
+  return std::nullopt;
+}
 
 // Convert HotkeyAction to integer ID for Windows hotkey registration
 int hotkey_action_to_id(HotkeyAction action) {
@@ -379,9 +523,20 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
 }
 
 void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
-                        const IgnoreOptions& ignore_options, ToastState& toast) {
+                        const IgnoreOptions& ignore_options,
+                        const winapi::LoopInputState& input_state,
+                        SessionFloatingState& floating_state, ToastState& toast) {
   if (output.clear_drag_ended) {
     winapi::clear_drag_ended();
+  }
+
+  if (output.toggle_floating) {
+    auto toggle_result = toggle_session_floating(floating_state, input_state.foreground_window,
+                                                 output.floating_leaf_id);
+    auto message = make_toggle_floating_toast(toggle_result);
+    if (message.has_value()) {
+      toast.show(*message);
+    }
   }
 
   if (output.toast_message.has_value()) {
@@ -433,11 +588,13 @@ void reinitialize_system_from_monitors(std::vector<winapi::MonitorInfo>& monitor
                                        const std::vector<winapi::MonitorInfo>& updated_monitors,
                                        const GlobalOptions& options,
                                        MultiEngine<LoopDesktopData, std::string>& multi_engine,
+                                       SessionFloatingState& floating_state,
                                        std::string_view reason) {
   spdlog::info("{}, reinitializing system...", reason);
   winapi::log_monitors(updated_monitors);
   monitors = updated_monitors;
   auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
+  filter_session_floating_windows_from_cluster_infos(floating_state, cluster_infos);
   reinitialize_all_desktops(multi_engine, cluster_infos);
   spdlog::info("=== Reinitialized Tile Layout ===");
   // Tile layout will be printed and applied by the main loop
@@ -447,13 +604,14 @@ void reinitialize_system_from_monitors(std::vector<winapi::MonitorInfo>& monitor
 bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors,
                            std::vector<winapi::MonitorInfo>& current_monitors,
                            const GlobalOptions& options,
-                           MultiEngine<LoopDesktopData, std::string>& multi_engine) {
+                           MultiEngine<LoopDesktopData, std::string>& multi_engine,
+                           SessionFloatingState& floating_state) {
   winapi::fill_monitors(current_monitors);
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
   }
   reinitialize_system_from_monitors(monitors, current_monitors, options, multi_engine,
-                                    "Monitor configuration changed");
+                                    floating_state, "Monitor configuration changed");
   return true;
 }
 
@@ -530,6 +688,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   // Manual pause state (toggled by hotkey)
   bool is_manually_paused = false;
+  SessionFloatingState floating_state;
 
   LoopPerfCollector perf(run_options.perf_stats);
   if (perf.enabled) {
@@ -582,6 +741,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     // Gather all Windows API input state in a single call
     auto gather_start = std::chrono::steady_clock::now();
     winapi::gather_loop_input_state_into(options.ignoreOptions, input_state, input_handles);
+    filter_session_floating_windows_from_input_state(floating_state, input_state);
     perf.record_stage(LoopPerfStage::GatherInput, std::chrono::steady_clock::now() - gather_start);
 
     // Virtual desktop handling via desktop_id from managed windows
@@ -614,6 +774,15 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         spdlog::info("Dumping window management state without a desktop ID");
         winapi::dump_window_management_state(provider.options.ignoreOptions);
         break;
+      case NoDesktopHotkeyAction::ToggleFloating: {
+        auto toggle_result =
+            toggle_session_floating(floating_state, input_state.foreground_window, std::nullopt);
+        auto message = make_toggle_floating_toast(toggle_result);
+        if (message.has_value()) {
+          toast.show(*message);
+        }
+        break;
+      }
       case NoDesktopHotkeyAction::Ignore:
         spdlog::debug("Ignoring hotkey without a desktop ID");
         break;
@@ -643,6 +812,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     // Create desktop if this is a new virtual desktop
     if (!multi_engine.has_desktop(current_desktop_id)) {
       auto cluster_infos = create_cluster_infos_from_monitors(monitors, provider.options);
+      filter_session_floating_windows_from_cluster_infos(floating_state, cluster_infos);
       multi_engine.create_desktop(current_desktop_id, cluster_infos);
       spdlog::debug("Created new virtual desktop engine: {}", current_desktop_id);
     }
@@ -698,8 +868,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
 
     // Check for monitor configuration changes
-    bool monitor_changed =
-        handle_monitor_change(monitors, current_monitors, provider.options, multi_engine);
+    bool monitor_changed = handle_monitor_change(monitors, current_monitors, provider.options,
+                                                 multi_engine, floating_state);
     if (monitor_changed) {
       resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
       auto updated_geometry_start = std::chrono::steady_clock::now();
@@ -732,9 +902,10 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     }
 
     if (frame_output.restart_system) {
+      floating_state.groups.clear();
       winapi::fill_monitors(current_monitors);
       reinitialize_system_from_monitors(monitors, current_monitors, provider.options, multi_engine,
-                                        "Restart hotkey pressed");
+                                        floating_state, "Restart hotkey pressed");
       resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
       auto restarted_geometry_start = std::chrono::steady_clock::now();
       geometries = engine.compute_geometries(cluster_options);
@@ -753,7 +924,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     }
 
     auto apply_start = std::chrono::steady_clock::now();
-    apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, toast);
+    apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, input_state,
+                       floating_state, toast);
     perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);
     perf.note_active_frame();
     if (frame_output.apply_tiles) {
