@@ -128,6 +128,30 @@ TEST_SUITE("winapi") {
     CHECK(content.find(L"</a>") != std::wstring::npos);
   }
 
+  TEST_CASE("notification area hotkey requests are consumed once") {
+    CHECK_FALSE(winapi::consume_notification_area_hotkey_action().has_value());
+
+    winapi::request_notification_area_hotkey_action(HotkeyAction::TogglePause);
+    auto pause_action = winapi::consume_notification_area_hotkey_action();
+
+    REQUIRE(pause_action.has_value());
+    CHECK(*pause_action == HotkeyAction::TogglePause);
+    CHECK_FALSE(winapi::consume_notification_area_hotkey_action().has_value());
+  }
+
+  TEST_CASE("notification area reset request uses restart system action") {
+    winapi::request_notification_area_hotkey_action(HotkeyAction::RestartSystem);
+    auto reset_action = winapi::consume_notification_area_hotkey_action();
+
+    REQUIRE(reset_action.has_value());
+    CHECK(*reset_action == HotkeyAction::RestartSystem);
+  }
+
+  TEST_CASE("notification area pause menu text reflects manual pause state") {
+    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(false)) == L"Pause");
+    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(true)) == L"Unpause");
+  }
+
   TEST_CASE("application icon resource is available") {
     HICON icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
 

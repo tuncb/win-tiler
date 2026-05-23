@@ -143,10 +143,14 @@ get_notification_area_menu_availability(const NotificationAreaIconOptions& optio
 
 [[nodiscard]] std::wstring get_notification_area_about_message();
 [[nodiscard]] std::wstring get_notification_area_about_dialog_content();
+[[nodiscard]] const wchar_t* get_notification_area_toggle_pause_menu_text(bool is_paused);
 
 void register_notification_area_icon(const NotificationAreaIconOptions& options);
 void unregister_notification_area_icon();
+void set_notification_area_manual_pause_active(bool is_paused);
+void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] bool consume_notification_area_exit_requested();
+[[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();
 
 // Blocks until session is active (unlocked, awake, display on)
 // Returns immediately if already active

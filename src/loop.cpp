@@ -465,6 +465,11 @@ std::optional<HotkeyAction> poll_hotkey_action() {
     return HotkeyAction::Exit;
   }
 
+  auto notification_area_hotkey_action = winapi::consume_notification_area_hotkey_action();
+  if (notification_area_hotkey_action.has_value()) {
+    return notification_area_hotkey_action;
+  }
+
   auto hotkey_id = winapi::check_keyboard_action();
   if (!hotkey_id.has_value()) {
     return std::nullopt;
@@ -612,6 +617,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
   winapi::register_session_power_notifications();
 
   winapi::register_notification_area_icon({run_options.config_path, run_options.log_file_path});
+  winapi::set_notification_area_manual_pause_active(false);
 
   // Initialize virtual desktop manager for desktop ID detection
   winapi::register_virtual_desktop_notifications();
@@ -671,6 +677,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       switch (classify_manual_pause_hotkey(poll_hotkey_action())) {
       case ManualPauseHotkeyAction::Resume:
         is_manually_paused = false;
+        winapi::set_notification_area_manual_pause_active(false);
         mark_all_desktops_for_retile(multi_engine);
         spdlog::info("Manual pause deactivated");
         toast.show("Resumed");
@@ -713,6 +720,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
         maybe_print_perf_report(perf, loop_end);
         is_manually_paused = true;
+        winapi::set_notification_area_manual_pause_active(true);
         spdlog::info("Manual pause activated without a desktop ID");
         if (should_clear_overlay(overlay_render_cache)) {
           overlay::clear();
@@ -901,6 +909,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       perf.record_stage(LoopPerfStage::ActiveTotal, loop_end - loop_start);
       maybe_print_perf_report(perf, loop_end);
       is_manually_paused = true;
+      winapi::set_notification_area_manual_pause_active(true);
       spdlog::info("Manual pause activated");
       if (should_clear_overlay(overlay_render_cache)) {
         overlay::clear();

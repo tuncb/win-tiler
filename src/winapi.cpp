@@ -1307,12 +1307,15 @@ static const GUID GUID_CONSOLE_DISPLAY_STATE_LOCAL = {
     0x6fe69556, 0x704a, 0x47a0, {0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47}};
 
 // Hidden window for receiving notifications
+constexpr int NO_NOTIFICATION_AREA_HOTKEY_ACTION = -1;
 HWND g_notification_hwnd = nullptr;
 HPOWERNOTIFY g_power_notify_handle = nullptr;
 NOTIFYICONDATAW g_notification_area_icon = {};
 bool g_notification_area_icon_added = false;
 NotificationAreaIconOptions g_notification_area_icon_options;
 std::atomic<bool> g_notification_area_exit_requested{false};
+std::atomic<int> g_notification_area_hotkey_action_requested{NO_NOTIFICATION_AREA_HOTKEY_ACTION};
+std::atomic<bool> g_notification_area_manual_pause_active{false};
 UINT g_taskbar_created_message = 0;
 
 // Pause state flags (atomic for thread safety)
@@ -1331,8 +1334,10 @@ constexpr UINT WM_WINTILER_NOTIFICATION_ICON = WM_APP + 1;
 constexpr UINT_PTR NOTIFICATION_AREA_ICON_ID = 1;
 constexpr UINT ID_OPEN_CONFIG = 1001;
 constexpr UINT ID_SHOW_LOG = 1002;
-constexpr UINT ID_ABOUT = 1003;
-constexpr UINT ID_EXIT = 1004;
+constexpr UINT ID_TOGGLE_PAUSE = 1003;
+constexpr UINT ID_RESET = 1004;
+constexpr UINT ID_ABOUT = 1005;
+constexpr UINT ID_EXIT = 1006;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -1438,6 +1443,16 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     }
     return;
 
+  case ID_TOGGLE_PAUSE:
+    request_notification_area_hotkey_action(wintiler::HotkeyAction::TogglePause);
+    spdlog::info("Toggle pause requested from notification area menu");
+    return;
+
+  case ID_RESET:
+    request_notification_area_hotkey_action(wintiler::HotkeyAction::RestartSystem);
+    spdlog::info("Reset requested from notification area menu");
+    return;
+
   case ID_ABOUT:
     show_notification_area_about_dialog(hwnd);
     return;
@@ -1473,6 +1488,13 @@ void show_notification_area_menu(HWND hwnd) {
       append_notification_menu_item(menu, open_config_flags, ID_OPEN_CONFIG, L"Open config file");
   menu_ok =
       append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Open log file") && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
+  const wchar_t* toggle_pause_text =
+      get_notification_area_toggle_pause_menu_text(g_notification_area_manual_pause_active.load());
+  menu_ok =
+      append_notification_menu_item(menu, MF_STRING, ID_TOGGLE_PAUSE, toggle_pause_text) && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_RESET, L"Reset") && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_ABOUT, L"About...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;
@@ -1718,6 +1740,10 @@ std::wstring get_notification_area_about_dialog_content() {
   return content;
 }
 
+const wchar_t* get_notification_area_toggle_pause_menu_text(bool is_paused) {
+  return is_paused ? L"Unpause" : L"Pause";
+}
+
 void register_session_power_notifications() {
   // Create event for blocking wait (manual reset, initially signaled)
   g_resume_event = CreateEventW(nullptr, TRUE, TRUE, nullptr);
@@ -1776,8 +1802,51 @@ void unregister_notification_area_icon() {
   spdlog::info("Removed notification area icon");
 }
 
+void set_notification_area_manual_pause_active(bool is_paused) {
+  g_notification_area_manual_pause_active = is_paused;
+}
+
+void request_notification_area_hotkey_action(wintiler::HotkeyAction action) {
+  g_notification_area_hotkey_action_requested = static_cast<int>(action);
+}
+
 bool consume_notification_area_exit_requested() {
   return g_notification_area_exit_requested.exchange(false);
+}
+
+std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() {
+  int requested =
+      g_notification_area_hotkey_action_requested.exchange(NO_NOTIFICATION_AREA_HOTKEY_ACTION);
+  if (requested == NO_NOTIFICATION_AREA_HOTKEY_ACTION) {
+    return std::nullopt;
+  }
+
+  switch (static_cast<wintiler::HotkeyAction>(requested)) {
+  case wintiler::HotkeyAction::NavigateLeft:
+  case wintiler::HotkeyAction::NavigateDown:
+  case wintiler::HotkeyAction::NavigateUp:
+  case wintiler::HotkeyAction::NavigateRight:
+  case wintiler::HotkeyAction::ToggleSplit:
+  case wintiler::HotkeyAction::Exit:
+  case wintiler::HotkeyAction::CycleSplitMode:
+  case wintiler::HotkeyAction::StoreCell:
+  case wintiler::HotkeyAction::ClearStored:
+  case wintiler::HotkeyAction::Exchange:
+  case wintiler::HotkeyAction::Move:
+  case wintiler::HotkeyAction::SplitIncrease:
+  case wintiler::HotkeyAction::SplitDecrease:
+  case wintiler::HotkeyAction::ExchangeSiblings:
+  case wintiler::HotkeyAction::ToggleZen:
+  case wintiler::HotkeyAction::ResetSplitRatio:
+  case wintiler::HotkeyAction::TogglePause:
+  case wintiler::HotkeyAction::DumpWindowManagement:
+  case wintiler::HotkeyAction::RestartSystem:
+  case wintiler::HotkeyAction::ToggleFloating:
+    return static_cast<wintiler::HotkeyAction>(requested);
+  }
+
+  spdlog::error("Invalid notification area hotkey action request: {}", requested);
+  return std::nullopt;
 }
 
 void unregister_session_power_notifications() {
