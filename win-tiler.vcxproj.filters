@@ -30,6 +30,9 @@
     <ClCompile Include="src\loop.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\loop_coordinator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\loop_perf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -87,6 +90,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\loop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\loop_coordinator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\loop_perf.h">

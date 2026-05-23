@@ -77,6 +77,74 @@ TEST_SUITE("loop") {
     CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true, true) == false);
   }
 
+  TEST_CASE("desktop activation creates and switches multi-engine state") {
+    std::vector<ctrl::ClusterInitInfo> cluster_infos = {
+        {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}}};
+    MultiEngine<LoopDesktopData, std::string> multi_engine;
+
+    auto first_activation = activate_loop_desktop(multi_engine, "desktop-a", cluster_infos);
+
+    REQUIRE(first_activation.has_value());
+    CHECK(first_activation->created == true);
+    CHECK(first_activation->switched == true);
+    REQUIRE(multi_engine.current_id.has_value());
+    CHECK(*multi_engine.current_id == "desktop-a");
+    CHECK(first_activation->desktop.get().engine.system.clusters.size() == 1);
+
+    auto second_activation = activate_loop_desktop(multi_engine, "desktop-a", cluster_infos);
+
+    REQUIRE(second_activation.has_value());
+    CHECK(second_activation->created == false);
+    CHECK(second_activation->switched == false);
+
+    auto third_activation = activate_loop_desktop(multi_engine, "desktop-b", cluster_infos);
+
+    REQUIRE(third_activation.has_value());
+    CHECK(third_activation->created == true);
+    CHECK(third_activation->switched == true);
+    REQUIRE(multi_engine.current_id.has_value());
+    CHECK(*multi_engine.current_id == "desktop-b");
+  }
+
+  TEST_CASE("engine frame input builder normalizes loop state for the engine") {
+    winapi::LoopInputState input;
+    input.windows_per_monitor.resize(1);
+    input.windows_per_monitor[0].push_back({reinterpret_cast<winapi::HWND_T>(7), false, true, false,
+                                            winapi::WindowPosition{10, 20, 300, 400}});
+    input.cursor_pos = winapi::Point{100, 200};
+    input.is_ctrl_pressed = true;
+    input.drag_info = winapi::DragInfo{reinterpret_cast<winapi::HWND_T>(7), true};
+
+    LoopDesktopData desktop_data;
+    desktop_data.has_completed_initial_tile_pass = true;
+    desktop_data.reapply_layout_templates = true;
+    std::vector<ClusterTilingOptions> cluster_options(1);
+    LayoutOptions layout_options;
+    EngineFrameInput frame_input;
+
+    fill_engine_frame_input(input, desktop_data, cluster_options, true, HotkeyAction::NavigateLeft,
+                            layout_options, MouseDragDropAction::Exchange, frame_input);
+
+    REQUIRE(frame_input.cluster_updates.size() == 1);
+    CHECK(frame_input.cluster_updates[0].leaf_ids == std::vector<size_t>{7});
+    REQUIRE(frame_input.managed_windows.size() == 1);
+    REQUIRE(frame_input.managed_windows[0].size() == 1);
+    CHECK(frame_input.managed_windows[0][0].leaf_id == 7);
+    CHECK(frame_input.managed_windows[0][0].is_maximized == true);
+    REQUIRE(frame_input.cursor_pos.has_value());
+    CHECK(frame_input.cursor_pos->x == 100);
+    CHECK(frame_input.hotkey_action == HotkeyAction::NavigateLeft);
+    CHECK(frame_input.auto_zen_on_maximize == true);
+    CHECK(frame_input.has_completed_initial_tile_pass == true);
+    CHECK(frame_input.reapply_layout_templates == true);
+    REQUIRE(frame_input.completed_drag.has_value());
+    CHECK(frame_input.completed_drag->leaf_id == 7);
+    CHECK(frame_input.completed_drag->do_exchange == false);
+    REQUIRE(frame_input.completed_drag->actual_window_rect.has_value());
+    CHECK(frame_input.completed_drag->actual_window_rect->x == doctest::Approx(10.0f));
+    CHECK(frame_input.completed_drag->actual_window_rect->height == doctest::Approx(400.0f));
+  }
+
   TEST_CASE("cluster update extraction reuses retained leaf buffers") {
     winapi::LoopInputState input;
     input.windows_per_monitor.resize(1);

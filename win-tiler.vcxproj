@@ -228,6 +228,7 @@
     <ClCompile Include="src\argument_parser.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\loop.cpp" />
+    <ClCompile Include="src\loop_coordinator.cpp" />
     <ClCompile Include="src\loop_perf.cpp" />
     <ClCompile Include="src\multi_cell_renderer.cpp" />
     <ClCompile Include="src\overlay.cpp" />
@@ -257,6 +258,7 @@
     <ClInclude Include="src\argument_parser.h" />
     <ClInclude Include="src\track_windows.h" />
     <ClInclude Include="src\loop.h" />
+    <ClInclude Include="src\loop_coordinator.h" />
     <ClInclude Include="src\loop_perf.h" />
     <ClInclude Include="src\multi_cell_renderer.h" />
     <ClInclude Include="src\overlay.h" />
