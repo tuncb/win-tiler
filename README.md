@@ -191,8 +191,9 @@ If no command is supplied, `win-tiler` defaults to `loop`.
 The application build uses the Windows subsystem so `loop` can be launched from
 Explorer or startup registration without opening a console window. Commands that
 produce terminal output attach to the parent console when one exists. For
-long-running `loop` diagnostics, prefer `--log-file`; `--perf-stats` writes
-performance summaries through the logger.
+long-running detached `loop` diagnostics, logs default to
+`%TEMP%\win-tiler.log`; use `--log-file` to choose a different path.
+`--perf-stats` writes performance summaries through the logger.
 
 ### Global Options
 
@@ -202,7 +203,7 @@ performance summaries through the logger.
 | `--version`, `-v` | Print version information and exit immediately. |
 | `--monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. |
 | `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
-| `--log-file <filepath>` | Write logs to a file instead of stdout. |
+| `--log-file <filepath>` | Write logs to a file instead of stdout. Detached `loop` runs default to `%TEMP%\win-tiler.log` when this option is omitted. |
 | `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
 | `--perf-stats` | In `loop` mode, print periodic stage timing summaries for the active portion of the main loop so before/after optimization runs are easier to compare. |
 

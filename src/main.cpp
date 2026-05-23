@@ -73,6 +73,26 @@ resolve_startup_option_path(const std::optional<std::string>& path, const std::s
   return absolute_path.lexically_normal();
 }
 
+tl::expected<std::optional<std::filesystem::path>, std::string>
+resolve_log_file_path(const wintiler::Command& command, const wintiler::CliOptions& options,
+                      bool console_attached) {
+  if (options.log_file_path.has_value()) {
+    return std::filesystem::path(*options.log_file_path);
+  }
+
+  if (!wintiler::command_should_default_to_temp_log_file(command, options, console_attached)) {
+    return std::nullopt;
+  }
+
+  std::error_code ec;
+  auto temp_directory = std::filesystem::temp_directory_path(ec);
+  if (ec) {
+    return tl::unexpected("Failed to resolve temp log directory: " + ec.message());
+  }
+
+  return wintiler::get_default_temp_log_file_path(temp_directory);
+}
+
 } // namespace
 
 // Helper for std::visit with lambdas
@@ -123,14 +143,14 @@ void applyLogLevel(LogLevel level) {
   }
 }
 
-tl::expected<void, std::string> configureLogFile(const CliOptions& options) {
-  if (!options.log_file_path.has_value()) {
+tl::expected<void, std::string>
+configureLogFile(const std::optional<std::filesystem::path>& log_file_path) {
+  if (!log_file_path.has_value()) {
     return {};
   }
 
   try {
-    auto logger = spdlog::basic_logger_mt(
-        "win-tiler-file", std::filesystem::path(*options.log_file_path).string(), true);
+    auto logger = spdlog::basic_logger_mt("win-tiler-file", log_file_path->string(), true);
     spdlog::set_default_logger(std::move(logger));
   } catch (const spdlog::spdlog_ex& ex) {
     return tl::unexpected("Failed to open log file: " + std::string(ex.what()));
@@ -163,7 +183,14 @@ int run_app(int argc, char* argv[]) {
     configure_default_null_logger();
   }
 
-  auto logging_result = configureLogFile(result.args.options);
+  auto log_file_path = resolve_log_file_path(command, result.args.options, console_attached);
+  if (!log_file_path.has_value()) {
+    ensure_console_logger_for_error(console_attached);
+    spdlog::error("{}", log_file_path.error());
+    return 1;
+  }
+
+  auto logging_result = configureLogFile(*log_file_path);
   if (!logging_result.has_value()) {
     ensure_console_logger_for_error(console_attached);
     spdlog::error("{}", logging_result.error());
@@ -201,7 +228,7 @@ int run_app(int argc, char* argv[]) {
       auto loaded = read_options_toml(configPath);
       if (!loaded.has_value()) {
         if (configExplicitlySpecified) {
-          if (!result.args.options.log_file_path.has_value()) {
+          if (!log_file_path->has_value()) {
             ensure_console_logger_for_error(console_attached);
           }
           spdlog::error("Failed to load config: {}", loaded.error());

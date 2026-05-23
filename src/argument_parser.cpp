@@ -169,6 +169,7 @@ void print_usage() {
             << "  --monitor-info          Show monitor information and exit\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
             << "  --log-file <filepath>   Write logs to a file instead of stdout\n"
+            << "                          (detached loop defaults to %TEMP%\\win-tiler.log)\n"
             << "  --config <filepath>     Load configuration from a TOML file\n"
             << "  --perf-stats            Print periodic loop performance summaries\n"
             << "\n"

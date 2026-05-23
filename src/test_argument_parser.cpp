@@ -2,6 +2,7 @@
 
 #include <doctest/doctest.h>
 
+#include <filesystem>
 #include <initializer_list>
 #include <string>
 #include <vector>
@@ -189,6 +190,38 @@ TEST_SUITE("argument_parser") {
 
     options.perf_stats = true;
     CHECK(command_should_attach_console(Command{LoopCommand{}}, options));
+  }
+
+  TEST_CASE("detached loop defaults to a temp log file") {
+    CliOptions options;
+
+    CHECK(command_should_default_to_temp_log_file(Command{LoopCommand{}}, options, false));
+    CHECK_FALSE(command_should_default_to_temp_log_file(Command{LoopCommand{}}, options, true));
+
+    options.log_file_path = R"(C:\logs\custom.log)";
+    CHECK_FALSE(command_should_default_to_temp_log_file(Command{LoopCommand{}}, options, false));
+  }
+
+  TEST_CASE("terminal-oriented commands do not default to a temp log file") {
+    CliOptions options;
+
+    CHECK_FALSE(command_should_default_to_temp_log_file(Command{HelpCommand{}}, options, false));
+    CHECK_FALSE(command_should_default_to_temp_log_file(Command{VersionCommand{}}, options, false));
+    CHECK_FALSE(
+        command_should_default_to_temp_log_file(Command{MonitorInfoCommand{}}, options, false));
+    CHECK_FALSE(
+        command_should_default_to_temp_log_file(Command{TrackWindowsCommand{}}, options, false));
+    CHECK_FALSE(
+        command_should_default_to_temp_log_file(Command{InitConfigCommand{}}, options, false));
+    CHECK_FALSE(command_should_default_to_temp_log_file(
+        Command{StartupCommand{StartupAction::Status}}, options, false));
+  }
+
+  TEST_CASE("default temp log file uses a stable filename") {
+    auto path = get_default_temp_log_file_path(R"(C:\Users\Test\AppData\Local\Temp)");
+
+    CHECK(path.filename() == std::filesystem::path("win-tiler.log"));
+    CHECK(path.parent_path() == std::filesystem::path(R"(C:\Users\Test\AppData\Local\Temp)"));
   }
 }
 

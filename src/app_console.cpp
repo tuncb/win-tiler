@@ -6,6 +6,7 @@
 #include <Windows.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <string_view>
 #include <type_traits>
@@ -86,6 +87,19 @@ bool command_should_attach_console(const Command& command, const CliOptions& opt
         }
       },
       command);
+}
+
+bool command_should_default_to_temp_log_file(const Command& command, const CliOptions& options,
+                                             bool console_attached) {
+  if (console_attached || options.log_file_path.has_value()) {
+    return false;
+  }
+
+  return std::holds_alternative<LoopCommand>(command);
+}
+
+std::filesystem::path get_default_temp_log_file_path(const std::filesystem::path& temp_directory) {
+  return temp_directory / "win-tiler.log";
 }
 
 bool attach_parent_console() {
