@@ -59,6 +59,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "TogglePause";
   case HotkeyAction::DumpWindowManagement:
     return "DumpWindowManagement";
+  case HotkeyAction::RestartSystem:
+    return "RestartSystem";
   }
   return "Unknown";
 }
@@ -100,6 +102,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::TogglePause;
   if (str == "DumpWindowManagement")
     return HotkeyAction::DumpWindowManagement;
+  if (str == "RestartSystem")
+    return HotkeyAction::RestartSystem;
   return std::nullopt;
 }
 
@@ -187,6 +191,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+\\";
   case HotkeyAction::DumpWindowManagement:
     return "super+shift+d";
+  case HotkeyAction::RestartSystem:
+    return "super+shift+r";
   }
   return "";
 }

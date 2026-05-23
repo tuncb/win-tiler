@@ -104,6 +104,8 @@ TEST_SUITE("loop_desktop_state") {
     desktop_two->get().engine.stored_cell = StoredCell{0, 2};
     desktop_one->get().data.has_completed_initial_tile_pass = true;
     desktop_two->get().data.has_completed_initial_tile_pass = true;
+    desktop_one->get().data.reapply_layout_templates = true;
+    desktop_two->get().data.reapply_layout_templates = true;
 
     reinitialize_all_desktops(multi_engine, updated_cluster_infos);
 
@@ -115,6 +117,8 @@ TEST_SUITE("loop_desktop_state") {
     CHECK_FALSE(desktop_two->get().engine.stored_cell.has_value());
     CHECK(desktop_one->get().data.has_completed_initial_tile_pass == false);
     CHECK(desktop_two->get().data.has_completed_initial_tile_pass == false);
+    CHECK(desktop_one->get().data.reapply_layout_templates == false);
+    CHECK(desktop_two->get().data.reapply_layout_templates == false);
   }
 }
 

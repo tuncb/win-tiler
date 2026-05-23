@@ -876,6 +876,26 @@ TEST_SUITE("Engine::process_frame") {
     CHECK_FALSE(output.toast_message.has_value());
   }
 
+  TEST_CASE("restart hotkey returns a one-shot system restart request") {
+    Engine engine = create_test_engine();
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.hotkey_action = HotkeyAction::RestartSystem;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.control == LoopControl::Continue);
+    CHECK(output.restart_system == true);
+    CHECK(output.layout_changed == false);
+    CHECK(output.apply_tiles == false);
+    REQUIRE(output.toast_message.has_value());
+    CHECK(*output.toast_message == "System restarted");
+  }
+
   TEST_CASE("hover selection happens inside process_frame") {
     Engine engine = create_two_window_engine();
     set_selection(engine, 0, 1);
@@ -1964,6 +1984,22 @@ TEST_SUITE("Engine::process_action - Exit") {
     CHECK(result.layout_changed == false);
     CHECK(result.apply_tiles == false);
     CHECK_FALSE(result.toast_message.has_value());
+  }
+
+  TEST_CASE("RestartSystem action requests a full system restart without changing layout") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::RestartSystem, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::Continue);
+    CHECK(result.restart_system == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+    REQUIRE(result.toast_message.has_value());
+    CHECK(*result.toast_message == "System restarted");
   }
 }
 

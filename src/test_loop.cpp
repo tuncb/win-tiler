@@ -21,6 +21,7 @@ TEST_SUITE("loop") {
 
   TEST_CASE("frames without a desktop id discard non control hotkeys instead of deferring them") {
     CHECK(classify_no_desktop_hotkey(HotkeyAction::NavigateLeft) == NoDesktopHotkeyAction::Ignore);
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::RestartSystem) == NoDesktopHotkeyAction::Ignore);
   }
 
   TEST_CASE("frames without a desktop id keep window dump hotkeys immediate") {
@@ -44,6 +45,8 @@ TEST_SUITE("loop") {
 
   TEST_CASE("manual pause ignores normal tiling hotkeys") {
     CHECK(classify_manual_pause_hotkey(HotkeyAction::NavigateLeft) ==
+          ManualPauseHotkeyAction::Ignore);
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::RestartSystem) ==
           ManualPauseHotkeyAction::Ignore);
   }
 

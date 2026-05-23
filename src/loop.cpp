@@ -6,6 +6,7 @@
 #include <chrono>
 #include <iostream>
 #include <magic_enum/magic_enum.hpp>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -165,6 +166,7 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
   case HotkeyAction::ExchangeSiblings:
   case HotkeyAction::ToggleZen:
   case HotkeyAction::ResetSplitRatio:
+  case HotkeyAction::RestartSystem:
     return NoDesktopHotkeyAction::Ignore;
   case HotkeyAction::DumpWindowManagement:
     return NoDesktopHotkeyAction::DumpWindowManagement;
@@ -199,6 +201,7 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
   case HotkeyAction::ExchangeSiblings:
   case HotkeyAction::ToggleZen:
   case HotkeyAction::ResetSplitRatio:
+  case HotkeyAction::RestartSystem:
     return ManualPauseHotkeyAction::Ignore;
   }
 
@@ -426,6 +429,20 @@ bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
   return true;
 }
 
+void reinitialize_system_from_monitors(std::vector<winapi::MonitorInfo>& monitors,
+                                       const std::vector<winapi::MonitorInfo>& updated_monitors,
+                                       const GlobalOptions& options,
+                                       MultiEngine<LoopDesktopData, std::string>& multi_engine,
+                                       std::string_view reason) {
+  spdlog::info("{}, reinitializing system...", reason);
+  winapi::log_monitors(updated_monitors);
+  monitors = updated_monitors;
+  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
+  reinitialize_all_desktops(multi_engine, cluster_infos);
+  spdlog::info("=== Reinitialized Tile Layout ===");
+  // Tile layout will be printed and applied by the main loop
+}
+
 // Handle monitor configuration changes, returns true if change occurred
 bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors,
                            std::vector<winapi::MonitorInfo>& current_monitors,
@@ -435,13 +452,8 @@ bool handle_monitor_change(std::vector<winapi::MonitorInfo>& monitors,
   if (winapi::monitors_equal(monitors, current_monitors)) {
     return false;
   }
-  spdlog::info("Monitor configuration changed, reinitializing system...");
-  winapi::log_monitors(current_monitors);
-  monitors = current_monitors;
-  auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
-  reinitialize_all_desktops(multi_engine, cluster_infos);
-  spdlog::info("=== Reinitialized Tile Layout ===");
-  // Tile layout will be printed and applied by the main loop
+  reinitialize_system_from_monitors(monitors, current_monitors, options, multi_engine,
+                                    "Monitor configuration changed");
   return true;
 }
 
@@ -717,6 +729,27 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       mark_all_desktops_for_retile(multi_engine);
       spdlog::debug("Session resumed, continuing loop");
       continue;
+    }
+
+    if (frame_output.restart_system) {
+      winapi::fill_monitors(current_monitors);
+      reinitialize_system_from_monitors(monitors, current_monitors, provider.options, multi_engine,
+                                        "Restart hotkey pressed");
+      resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
+      auto restarted_geometry_start = std::chrono::steady_clock::now();
+      geometries = engine.compute_geometries(cluster_options);
+      perf.record_stage(LoopPerfStage::ComputeGeometry,
+                        std::chrono::steady_clock::now() - restarted_geometry_start);
+      frame_output.topology_changed = true;
+      frame_output.layout_changed = true;
+      frame_output.apply_tiles = true;
+      frame_output.placement_correction_leaf_ids.clear();
+      frame_output.focus_leaf_id.reset();
+      frame_output.cursor_pos.reset();
+      frame_output.has_completed_initial_tile_pass = true;
+      frame_output.geometries = geometries;
+      spdlog::debug("=== Updated Tile Layout After Restart Hotkey ===");
+      print_tile_layout(engine.system, geometries);
     }
 
     auto apply_start = std::chrono::steady_clock::now();

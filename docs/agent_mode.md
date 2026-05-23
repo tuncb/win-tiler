@@ -150,6 +150,7 @@ Parsed but rejected in agent mode:
 
 - `Exit`
 - `TogglePause`
+- `RestartSystem`
 
 ### `swap_windows`
 

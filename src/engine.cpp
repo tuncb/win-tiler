@@ -2129,6 +2129,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     output.apply_tiles = output.apply_tiles || action_result.apply_tiles;
     output.dump_window_management =
         output.dump_window_management || action_result.dump_window_management;
+    output.restart_system = output.restart_system || action_result.restart_system;
     if (action_result.focus_leaf_id.has_value()) {
       output.focus_leaf_id = action_result.focus_leaf_id;
     }
@@ -2504,6 +2505,13 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("DumpWindowManagement: dumping current window management state");
     result.success = true;
     result.dump_window_management = true;
+    break;
+
+  case HotkeyAction::RestartSystem:
+    spdlog::info("RestartSystem: full system restart requested");
+    result.success = true;
+    result.restart_system = true;
+    result.toast_message = "System restarted";
     break;
   }
 
