@@ -29,7 +29,7 @@ bool register_exit_hotkey(const KeyboardOptions& keyboard_options) {
     return false;
   }
 
-  if (!winapi::register_hotkey(*hotkey)) {
+  if (!winapi::register_hotkey(*hotkey, "Exit", *hotkey_str)) {
     spdlog::error("Failed to register exit hotkey");
     return false;
   }

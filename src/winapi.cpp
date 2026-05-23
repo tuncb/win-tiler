@@ -14,6 +14,7 @@
 #include <cctype>
 #include <limits>
 #include <mutex>
+#include <sstream>
 #include <unordered_map>
 
 #include "resource.h"
@@ -1152,12 +1153,21 @@ std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id) {
   return HotKeyInfo{id, modifiers, key};
 }
 
-bool register_hotkey(const HotKeyInfo& hotkey) {
+std::string format_register_hotkey_failure(const HotKeyInfo& hotkey, std::string_view action_name,
+                                           std::string_view shortcut, DWORD_T error) {
+  std::ostringstream message;
+  message << "register_hotkey: Failed to register hotkey action=" << action_name << ", shortcut='"
+          << shortcut << "', id=" << hotkey.id << ", key=" << hotkey.key
+          << ", modifiers=" << hotkey.modifiers << ", error=" << error;
+  return message.str();
+}
+
+bool register_hotkey(const HotKeyInfo& hotkey, std::string_view action_name,
+                     std::string_view shortcut) {
   BOOL result = RegisterHotKey(nullptr, hotkey.id, hotkey.modifiers, hotkey.key);
   if (result == 0) {
-    spdlog::error(
-        "register_hotkey: Failed to register hotkey id={}, key={}, modifiers={}, error={}",
-        hotkey.id, hotkey.key, hotkey.modifiers, GetLastError());
+    spdlog::error("{}",
+                  format_register_hotkey_failure(hotkey, action_name, shortcut, GetLastError()));
     return false;
   }
   return true;

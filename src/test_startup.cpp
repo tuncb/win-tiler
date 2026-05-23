@@ -72,6 +72,14 @@ TEST_SUITE("winapi") {
     CHECK_FALSE(winapi::should_defer_message_to_hotkey_poll(0x0218));
   }
 
+  TEST_CASE("hotkey registration failure includes action name and shortcut") {
+    winapi::HotKeyInfo hotkey{19, 12, 82};
+
+    CHECK(winapi::format_register_hotkey_failure(hotkey, "RestartSystem", "super+alt+r", 1409) ==
+          "register_hotkey: Failed to register hotkey action=RestartSystem, "
+          "shortcut='super+alt+r', id=19, key=82, modifiers=12, error=1409");
+  }
+
   TEST_CASE("display and setting changes invalidate monitor cache") {
     CHECK(winapi::should_invalidate_monitor_cache_for_message(0x007E));
     CHECK(winapi::should_invalidate_monitor_cache_for_message(0x001A));

@@ -400,7 +400,10 @@ void register_navigation_hotkeys(const KeyboardOptions& keyboard_options) {
     int id = hotkey_action_to_id(binding.action);
     auto hotkey = winapi::create_hotkey(binding.hotkey, id);
     if (hotkey) {
-      winapi::register_hotkey(*hotkey);
+      auto action_name = magic_enum::enum_name(binding.action);
+      if (!winapi::register_hotkey(*hotkey, action_name, binding.hotkey)) {
+        spdlog::debug("Hotkey registration failed for {}", action_name);
+      }
     }
   }
   spdlog::info("Registered {} hotkeys", keyboard_options.bindings.size());

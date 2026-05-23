@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -93,7 +94,11 @@ struct HotKeyInfo {
 std::optional<HotKeyInfo> create_hotkey(const std::string& text, int id);
 
 // Register a hotkey with Windows
-bool register_hotkey(const HotKeyInfo& hotkey);
+[[nodiscard]] std::string format_register_hotkey_failure(const HotKeyInfo& hotkey,
+                                                         std::string_view action_name,
+                                                         std::string_view shortcut, DWORD_T error);
+bool register_hotkey(const HotKeyInfo& hotkey, std::string_view action_name,
+                     std::string_view shortcut);
 
 // Unregister a previously registered hotkey
 bool unregister_hotkey(int id);
