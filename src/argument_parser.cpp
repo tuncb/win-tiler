@@ -79,6 +79,12 @@ ParseResult parse_args(int argc, char* argv[]) {
                             ". Valid values: trace, debug, info, warn, err, off");
         }
         args.options.log_level = level;
+      } else if (option_name == "log-file") {
+        if (i + 1 >= argc) {
+          return make_error("--log-file requires a filepath");
+        }
+        ++i;
+        args.options.log_file_path = argv[i];
       } else if (option_name == "config") {
         if (i + 1 >= argc) {
           return make_error("--config requires a filepath");
@@ -176,6 +182,7 @@ void print_usage() {
             << "  --version, -v           Show version information\n"
             << "  --monitor-info          Show monitor information and exit\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
+            << "  --log-file <filepath>   Write logs to a file instead of stdout\n"
             << "  --config <filepath>     Load configuration from a TOML file\n"
             << "  --perf-stats            Print periodic loop performance summaries\n"
             << "\n"

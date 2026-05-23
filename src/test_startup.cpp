@@ -13,7 +13,7 @@ TEST_SUITE("startup") {
   TEST_CASE("build_startup_command_line omits config when not provided") {
     std::filesystem::path executable = R"(C:\Program Files\win-tiler\win-tiler.exe)";
 
-    auto command_line = build_startup_command_line(executable, std::nullopt);
+    auto command_line = build_startup_command_line(executable, std::nullopt, std::nullopt);
 
     CHECK(command_line == "\"C:\\Program Files\\win-tiler\\win-tiler.exe\" loop");
   }
@@ -22,7 +22,7 @@ TEST_SUITE("startup") {
     std::filesystem::path executable = R"(C:\Program Files\win-tiler\win-tiler.exe)";
     std::filesystem::path config = R"(C:\Users\Test User\AppData\Roaming\win-tiler\config.toml)";
 
-    auto command_line = build_startup_command_line(executable, config);
+    auto command_line = build_startup_command_line(executable, config, std::nullopt);
 
     CHECK(command_line ==
           "\"C:\\Program Files\\win-tiler\\win-tiler.exe\" --config "
@@ -32,9 +32,20 @@ TEST_SUITE("startup") {
   TEST_CASE("build_startup_command_line escapes embedded quotes") {
     std::filesystem::path executable = LR"(C:\Apps\win-"tiler"\win-tiler.exe)";
 
-    auto command_line = build_startup_command_line(executable, std::nullopt);
+    auto command_line = build_startup_command_line(executable, std::nullopt, std::nullopt);
 
     CHECK(command_line == "\"C:\\Apps\\win-\\\"tiler\\\"\\win-tiler.exe\" loop");
+  }
+
+  TEST_CASE("build_startup_command_line includes quoted log file path when provided") {
+    std::filesystem::path executable = R"(C:\Program Files\win-tiler\win-tiler.exe)";
+    std::filesystem::path log_file = R"(C:\Users\Test User\AppData\Local\win-tiler\win-tiler.log)";
+
+    auto command_line = build_startup_command_line(executable, std::nullopt, log_file);
+
+    CHECK(command_line ==
+          "\"C:\\Program Files\\win-tiler\\win-tiler.exe\" --log-file "
+          "\"C:\\Users\\Test User\\AppData\\Local\\win-tiler\\win-tiler.log\" loop");
   }
 }
 

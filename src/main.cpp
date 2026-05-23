@@ -1,5 +1,6 @@
 #ifdef DOCTEST_CONFIG_DISABLE
 
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 #include <Windows.h>
 
@@ -10,6 +11,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "agent_mode.h"
@@ -57,15 +59,15 @@ bool command_uses_options_provider(const wintiler::Command& command) {
 }
 
 tl::expected<std::optional<std::filesystem::path>, std::string>
-resolve_startup_config_path(const wintiler::CliOptions& options) {
-  if (!options.config_path.has_value()) {
+resolve_startup_option_path(const std::optional<std::string>& path, const std::string& label) {
+  if (!path.has_value()) {
     return std::nullopt;
   }
 
   std::error_code ec;
-  auto absolute_path = std::filesystem::absolute(*options.config_path, ec);
+  auto absolute_path = std::filesystem::absolute(*path, ec);
   if (ec) {
-    return tl::unexpected("Failed to resolve startup config path: " + ec.message());
+    return tl::unexpected("Failed to resolve startup " + label + " path: " + ec.message());
   }
 
   return absolute_path.lexically_normal();
@@ -106,12 +108,25 @@ void applyLogLevel(LogLevel level) {
   }
 }
 
+tl::expected<void, std::string> configureLogFile(const CliOptions& options) {
+  if (!options.log_file_path.has_value()) {
+    return {};
+  }
+
+  try {
+    auto logger = spdlog::basic_logger_mt(
+        "win-tiler-file", std::filesystem::path(*options.log_file_path).string(), true);
+    spdlog::set_default_logger(std::move(logger));
+  } catch (const spdlog::spdlog_ex& ex) {
+    return tl::unexpected("Failed to open log file: " + std::string(ex.what()));
+  }
+
+  return {};
+}
+
 int main(int argc, char* argv[]) {
   // Set DPI awareness before any Windows API calls that return coordinates
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-
-  // Flush spdlog on info-level messages to ensure immediate output
-  spdlog::flush_on(spdlog::level::info);
 
   // Parse command-line arguments
   auto result = parse_args(argc, argv);
@@ -122,10 +137,19 @@ int main(int argc, char* argv[]) {
 
   Command command = result.args.command.value_or(Command{LoopCommand{}});
 
+  auto logging_result = configureLogFile(result.args.options);
+  if (!logging_result.has_value()) {
+    spdlog::error("{}", logging_result.error());
+    return 1;
+  }
+
   // Apply log level if specified
   if (result.args.options.log_level) {
     applyLogLevel(*result.args.options.log_level);
   }
+
+  // Flush spdlog on info-level messages to ensure immediate output
+  spdlog::flush_on(spdlog::level::info);
 
   // Log version at startup for long-running/management commands.
   if (!std::holds_alternative<MonitorInfoCommand>(command)) {
@@ -202,15 +226,24 @@ int main(int argc, char* argv[]) {
                        return;
                      }
 
-                     auto config_path = resolve_startup_config_path(result.args.options);
+                     auto config_path =
+                         resolve_startup_option_path(result.args.options.config_path, "config");
                      if (!config_path.has_value()) {
                        spdlog::error("{}", config_path.error());
                        exitCode = 1;
                        return;
                      }
 
+                     auto log_file_path =
+                         resolve_startup_option_path(result.args.options.log_file_path, "log file");
+                     if (!log_file_path.has_value()) {
+                       spdlog::error("{}", log_file_path.error());
+                       exitCode = 1;
+                       return;
+                     }
+
                      auto enable_result =
-                         enable_startup_registration(executable_path, *config_path);
+                         enable_startup_registration(executable_path, *config_path, *log_file_path);
                      if (!enable_result.has_value()) {
                        spdlog::error("{}", enable_result.error());
                        exitCode = 1;
@@ -218,8 +251,9 @@ int main(int argc, char* argv[]) {
                      }
 
                      spdlog::info("Enabled startup registration for the current user");
-                     spdlog::info("Startup command line: {}",
-                                  build_startup_command_line(executable_path, *config_path));
+                     spdlog::info(
+                         "Startup command line: {}",
+                         build_startup_command_line(executable_path, *config_path, *log_file_path));
                      return;
                    }
 

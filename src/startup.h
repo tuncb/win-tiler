@@ -13,11 +13,13 @@ struct StartupRegistrationStatus {
 };
 
 std::string build_startup_command_line(const std::filesystem::path& executable_path,
-                                       std::optional<std::filesystem::path> config_path);
+                                       std::optional<std::filesystem::path> config_path,
+                                       std::optional<std::filesystem::path> log_file_path);
 
 tl::expected<void, std::string>
 enable_startup_registration(const std::filesystem::path& executable_path,
-                            std::optional<std::filesystem::path> config_path);
+                            std::optional<std::filesystem::path> config_path,
+                            std::optional<std::filesystem::path> log_file_path);
 
 tl::expected<bool, std::string> disable_startup_registration();
 

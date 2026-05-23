@@ -49,6 +49,16 @@ TEST_SUITE("argument_parser") {
     CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
   }
 
+  TEST_CASE("parses log file option with implicit loop command") {
+    auto result = parse({"win-tiler", "--log-file", R"(C:\logs\win-tiler.log)"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.options.log_file_path.has_value());
+    CHECK(*result.args.options.log_file_path == R"(C:\logs\win-tiler.log)");
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<LoopCommand>(*result.args.command));
+  }
+
   TEST_CASE("parses perf stats option with implicit loop command") {
     auto result = parse({"win-tiler", "--perf-stats"});
 
@@ -176,6 +186,13 @@ TEST_SUITE("argument_parser") {
 
     CHECK_FALSE(result.success);
     CHECK(result.error == "Unknown command: ui-test-multi");
+  }
+
+  TEST_CASE("log file option requires a filepath") {
+    auto result = parse({"win-tiler", "--log-file"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "--log-file requires a filepath");
   }
 }
 

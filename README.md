@@ -184,7 +184,7 @@ Mouse-based window drag/drop uses `loop.mouse_drag_drop` for the plain drag acti
 win-tiler [options] [command] [command-args]
 ```
 
-Global options are parsed before the command, so place `--logmode` and `--config` before commands such as `loop` or `startup`.
+Global options are parsed before the command, so place `--logmode`, `--log-file`, and `--config` before commands such as `loop` or `startup`.
 
 If no command is supplied, `win-tiler` defaults to `loop`.
 
@@ -196,6 +196,7 @@ If no command is supplied, `win-tiler` defaults to `loop`.
 | `--version`, `-v` | Print version information and exit immediately. |
 | `--monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. |
 | `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
+| `--log-file <filepath>` | Write logs to a file instead of stdout. |
 | `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
 | `--perf-stats` | In `loop` mode, print periodic stage timing summaries for the active portion of the main loop so before/after optimization runs are easier to compare. |
 
@@ -217,7 +218,7 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 
 | Action | Meaning |
 | --- | --- |
-| `startup enable` | Create or update the current-user startup entry so Windows launches `win-tiler loop` on sign-in. If `--config` is supplied before the command, that config path is added to the stored startup command line. |
+| `startup enable` | Create or update the current-user startup entry so Windows launches `win-tiler loop` on sign-in. If `--config` or `--log-file` is supplied before the command, the resolved path is added to the stored startup command line. |
 | `startup disable` | Remove the current-user startup entry. |
 | `startup status` | Print whether startup is enabled and, if available, the exact command line stored in the registry. |
 
@@ -246,6 +247,7 @@ Example session:
 ```text
 win-tiler
 win-tiler --logmode debug
+win-tiler --log-file C:\work\win-tiler\win-tiler.log
 win-tiler --config C:\work\win-tiler\win-tiler.toml loop
 win-tiler track-windows
 win-tiler agent stdio

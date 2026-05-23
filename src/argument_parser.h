@@ -40,9 +40,10 @@ using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, MonitorIn
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };
 
 struct CliOptions {
-  std::optional<LogLevel> log_level;      // --logmode <level>
-  std::optional<std::string> config_path; // --config <filepath>
-  bool perf_stats = false;                // --perf-stats
+  std::optional<LogLevel> log_level;        // --logmode <level>
+  std::optional<std::string> log_file_path; // --log-file <filepath>
+  std::optional<std::string> config_path;   // --config <filepath>
+  bool perf_stats = false;                  // --perf-stats
 };
 
 // ===== Parsed Arguments =====

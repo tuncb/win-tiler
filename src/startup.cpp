@@ -102,8 +102,14 @@ std::wstring quote_windows_argument(const std::wstring& argument) {
 }
 
 std::wstring build_startup_command_line_wide(const std::filesystem::path& executable_path,
-                                             std::optional<std::filesystem::path> config_path) {
+                                             std::optional<std::filesystem::path> config_path,
+                                             std::optional<std::filesystem::path> log_file_path) {
   std::wstring command_line = quote_windows_argument(executable_path.wstring());
+
+  if (log_file_path.has_value()) {
+    command_line += L" --log-file ";
+    command_line += quote_windows_argument(log_file_path->wstring());
+  }
 
   if (config_path.has_value()) {
     command_line += L" --config ";
@@ -164,15 +170,18 @@ tl::expected<std::optional<std::wstring>, std::string> read_startup_value() {
 } // namespace
 
 std::string build_startup_command_line(const std::filesystem::path& executable_path,
-                                       std::optional<std::filesystem::path> config_path) {
-  return wide_to_utf8(build_startup_command_line_wide(executable_path, std::move(config_path)));
+                                       std::optional<std::filesystem::path> config_path,
+                                       std::optional<std::filesystem::path> log_file_path) {
+  return wide_to_utf8(build_startup_command_line_wide(executable_path, std::move(config_path),
+                                                      std::move(log_file_path)));
 }
 
 tl::expected<void, std::string>
 enable_startup_registration(const std::filesystem::path& executable_path,
-                            std::optional<std::filesystem::path> config_path) {
-  std::wstring command_line =
-      build_startup_command_line_wide(executable_path, std::move(config_path));
+                            std::optional<std::filesystem::path> config_path,
+                            std::optional<std::filesystem::path> log_file_path) {
+  std::wstring command_line = build_startup_command_line_wide(
+      executable_path, std::move(config_path), std::move(log_file_path));
 
   HKEY key = nullptr;
   LSTATUS create_status =
