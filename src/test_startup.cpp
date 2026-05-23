@@ -4,9 +4,11 @@
 #include <windows.h>
 
 #include <filesystem>
+#include <string>
 
 #include "resource.h"
 #include "startup.h"
+#include "version.h"
 #include "winapi.h"
 
 using namespace wintiler;
@@ -107,6 +109,23 @@ TEST_SUITE("winapi") {
     CHECK(availability.can_open_config);
     CHECK(availability.can_show_log);
     CHECK(availability.can_exit);
+  }
+
+  TEST_CASE("notification area about message includes version and repository") {
+    std::string version = get_version_string();
+    std::wstring expected_version(version.begin(), version.end());
+
+    const std::wstring message = winapi::get_notification_area_about_message();
+
+    CHECK(message.find(L"Win-tiler version " + expected_version) != std::wstring::npos);
+    CHECK(message.find(L"https://github.com/tuncb/win-tiler") != std::wstring::npos);
+  }
+
+  TEST_CASE("notification area about dialog content marks repository as hyperlink") {
+    const std::wstring content = winapi::get_notification_area_about_dialog_content();
+
+    CHECK(content.find(L"<a href=\"https://github.com/tuncb/win-tiler\">") != std::wstring::npos);
+    CHECK(content.find(L"</a>") != std::wstring::npos);
   }
 
   TEST_CASE("application icon resource is available") {

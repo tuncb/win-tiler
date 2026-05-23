@@ -141,6 +141,9 @@ struct NotificationAreaMenuAvailability {
 [[nodiscard]] NotificationAreaMenuAvailability
 get_notification_area_menu_availability(const NotificationAreaIconOptions& options);
 
+[[nodiscard]] std::wstring get_notification_area_about_message();
+[[nodiscard]] std::wstring get_notification_area_about_dialog_content();
+
 void register_notification_area_icon(const NotificationAreaIconOptions& options);
 void unregister_notification_area_icon();
 [[nodiscard]] bool consume_notification_area_exit_requested();

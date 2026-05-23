@@ -1,5 +1,6 @@
 #include "winapi.h"
 
+#include <commctrl.h>
 #include <dwmapi.h>
 #include <objbase.h>
 #include <psapi.h>
@@ -15,9 +16,11 @@
 #include <limits>
 #include <mutex>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
 
 #include "resource.h"
+#include "version.h"
 
 // Link with Psapi.lib
 #pragma comment(lib, "Psapi.lib")
@@ -25,6 +28,11 @@
 #pragma comment(lib, "Wtsapi32.lib")
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "Shell32.lib")
+#pragma comment(lib, "Comctl32.lib")
+#pragma comment(linker,                                                                            \
+                "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' "     \
+                "version='6.0.0.0' processorArchitecture='*' "                                     \
+                "publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 namespace winapi {
 
@@ -1323,12 +1331,23 @@ constexpr UINT WM_WINTILER_NOTIFICATION_ICON = WM_APP + 1;
 constexpr UINT_PTR NOTIFICATION_AREA_ICON_ID = 1;
 constexpr UINT ID_OPEN_CONFIG = 1001;
 constexpr UINT ID_SHOW_LOG = 1002;
-constexpr UINT ID_EXIT = 1003;
+constexpr UINT ID_ABOUT = 1003;
+constexpr UINT ID_EXIT = 1004;
+constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
 
 bool is_non_empty_path(const std::optional<std::filesystem::path>& path) {
   return path.has_value() && !path->empty();
+}
+
+std::string narrow_ascii(std::wstring_view text) {
+  std::string result;
+  result.reserve(text.size());
+  for (wchar_t character : text) {
+    result.push_back(static_cast<char>(character));
+  }
+  return result;
 }
 
 bool shell_open_path(HWND owner, const std::filesystem::path& path, const char* label) {
@@ -1345,12 +1364,64 @@ bool shell_open_path(HWND owner, const std::filesystem::path& path, const char* 
   return true;
 }
 
+bool shell_open_url(HWND owner, std::wstring_view url, const char* label) {
+  std::wstring wide_url(url);
+  HINSTANCE result =
+      ShellExecuteW(owner, L"open", wide_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  std::string narrow_url = narrow_ascii(wide_url);
+  if (reinterpret_cast<INT_PTR>(result) <= 32) {
+    spdlog::error("Failed to open {} '{}', ShellExecute result={}", label, narrow_url,
+                  reinterpret_cast<INT_PTR>(result));
+    return false;
+  }
+
+  spdlog::info("Opened {}: {}", label, narrow_url);
+  return true;
+}
+
 bool append_notification_menu_item(HMENU menu, UINT flags, UINT_PTR id, const wchar_t* text) {
   if (AppendMenuW(menu, flags, id, text) == 0) {
     spdlog::error("Failed to append notification area menu item, error={}", GetLastError());
     return false;
   }
   return true;
+}
+
+HRESULT CALLBACK notification_area_about_callback(HWND hwnd, UINT notification, WPARAM,
+                                                  LPARAM lParam, LONG_PTR) {
+  if (notification != TDN_HYPERLINK_CLICKED) {
+    return S_OK;
+  }
+
+  const auto* url = reinterpret_cast<const wchar_t*>(lParam);
+  if (url == nullptr) {
+    return E_INVALIDARG;
+  }
+
+  if (!shell_open_url(hwnd, url, "GitHub repository")) {
+    return E_FAIL;
+  }
+  return S_OK;
+}
+
+void show_notification_area_about_dialog(HWND hwnd) {
+  const std::wstring content = get_notification_area_about_dialog_content();
+  TASKDIALOGCONFIG config = {};
+  config.cbSize = sizeof(config);
+  config.hwndParent = hwnd;
+  config.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_SIZE_TO_CONTENT;
+  config.dwCommonButtons = TDCBF_OK_BUTTON;
+  config.pszWindowTitle = L"About win-tiler";
+  config.pszMainIcon = TD_INFORMATION_ICON;
+  config.pszContent = content.c_str();
+  config.pfCallback = notification_area_about_callback;
+
+  HRESULT result = TaskDialogIndirect(&config, nullptr, nullptr, nullptr);
+  if (FAILED(result)) {
+    spdlog::error("Failed to show About dialog, HRESULT={}", static_cast<long>(result));
+    MessageBoxW(hwnd, get_notification_area_about_message().c_str(), L"About win-tiler",
+                MB_OK | MB_ICONINFORMATION);
+  }
 }
 
 void handle_notification_menu_command(HWND hwnd, UINT command) {
@@ -1365,6 +1436,10 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     if (g_notification_area_icon_options.log_file_path.has_value()) {
       shell_open_path(hwnd, *g_notification_area_icon_options.log_file_path, "log file");
     }
+    return;
+
+  case ID_ABOUT:
+    show_notification_area_about_dialog(hwnd);
     return;
 
   case ID_EXIT:
@@ -1398,6 +1473,7 @@ void show_notification_area_menu(HWND hwnd) {
       append_notification_menu_item(menu, open_config_flags, ID_OPEN_CONFIG, L"Open config file");
   menu_ok =
       append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Open log file") && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_ABOUT, L"About...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;
   if (!menu_ok) {
@@ -1616,6 +1692,30 @@ bool create_notification_window() {
 NotificationAreaMenuAvailability
 get_notification_area_menu_availability(const NotificationAreaIconOptions& options) {
   return {is_non_empty_path(options.config_path), is_non_empty_path(options.log_file_path), true};
+}
+
+static std::wstring get_notification_area_about_version_line() {
+  const std::string version = wintiler::get_version_string();
+  std::wstring version_line = L"Win-tiler version ";
+  version_line.append(version.begin(), version.end());
+  return version_line;
+}
+
+std::wstring get_notification_area_about_message() {
+  std::wstring message = get_notification_area_about_version_line();
+  message.append(L"\n");
+  message.append(GITHUB_REPOSITORY_URL);
+  return message;
+}
+
+std::wstring get_notification_area_about_dialog_content() {
+  std::wstring content = get_notification_area_about_version_line();
+  content.append(L"\n<a href=\"");
+  content.append(GITHUB_REPOSITORY_URL);
+  content.append(L"\">");
+  content.append(GITHUB_REPOSITORY_URL);
+  content.append(L"</a>");
+  return content;
 }
 
 void register_session_power_notifications() {
