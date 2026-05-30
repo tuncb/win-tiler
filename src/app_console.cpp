@@ -82,6 +82,10 @@ bool command_should_attach_console(const Command& command, const CliOptions& opt
         using CommandType = std::decay_t<decltype(concrete_command)>;
         if constexpr (std::is_same_v<CommandType, LoopCommand>) {
           return options.perf_stats;
+        } else if constexpr (std::is_same_v<CommandType, InstallCommand> ||
+                             std::is_same_v<CommandType, UninstallCommand> ||
+                             std::is_same_v<CommandType, FinishUninstallCommand>) {
+          return false;
         } else {
           return true;
         }

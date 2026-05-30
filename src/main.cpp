@@ -17,6 +17,7 @@
 
 #include "app_console.h"
 #include "argument_parser.h"
+#include "installer.h"
 #include "loop.h"
 #include "options.h"
 #include "startup.h"
@@ -250,108 +251,158 @@ int run_app(int argc, char* argv[]) {
   }
 
   int exitCode = 0;
-  std::visit(overloaded{
-                 [](const HelpCommand&) { print_usage(); },
-                 [](const VersionCommand&) {
-                   std::cout << "win-tiler v" << get_version_string() << std::endl;
-                 },
-                 [&](const LoopCommand&) {
-                   run_loop_mode(optionsProvider,
-                                 LoopRunOptions{result.args.options.perf_stats,
-                                                resolved_config_path, *log_file_path});
-                 },
-                 [](const MonitorInfoCommand&) {
-                   std::vector<winapi::MonitorInfo> monitors;
-                   winapi::fill_monitors(monitors);
-                   winapi::log_monitors(monitors);
-                 },
-                 [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
-                 [&](const InitConfigCommand& cmd) {
-                   auto targetPath =
-                       cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
-                   auto writeResult = write_options_toml(get_default_global_options(), targetPath);
-                   if (writeResult.has_value()) {
-                     spdlog::info("Config written to: {}", targetPath.string());
-                   } else {
-                     spdlog::error("Failed to write config: {}", writeResult.error());
-                     exitCode = 1;
-                   }
-                 },
-                 [&](const StartupCommand& cmd) {
-                   if (cmd.action == StartupAction::Enable) {
-                     auto executable_path = getExecutablePath();
-                     if (executable_path.empty()) {
-                       spdlog::error("Failed to determine executable path");
-                       exitCode = 1;
-                       return;
-                     }
+  std::visit(
+      overloaded{
+          [](const HelpCommand&) { print_usage(); },
+          [](const VersionCommand&) {
+            std::cout << "win-tiler v" << get_version_string() << std::endl;
+          },
+          [&](const LoopCommand&) {
+            run_loop_mode(optionsProvider, LoopRunOptions{result.args.options.perf_stats,
+                                                          resolved_config_path, *log_file_path});
+          },
+          [](const MonitorInfoCommand&) {
+            std::vector<winapi::MonitorInfo> monitors;
+            winapi::fill_monitors(monitors);
+            winapi::log_monitors(monitors);
+          },
+          [&](const TrackWindowsCommand&) { run_track_windows_mode(optionsProvider); },
+          [&](const InitConfigCommand& cmd) {
+            auto targetPath =
+                cmd.filepath ? std::filesystem::path(*cmd.filepath) : getDefaultConfigPath();
+            auto writeResult = write_options_toml(get_default_global_options(), targetPath);
+            if (writeResult.has_value()) {
+              spdlog::info("Config written to: {}", targetPath.string());
+            } else {
+              spdlog::error("Failed to write config: {}", writeResult.error());
+              exitCode = 1;
+            }
+          },
+          [&](const StartupCommand& cmd) {
+            if (cmd.action == StartupAction::Enable) {
+              auto executable_path = getExecutablePath();
+              if (executable_path.empty()) {
+                spdlog::error("Failed to determine executable path");
+                exitCode = 1;
+                return;
+              }
 
-                     auto config_path =
-                         resolve_startup_option_path(result.args.options.config_path, "config");
-                     if (!config_path.has_value()) {
-                       spdlog::error("{}", config_path.error());
-                       exitCode = 1;
-                       return;
-                     }
+              auto config_path =
+                  resolve_startup_option_path(result.args.options.config_path, "config");
+              if (!config_path.has_value()) {
+                spdlog::error("{}", config_path.error());
+                exitCode = 1;
+                return;
+              }
 
-                     auto log_file_path =
-                         resolve_startup_option_path(result.args.options.log_file_path, "log file");
-                     if (!log_file_path.has_value()) {
-                       spdlog::error("{}", log_file_path.error());
-                       exitCode = 1;
-                       return;
-                     }
+              auto log_file_path =
+                  resolve_startup_option_path(result.args.options.log_file_path, "log file");
+              if (!log_file_path.has_value()) {
+                spdlog::error("{}", log_file_path.error());
+                exitCode = 1;
+                return;
+              }
 
-                     auto enable_result =
-                         enable_startup_registration(executable_path, *config_path, *log_file_path);
-                     if (!enable_result.has_value()) {
-                       spdlog::error("{}", enable_result.error());
-                       exitCode = 1;
-                       return;
-                     }
+              auto enable_result =
+                  enable_startup_registration(executable_path, *config_path, *log_file_path);
+              if (!enable_result.has_value()) {
+                spdlog::error("{}", enable_result.error());
+                exitCode = 1;
+                return;
+              }
 
-                     spdlog::info("Enabled startup registration for the current user");
-                     spdlog::info(
-                         "Startup command line: {}",
-                         build_startup_command_line(executable_path, *config_path, *log_file_path));
-                     return;
-                   }
+              spdlog::info("Enabled startup registration for the current user");
+              spdlog::info(
+                  "Startup command line: {}",
+                  build_startup_command_line(executable_path, *config_path, *log_file_path));
+              return;
+            }
 
-                   if (cmd.action == StartupAction::Disable) {
-                     auto disable_result = disable_startup_registration();
-                     if (!disable_result.has_value()) {
-                       spdlog::error("{}", disable_result.error());
-                       exitCode = 1;
-                       return;
-                     }
+            if (cmd.action == StartupAction::Disable) {
+              auto disable_result = disable_startup_registration();
+              if (!disable_result.has_value()) {
+                spdlog::error("{}", disable_result.error());
+                exitCode = 1;
+                return;
+              }
 
-                     if (*disable_result) {
-                       spdlog::info("Removed startup registration for the current user");
-                     } else {
-                       spdlog::info("Startup registration was already disabled");
-                     }
-                     return;
-                   }
+              if (*disable_result) {
+                spdlog::info("Removed startup registration for the current user");
+              } else {
+                spdlog::info("Startup registration was already disabled");
+              }
+              return;
+            }
 
-                   auto status_result = get_startup_registration_status();
-                   if (!status_result.has_value()) {
-                     spdlog::error("{}", status_result.error());
-                     exitCode = 1;
-                     return;
-                   }
+            auto status_result = get_startup_registration_status();
+            if (!status_result.has_value()) {
+              spdlog::error("{}", status_result.error());
+              exitCode = 1;
+              return;
+            }
 
-                   if (!status_result->enabled) {
-                     std::cout << "Startup registration: disabled" << std::endl;
-                     return;
-                   }
+            if (!status_result->enabled) {
+              std::cout << "Startup registration: disabled" << std::endl;
+              return;
+            }
 
-                   std::cout << "Startup registration: enabled" << std::endl;
-                   if (status_result->command_line.has_value()) {
-                     std::cout << "Command line: " << *status_result->command_line << std::endl;
-                   }
-                 },
-             },
-             command);
+            std::cout << "Startup registration: enabled" << std::endl;
+            if (status_result->command_line.has_value()) {
+              std::cout << "Command line: " << *status_result->command_line << std::endl;
+            }
+          },
+          [&](const InstallCommand&) {
+            auto executable_path = getExecutablePath();
+            if (executable_path.empty()) {
+              spdlog::error("Failed to determine executable path");
+              exitCode = 1;
+              return;
+            }
+
+            auto dialog_result = show_installer_dialog(nullptr, executable_path);
+            if (!dialog_result.has_value()) {
+              spdlog::error("{}", dialog_result.error());
+              exitCode = 1;
+            }
+          },
+          [&](const UninstallCommand&) {
+            auto executable_path = getExecutablePath();
+            if (executable_path.empty()) {
+              spdlog::error("Failed to determine executable path");
+              exitCode = 1;
+              return;
+            }
+
+            auto install_dir = get_default_install_directory();
+            if (!install_dir.has_value()) {
+              spdlog::error("{}", install_dir.error());
+              exitCode = 1;
+              return;
+            }
+
+            auto uninstall_result = start_uninstall_helper(executable_path, *install_dir);
+            if (!uninstall_result.has_value()) {
+              spdlog::error("{}", uninstall_result.error());
+              exitCode = 1;
+            }
+          },
+          [&](const FinishUninstallCommand& cmd) {
+            auto helper_path = getExecutablePath();
+            if (helper_path.empty()) {
+              spdlog::error("Failed to determine helper executable path");
+              exitCode = 1;
+              return;
+            }
+
+            auto uninstall_result = finish_uninstall(
+                cmd.pid, std::filesystem::path(cmd.install_dir), helper_path, cmd.running_pid);
+            if (!uninstall_result.has_value()) {
+              spdlog::error("{}", uninstall_result.error());
+              exitCode = 1;
+            }
+          },
+      },
+      command);
   return exitCode;
 }
 

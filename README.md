@@ -17,6 +17,8 @@
 - Overlay and visualization support for understanding the current layout and selection state.
 - Diagnostic support for logging discovered windows and inspecting runtime behavior.
 - Per-user startup registration through the Windows `Run` registry entry.
+- Lightweight per-user installer dialog with optional startup registration and Windows Installed
+  Apps uninstall integration.
 
 ## Configuration
 
@@ -202,6 +204,8 @@ long-running detached `loop` diagnostics, logs default to
 | `--help`, `-h` | Print help text and exit immediately. |
 | `--version`, `-v` | Print version information and exit immediately. |
 | `--monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. |
+| `--install` | Show the native installer dialog. |
+| `--uninstall` | Start uninstall directly. |
 | `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
 | `--log-file <filepath>` | Write logs to a file instead of stdout. Detached `loop` runs default to `%TEMP%\win-tiler.log` when this option is omitted. |
 | `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
@@ -219,6 +223,30 @@ If `--config` is explicitly provided and the file cannot be loaded, the program 
 | `track-windows` | Log the windows found on each monitor once per second until the configured exit hotkey is pressed. |
 | `init-config [filepath]` | Write a default TOML config file. If `filepath` is omitted, the file is written as `win-tiler.toml` next to the executable. |
 | `startup <action>` | Manage startup registration for the current user. Supported actions are `enable`, `disable`, and `status`. |
+
+### Installer
+
+`win-tiler --install` opens a native Windows installer dialog. The current installer is per-user
+and installs to:
+
+```text
+%LOCALAPPDATA%\win-tiler
+```
+
+The dialog includes an opt-in checkbox for starting `win-tiler` when Windows starts. The checkbox is
+checked only when the startup registration points at the installed executable. Install writes the app
+to the fixed install folder, optionally registers startup for the installed executable, and creates
+`win-tiler.toml` in the install folder when that file does not already exist. Install also adds a
+current-user uninstall entry so `win-tiler` appears in Windows Installed Apps. The Install button is
+disabled when an install is already present, and the Uninstall and Apply buttons are disabled when no
+install is present. Apply updates only the startup option without reinstalling or uninstalling.
+
+Uninstall can be started from the installer dialog, Windows Installed Apps, or the tray menu. Windows
+Installed Apps calls `win-tiler --uninstall`, which starts uninstall directly without reopening the
+installer dialog. Because Windows locks a running executable, uninstall copies `win-tiler.exe` to a
+temporary helper process, starts that helper, and closes the installed app. The helper waits for the
+original process to exit, then removes startup registration, the Installed Apps registry entry, and
+the install folder.
 
 ### `startup` Actions
 
@@ -240,4 +268,10 @@ win-tiler init-config
 win-tiler init-config C:\work\win-tiler\custom-config.toml
 win-tiler --config C:\work\win-tiler\custom-config.toml startup enable
 win-tiler startup status
+win-tiler --install
 ```
+
+## Notification Area Menu
+
+When running in loop mode, the notification area menu provides quick access to the config file, log
+file, pause/reset actions, the installer dialog, About, and Exit.

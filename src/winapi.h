@@ -151,6 +151,8 @@ void set_notification_area_manual_pause_active(bool is_paused);
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] bool consume_notification_area_exit_requested();
 [[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();
+[[nodiscard]] std::optional<DWORD_T> find_notification_area_process_id();
+[[nodiscard]] bool request_notification_area_exit_for_running_instance();
 
 // Blocks until session is active (unlocked, awake, display on)
 // Returns immediately if already active

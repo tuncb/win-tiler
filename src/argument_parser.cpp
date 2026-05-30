@@ -1,5 +1,6 @@
 #include "argument_parser.h"
 
+#include <exception>
 #include <iostream>
 
 namespace wintiler {
@@ -36,6 +37,77 @@ ParseResult make_success(ParsedArgs args) {
   return result;
 }
 
+ParseResult parse_uninstall_command(int argc, char* argv[], int& i, ParsedArgs& args) {
+  UninstallCommand command;
+  while (i < argc) {
+    std::string arg = argv[i];
+    if (arg == "--quiet") {
+      command.quiet = true;
+      ++i;
+      continue;
+    }
+    return make_error("--uninstall only accepts --quiet");
+  }
+
+  args.command = command;
+  return make_success(args);
+}
+
+ParseResult parse_finish_uninstall_command(int argc, char* argv[], int& i, ParsedArgs& args) {
+  FinishUninstallCommand command;
+  while (i < argc) {
+    std::string arg = argv[i];
+    ++i;
+
+    if (arg == "--pid") {
+      if (i >= argc) {
+        return make_error("--pid requires a value");
+      }
+      try {
+        command.pid = std::stoul(argv[i]);
+      } catch (const std::exception&) {
+        return make_error("Invalid --pid value: " + std::string(argv[i]));
+      }
+      ++i;
+      continue;
+    }
+
+    if (arg == "--dir") {
+      if (i >= argc) {
+        return make_error("--dir requires a path");
+      }
+      command.install_dir = argv[i];
+      ++i;
+      continue;
+    }
+
+    if (arg == "--running-pid") {
+      if (i >= argc) {
+        return make_error("--running-pid requires a value");
+      }
+      try {
+        command.running_pid = std::stoul(argv[i]);
+      } catch (const std::exception&) {
+        return make_error("Invalid --running-pid value: " + std::string(argv[i]));
+      }
+      ++i;
+      continue;
+    }
+
+    return make_error("Unknown --finish-uninstall option: " + arg);
+  }
+
+  if (command.pid == 0) {
+    return make_error("--finish-uninstall requires --pid");
+  }
+  if (command.install_dir.empty()) {
+    return make_error("--finish-uninstall requires --dir");
+  }
+
+  args.command = command;
+  return make_success(args);
+}
+
 } // namespace
 
 ParseResult parse_args(int argc, char* argv[]) {
@@ -61,6 +133,25 @@ ParseResult parse_args(int argc, char* argv[]) {
     if (arg == "--monitor-info") {
       args.command = MonitorInfoCommand{};
       return make_success(args);
+    }
+
+    if (arg == "--install") {
+      ++i;
+      if (i < argc) {
+        return make_error("--install does not accept extra arguments");
+      }
+      args.command = InstallCommand{};
+      return make_success(args);
+    }
+
+    if (arg == "--uninstall") {
+      ++i;
+      return parse_uninstall_command(argc, argv, i, args);
+    }
+
+    if (arg == "--finish-uninstall") {
+      ++i;
+      return parse_finish_uninstall_command(argc, argv, i, args);
     }
 
     // Check if it's an option (starts with --)
@@ -167,6 +258,8 @@ void print_usage() {
             << "  --help, -h              Show this help message\n"
             << "  --version, -v           Show version information\n"
             << "  --monitor-info          Show monitor information and exit\n"
+            << "  --install               Show the native installer dialog\n"
+            << "  --uninstall             Start uninstall directly\n"
             << "  --logmode <level>       Set log level (trace, debug, info, warn, err, off)\n"
             << "  --log-file <filepath>   Write logs to a file instead of stdout\n"
             << "                          (detached loop defaults to %TEMP%\\win-tiler.log)\n"

@@ -3,15 +3,36 @@
 #include <doctest/doctest.h>
 #include <windows.h>
 
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
+#include "installer.h"
+#include "options.h"
 #include "resource.h"
 #include "startup.h"
 #include "version.h"
 #include "winapi.h"
 
 using namespace wintiler;
+
+namespace {
+
+std::filesystem::path make_unique_temp_directory(const std::string& name) {
+  auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+  auto path = std::filesystem::temp_directory_path() /
+              (name + "-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(ticks));
+  std::filesystem::create_directories(path);
+  return path;
+}
+
+std::string read_text_file(const std::filesystem::path& path) {
+  std::ifstream file(path);
+  return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+} // namespace
 
 TEST_SUITE("startup") {
   TEST_CASE("build_startup_command_line omits config when not provided") {
@@ -50,6 +71,100 @@ TEST_SUITE("startup") {
     CHECK(command_line ==
           "\"C:\\Program Files\\win-tiler\\win-tiler.exe\" --log-file "
           "\"C:\\Users\\Test User\\AppData\\Local\\win-tiler\\win-tiler.log\" loop");
+  }
+}
+
+TEST_SUITE("installer") {
+  TEST_CASE("build_uninstall_command_line includes quiet flag only when requested") {
+    std::filesystem::path executable =
+        R"(C:\Users\Test User\AppData\Local\win-tiler\win-tiler.exe)";
+
+    CHECK(build_uninstall_command_line_wide(executable, false) ==
+          L"\"C:\\Users\\Test User\\AppData\\Local\\win-tiler\\win-tiler.exe\" --uninstall");
+    CHECK(build_uninstall_command_line_wide(executable, true) ==
+          L"\"C:\\Users\\Test User\\AppData\\Local\\win-tiler\\win-tiler.exe\" --uninstall "
+          L"--quiet");
+  }
+
+  TEST_CASE("build_finish_uninstall_command_line quotes helper and install directory") {
+    std::filesystem::path helper = R"(C:\Users\Test User\AppData\Local\Temp\helper.exe)";
+    std::filesystem::path install_dir = R"(C:\Users\Test User\AppData\Local\win-tiler)";
+
+    CHECK(build_finish_uninstall_command_line_wide(helper, 4321, install_dir) ==
+          L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\helper.exe\" --finish-uninstall "
+          L"--pid 4321 --dir \"C:\\Users\\Test User\\AppData\\Local\\win-tiler\"");
+  }
+
+  TEST_CASE("build_finish_uninstall_command_line includes running instance pid when provided") {
+    std::filesystem::path helper = R"(C:\Users\Test User\AppData\Local\Temp\helper.exe)";
+    std::filesystem::path install_dir = R"(C:\Users\Test User\AppData\Local\win-tiler)";
+
+    CHECK(build_finish_uninstall_command_line_wide(helper, 4321, install_dir, 5678) ==
+          L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\helper.exe\" --finish-uninstall "
+          L"--pid 4321 --dir \"C:\\Users\\Test User\\AppData\\Local\\win-tiler\" "
+          L"--running-pid 5678");
+  }
+
+  TEST_CASE("format_install_date_for_registry uses yyyymmdd") {
+    CHECK(format_install_date_for_registry(2026, 5, 9) == L"20260509");
+  }
+
+  TEST_CASE("startup command target detection requires installed executable command") {
+    std::filesystem::path executable =
+        R"(C:\Users\Test User\AppData\Local\win-tiler\win-tiler.exe)";
+    auto command_line = build_startup_command_line(executable, std::nullopt, std::nullopt);
+
+    CHECK(startup_command_targets_executable(command_line, executable));
+    CHECK_FALSE(
+        startup_command_targets_executable("\"C:\\Downloads\\win-tiler.exe\" loop", executable));
+    CHECK_FALSE(startup_command_targets_executable(
+        "\"C:\\Users\\Test User\\AppData\\Local\\win-tiler\\win-tiler.exe\" --log-file "
+        "\"C:\\temp\\log.txt\" loop",
+        executable));
+  }
+
+  TEST_CASE("installation is present only when installed executable exists") {
+    auto install_dir = make_unique_temp_directory("win-tiler-install-state-test");
+
+    CHECK_FALSE(is_installation_present(install_dir));
+
+    {
+      std::ofstream executable(get_installed_executable_path(install_dir));
+      executable << "exe";
+    }
+
+    CHECK(is_installation_present(install_dir));
+
+    std::filesystem::remove_all(install_dir);
+  }
+
+  TEST_CASE("ensure_installed_config_file creates default config when missing") {
+    auto install_dir = make_unique_temp_directory("win-tiler-config-create-test");
+    auto config_path = get_installed_config_path(install_dir);
+
+    auto result = ensure_installed_config_file(install_dir);
+
+    CHECK(result.has_value());
+    CHECK(std::filesystem::exists(config_path));
+    CHECK(read_options_toml(config_path).has_value());
+
+    std::filesystem::remove_all(install_dir);
+  }
+
+  TEST_CASE("ensure_installed_config_file leaves existing config unchanged") {
+    auto install_dir = make_unique_temp_directory("win-tiler-config-preserve-test");
+    auto config_path = get_installed_config_path(install_dir);
+    {
+      std::ofstream config(config_path);
+      config << "custom = true\n";
+    }
+
+    auto result = ensure_installed_config_file(install_dir);
+
+    CHECK(result.has_value());
+    CHECK(read_text_file(config_path) == "custom = true\n");
+
+    std::filesystem::remove_all(install_dir);
   }
 }
 

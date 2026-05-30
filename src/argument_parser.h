@@ -26,9 +26,22 @@ struct StartupCommand {
   StartupAction action;
 };
 
+struct InstallCommand {};
+
+struct UninstallCommand {
+  bool quiet = false;
+};
+
+struct FinishUninstallCommand {
+  unsigned long pid = 0;
+  std::optional<unsigned long> running_pid;
+  std::string install_dir;
+};
+
 // Variant holding all possible commands
 using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, MonitorInfoCommand,
-                             TrackWindowsCommand, InitConfigCommand, StartupCommand>;
+                             TrackWindowsCommand, InitConfigCommand, StartupCommand, InstallCommand,
+                             UninstallCommand, FinishUninstallCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

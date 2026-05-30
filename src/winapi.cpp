@@ -19,6 +19,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "installer.h"
 #include "resource.h"
 #include "version.h"
 
@@ -1337,7 +1338,8 @@ constexpr UINT ID_SHOW_LOG = 1002;
 constexpr UINT ID_TOGGLE_PAUSE = 1003;
 constexpr UINT ID_RESET = 1004;
 constexpr UINT ID_ABOUT = 1005;
-constexpr UINT ID_EXIT = 1006;
+constexpr UINT ID_INSTALLER = 1006;
+constexpr UINT ID_EXIT = 1007;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -1382,6 +1384,21 @@ bool shell_open_url(HWND owner, std::wstring_view url, const char* label) {
 
   spdlog::info("Opened {}: {}", label, narrow_url);
   return true;
+}
+
+std::filesystem::path get_module_file_path() {
+  std::vector<wchar_t> buffer(MAX_PATH, L'\0');
+  while (true) {
+    DWORD path_length =
+        GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (path_length == 0) {
+      return {};
+    }
+    if (path_length < buffer.size()) {
+      return std::filesystem::path(std::wstring(buffer.data(), path_length));
+    }
+    buffer.resize(buffer.size() * 2, L'\0');
+  }
 }
 
 bool append_notification_menu_item(HMENU menu, UINT flags, UINT_PTR id, const wchar_t* text) {
@@ -1457,6 +1474,25 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     show_notification_area_about_dialog(hwnd);
     return;
 
+  case ID_INSTALLER: {
+    auto executable_path = get_module_file_path();
+    if (executable_path.empty()) {
+      spdlog::error("Failed to determine executable path for installer dialog");
+      return;
+    }
+
+    auto dialog_result = wintiler::show_installer_dialog(hwnd, executable_path);
+    if (!dialog_result.has_value()) {
+      spdlog::error("{}", dialog_result.error());
+      return;
+    }
+    if (*dialog_result == wintiler::InstallerDialogResult::UninstallStarted) {
+      g_notification_area_exit_requested = true;
+      spdlog::info("Exit requested after uninstall was started");
+    }
+    return;
+  }
+
   case ID_EXIT:
     g_notification_area_exit_requested = true;
     spdlog::info("Exit requested from notification area menu");
@@ -1495,6 +1531,7 @@ void show_notification_area_menu(HWND hwnd) {
       append_notification_menu_item(menu, MF_STRING, ID_TOGGLE_PAUSE, toggle_pause_text) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_RESET, L"Reset") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_INSTALLER, L"Install...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_ABOUT, L"About...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;
@@ -1847,6 +1884,35 @@ std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() 
 
   spdlog::error("Invalid notification area hotkey action request: {}", requested);
   return std::nullopt;
+}
+
+std::optional<DWORD_T> find_notification_area_process_id() {
+  HWND hwnd = FindWindowW(NOTIFICATION_WINDOW_CLASS, nullptr);
+  if (hwnd == nullptr) {
+    return std::nullopt;
+  }
+
+  DWORD process_id = 0;
+  GetWindowThreadProcessId(hwnd, &process_id);
+  if (process_id == 0) {
+    return std::nullopt;
+  }
+
+  return process_id;
+}
+
+bool request_notification_area_exit_for_running_instance() {
+  HWND hwnd = FindWindowW(NOTIFICATION_WINDOW_CLASS, nullptr);
+  if (hwnd == nullptr) {
+    return false;
+  }
+
+  if (PostMessageW(hwnd, WM_COMMAND, ID_EXIT, 0) == 0) {
+    spdlog::error("Failed to request notification area instance exit, error={}", GetLastError());
+    return false;
+  }
+
+  return true;
 }
 
 void unregister_session_power_notifications() {

@@ -130,6 +130,46 @@ TEST_SUITE("argument_parser") {
     CHECK(std::get<StartupCommand>(*result.args.command).action == StartupAction::Status);
   }
 
+  TEST_CASE("parses install option") {
+    auto result = parse({"win-tiler", "--install"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    CHECK(std::holds_alternative<InstallCommand>(*result.args.command));
+  }
+
+  TEST_CASE("parses quiet uninstall option") {
+    auto result = parse({"win-tiler", "--uninstall", "--quiet"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<UninstallCommand>(*result.args.command));
+    CHECK(std::get<UninstallCommand>(*result.args.command).quiet);
+  }
+
+  TEST_CASE("parses direct uninstall option") {
+    auto result = parse({"win-tiler", "--uninstall"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<UninstallCommand>(*result.args.command));
+    CHECK_FALSE(std::get<UninstallCommand>(*result.args.command).quiet);
+  }
+
+  TEST_CASE("parses finish uninstall option") {
+    auto result = parse({"win-tiler", "--finish-uninstall", "--pid", "1234", "--dir",
+                         R"(C:\Install Dir)", "--running-pid", "5678"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<FinishUninstallCommand>(*result.args.command));
+    CHECK(std::get<FinishUninstallCommand>(*result.args.command).pid == 1234);
+    REQUIRE(std::get<FinishUninstallCommand>(*result.args.command).running_pid.has_value());
+    CHECK(*std::get<FinishUninstallCommand>(*result.args.command).running_pid == 5678);
+    CHECK(std::get<FinishUninstallCommand>(*result.args.command).install_dir ==
+          R"(C:\Install Dir)");
+  }
+
   TEST_CASE("agent command is no longer supported") {
     auto result = parse({"win-tiler", "agent"});
 
@@ -149,6 +189,13 @@ TEST_SUITE("argument_parser") {
 
     CHECK_FALSE(result.success);
     CHECK(result.error == "startup does not accept extra arguments");
+  }
+
+  TEST_CASE("finish uninstall requires pid and directory") {
+    auto result = parse({"win-tiler", "--finish-uninstall", "--pid", "1234"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "--finish-uninstall requires --dir");
   }
 
   TEST_CASE("ui-test-monitor command is no longer supported") {
@@ -181,6 +228,9 @@ TEST_SUITE("argument_parser") {
     CHECK(command_should_attach_console(Command{TrackWindowsCommand{}}, options));
     CHECK(command_should_attach_console(Command{InitConfigCommand{}}, options));
     CHECK(command_should_attach_console(Command{StartupCommand{StartupAction::Status}}, options));
+    CHECK_FALSE(command_should_attach_console(Command{InstallCommand{}}, options));
+    CHECK_FALSE(command_should_attach_console(Command{UninstallCommand{}}, options));
+    CHECK_FALSE(command_should_attach_console(Command{FinishUninstallCommand{}}, options));
   }
 
   TEST_CASE("loop mode only attaches to a parent console for perf stats") {
@@ -215,6 +265,9 @@ TEST_SUITE("argument_parser") {
         command_should_default_to_temp_log_file(Command{InitConfigCommand{}}, options, false));
     CHECK_FALSE(command_should_default_to_temp_log_file(
         Command{StartupCommand{StartupAction::Status}}, options, false));
+    CHECK_FALSE(command_should_default_to_temp_log_file(Command{InstallCommand{}}, options, false));
+    CHECK_FALSE(
+        command_should_default_to_temp_log_file(Command{UninstallCommand{}}, options, false));
   }
 
   TEST_CASE("default temp log file uses a stable filename") {
