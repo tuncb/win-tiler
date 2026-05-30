@@ -591,6 +591,40 @@ TEST_SUITE("IgnoreOptions Merge") {
 // ============================================================================
 
 TEST_SUITE("Layout Options") {
+  TEST_CASE("parses split mode") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "split_mode = \"dwindle\"\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
+    CHECK(to_engine_split_mode(result.value().layoutOptions.split_mode) ==
+          ctrl::SplitMode::Dwindle);
+  }
+
+  TEST_CASE("invalid split mode uses default") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "split_mode = \"spiral\"\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Zigzag);
+  }
+
   TEST_CASE("parses two-window layout with implicit window leaves") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);
@@ -690,6 +724,22 @@ TEST_SUITE("Layout Options") {
 
     auto rule = find_layout_rule_for_window_count(result.value().layoutOptions, 2);
     CHECK(!rule.has_value());
+  }
+
+  TEST_CASE("writes and reads split mode") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    GlobalOptions options = get_default_global_options();
+    options.layoutOptions.split_mode = LayoutSplitMode::Dwindle;
+
+    auto write_result = write_options_toml(options, temp_path);
+    REQUIRE(write_result.has_value());
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+
+    CHECK(read_result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
   }
 }
 

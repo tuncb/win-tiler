@@ -12,12 +12,80 @@
 namespace wintiler::ctrl {
 namespace {
 
+bool find_cell_rect_for_split(const Cluster& cluster, int node_index, int target_index,
+                              const Rect& rect, Rect& result) {
+  if (!cluster.tree.is_valid_index(node_index)) {
+    return false;
+  }
+
+  if (node_index == target_index) {
+    result = rect;
+    return true;
+  }
+
+  auto first_opt = cluster.tree.get_first_child(node_index);
+  auto second_opt = cluster.tree.get_second_child(node_index);
+  if (!first_opt.has_value() || !second_opt.has_value()) {
+    return false;
+  }
+
+  const CellData& data = cluster.tree[node_index];
+  Rect first_rect = rect;
+  Rect second_rect = rect;
+  if (data.split_dir == SplitDir::Vertical) {
+    float first_w = rect.width * data.split_ratio;
+    float second_w = rect.width * (1.0f - data.split_ratio);
+    first_rect.width = first_w;
+    second_rect.x = rect.x + first_w;
+    second_rect.width = second_w;
+  } else {
+    float first_h = rect.height * data.split_ratio;
+    float second_h = rect.height * (1.0f - data.split_ratio);
+    first_rect.height = first_h;
+    second_rect.y = rect.y + first_h;
+    second_rect.height = second_h;
+  }
+
+  return find_cell_rect_for_split(cluster, *first_opt, target_index, first_rect, result) ||
+         find_cell_rect_for_split(cluster, *second_opt, target_index, second_rect, result);
+}
+
+std::optional<Rect> get_cell_rect_for_split(const Cluster& cluster, int selected_index) {
+  if (!cluster.tree.is_valid_index(selected_index)) {
+    return std::nullopt;
+  }
+
+  Rect result;
+  Rect root{0.0f, 0.0f, cluster.window_width, cluster.window_height};
+  if (!find_cell_rect_for_split(cluster, 0, selected_index, root, result)) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+SplitDir determine_dwindle_split_dir(const Cluster& cluster, int selected_index) {
+  if (cluster.tree.empty() || selected_index < 0) {
+    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
+                                                         : SplitDir::Horizontal;
+  }
+
+  auto rect = get_cell_rect_for_split(cluster, selected_index);
+  if (!rect.has_value()) {
+    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
+                                                         : SplitDir::Horizontal;
+  }
+
+  return rect->width >= rect->height ? SplitDir::Vertical : SplitDir::Horizontal;
+}
+
 SplitDir determine_split_dir(const Cluster& cluster, int selected_index, SplitMode mode) {
   switch (mode) {
   case SplitMode::Vertical:
     return SplitDir::Vertical;
   case SplitMode::Horizontal:
     return SplitDir::Horizontal;
+  case SplitMode::Dwindle:
+    return determine_dwindle_split_dir(cluster, selected_index);
   case SplitMode::Zigzag:
   default: {
     if (cluster.tree.is_valid_index(selected_index)) {
@@ -201,8 +269,9 @@ int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids, Spl
   return current_selection;
 }
 
-System create_system(const std::vector<ClusterInitInfo>& infos) {
+System create_system(const std::vector<ClusterInitInfo>& infos, SplitMode split_mode) {
   System system;
+  system.split_mode = split_mode;
   system.clusters.reserve(infos.size());
 
   for (size_t cluster_index = 0; cluster_index < infos.size(); ++cluster_index) {
@@ -874,6 +943,9 @@ bool toggle_selected_split_dir(System& system) {
 bool cycle_split_mode(System& system) {
   switch (system.split_mode) {
   case SplitMode::Zigzag:
+    system.split_mode = SplitMode::Dwindle;
+    break;
+  case SplitMode::Dwindle:
     system.split_mode = SplitMode::Vertical;
     break;
   case SplitMode::Vertical:
@@ -1942,8 +2014,8 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 
 } // namespace
 
-void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos) {
-  system = ctrl::create_system(infos);
+void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
+  system = ctrl::create_system(infos, split_mode);
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
 }
 
@@ -2163,6 +2235,14 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     }
     if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
       redirect_cluster_index = system.selection->cluster_index;
+    }
+
+    if (!input.hotkey_action.has_value() && input.cursor_pos.has_value() &&
+        !output.selection_changed && !output.cursor_pos.has_value()) {
+      HoverSelectionResult hover_result =
+          update_selection_from_hover(static_cast<float>(input.cursor_pos->x),
+                                      static_cast<float>(input.cursor_pos->y), ensure_geometries());
+      output.selection_changed = output.selection_changed || hover_result.selection_changed;
     }
 
     UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index,

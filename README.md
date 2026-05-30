@@ -100,6 +100,7 @@ mouse_drag_drop = "exchange"
 
 [layout]
 enabled = true
+split_mode = "zigzag"
 rules = []
 
 [visualization]
@@ -148,6 +149,10 @@ window_count = 3
 split = "vertical"
 ratio = 0.30
 ```
+
+`layout.split_mode` controls how new or moved windows choose the split direction when no declarative
+layout rule is applied. Supported values are `zigzag`, `dwindle`, `vertical`, and `horizontal`.
+`dwindle` splits wide target cells left/right and tall target cells top/bottom.
 
 Declarative layout rules describe only the tiling structure, not specific apps. Rules are selected
 by the number of managed windows on a monitor. A missing `first` or `second` child means that side is

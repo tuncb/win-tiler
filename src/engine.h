@@ -26,6 +26,7 @@ enum class SplitDir { Vertical, Horizontal };
 
 enum class SplitMode {
   Zigzag,
+  Dwindle,
   Vertical,
   Horizontal,
 };
@@ -190,7 +191,8 @@ struct Engine {
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
 
   // Initialize engine from cluster init info
-  void init(const std::vector<ctrl::ClusterInitInfo>& infos);
+  void init(const std::vector<ctrl::ClusterInitInfo>& infos,
+            ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag);
 
   // Compute geometry for all clusters (call once per frame)
   [[nodiscard]] std::vector<std::vector<ctrl::Rect>> compute_geometries(float gap_h, float gap_v,

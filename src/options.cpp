@@ -134,6 +134,39 @@ std::optional<LayoutSplitDir> string_to_layout_split_dir(std::string value) {
   return std::nullopt;
 }
 
+std::string layout_split_mode_to_string(LayoutSplitMode split_mode) {
+  switch (split_mode) {
+  case LayoutSplitMode::Zigzag:
+    return "zigzag";
+  case LayoutSplitMode::Dwindle:
+    return "dwindle";
+  case LayoutSplitMode::Vertical:
+    return "vertical";
+  case LayoutSplitMode::Horizontal:
+    return "horizontal";
+  }
+  return "zigzag";
+}
+
+std::optional<LayoutSplitMode> string_to_layout_split_mode(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+  if (value == "zigzag") {
+    return LayoutSplitMode::Zigzag;
+  }
+  if (value == "dwindle") {
+    return LayoutSplitMode::Dwindle;
+  }
+  if (value == "vertical") {
+    return LayoutSplitMode::Vertical;
+  }
+  if (value == "horizontal") {
+    return LayoutSplitMode::Horizontal;
+  }
+  return std::nullopt;
+}
+
 std::string mouse_drag_drop_action_to_string(MouseDragDropAction action) {
   switch (action) {
   case MouseDragDropAction::Exchange:
@@ -333,6 +366,17 @@ LayoutOptions parse_layout_options(toml::table& table) {
     options.enabled = enabled->get();
   }
 
+  if (auto split_mode = table["split_mode"].as_string()) {
+    auto parsed_split_mode = string_to_layout_split_mode(std::string(split_mode->get()));
+    if (parsed_split_mode.has_value()) {
+      options.split_mode = *parsed_split_mode;
+    } else {
+      spdlog::error("Invalid layout.split_mode value ({}): must be \"zigzag\", \"dwindle\", "
+                    "\"vertical\", or \"horizontal\". Using default.",
+                    split_mode->get());
+    }
+  }
+
   if (auto rules = table["rules"].as_array()) {
     for (auto& rule_value : *rules) {
       if (auto rule_table = rule_value.as_table()) {
@@ -367,6 +411,7 @@ toml::table layout_tree_node_to_toml(const LayoutTreeNode& node) {
 toml::table layout_options_to_toml(const LayoutOptions& options) {
   toml::table layout;
   layout.insert("enabled", options.enabled);
+  layout.insert("split_mode", layout_split_mode_to_string(options.split_mode));
 
   toml::array layout_rules;
   for (const auto& rule : options.rules) {

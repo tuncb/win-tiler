@@ -112,6 +112,13 @@ struct LoopOptions {
 
 enum class LayoutSplitDir { Vertical, Horizontal };
 
+enum class LayoutSplitMode {
+  Zigzag,
+  Dwindle,
+  Vertical,
+  Horizontal,
+};
+
 struct LayoutTreeNode {
   LayoutSplitDir split_dir = LayoutSplitDir::Vertical;
   float split_ratio = 0.5f;
@@ -126,6 +133,7 @@ struct LayoutRule {
 
 struct LayoutOptions {
   bool enabled = true;
+  LayoutSplitMode split_mode = LayoutSplitMode::Zigzag;
   std::vector<LayoutRule> rules;
 };
 

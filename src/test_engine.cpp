@@ -1894,20 +1894,114 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
     CHECK(result1.success == true);
     CHECK(result1.layout_changed == false);
     CHECK(result1.apply_tiles == false);
-    CHECK(result1.toast_message == std::optional<std::string>{"Split mode: Vertical"});
-    CHECK(engine.system.split_mode == SplitMode::Vertical);
+    CHECK(result1.toast_message == std::optional<std::string>{"Split mode: Dwindle"});
+    CHECK(engine.system.split_mode == SplitMode::Dwindle);
 
     ActionResult result2 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result2.success == true);
-    CHECK(result2.toast_message == std::optional<std::string>{"Split mode: Horizontal"});
-    CHECK(engine.system.split_mode == SplitMode::Horizontal);
+    CHECK(result2.toast_message == std::optional<std::string>{"Split mode: Vertical"});
+    CHECK(engine.system.split_mode == SplitMode::Vertical);
 
     ActionResult result3 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result3.success == true);
-    CHECK(result3.toast_message == std::optional<std::string>{"Split mode: Zigzag"});
+    CHECK(result3.toast_message == std::optional<std::string>{"Split mode: Horizontal"});
+    CHECK(engine.system.split_mode == SplitMode::Horizontal);
+
+    ActionResult result4 =
+        engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
+    CHECK(result4.success == true);
+    CHECK(result4.toast_message == std::optional<std::string>{"Split mode: Zigzag"});
     CHECK(engine.system.split_mode == SplitMode::Zigzag);
+  }
+
+  TEST_CASE("dwindle split mode uses selected cell aspect ratio") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 400.0f, 1000.0f, 0.0f, 0.0f, 400.0f, 1000.0f, {1, 2, 3}}};
+    engine.init(infos, SplitMode::Dwindle);
+
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.tree[0].split_dir == SplitDir::Horizontal);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Horizontal);
+
+    auto geoms = engine.compute_geometries(0.0f, 0.0f, 0.0f);
+    REQUIRE(geoms.size() == 1);
+    REQUIRE(geoms[0].size() == 5);
+    CHECK(geoms[0][1].width == doctest::Approx(400.0f));
+    CHECK(geoms[0][1].height == doctest::Approx(500.0f));
+    CHECK(geoms[0][3].width == doctest::Approx(400.0f));
+    CHECK(geoms[0][3].height == doctest::Approx(250.0f));
+    CHECK(geoms[0][4].width == doctest::Approx(400.0f));
+    CHECK(geoms[0][4].height == doctest::Approx(250.0f));
+  }
+
+  TEST_CASE("dwindle split mode splits wide selected cells vertically") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2, 3}}};
+    engine.init(infos, SplitMode::Dwindle);
+
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Vertical);
+
+    auto geoms = engine.compute_geometries(0.0f, 0.0f, 0.0f);
+    REQUIRE(geoms.size() == 1);
+    REQUIRE(geoms[0].size() == 5);
+    CHECK(geoms[0][1].width == doctest::Approx(500.0f));
+    CHECK(geoms[0][1].height == doctest::Approx(400.0f));
+    CHECK(geoms[0][3].width == doctest::Approx(250.0f));
+    CHECK(geoms[0][3].height == doctest::Approx(400.0f));
+    CHECK(geoms[0][4].width == doctest::Approx(250.0f));
+    CHECK(geoms[0][4].height == doctest::Approx(400.0f));
+  }
+
+  TEST_CASE("dwindle uses hovered cell for new window insertion") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 800.0f, 1000.0f, 0.0f, 0.0f, 800.0f, 1000.0f, {1, 2, 3}}};
+    engine.init(infos, SplitMode::Dwindle);
+    set_selection(engine, 0, 1);
+
+    auto before_geoms = engine.compute_geometries(0.0f, 0.0f, 0.0f);
+    REQUIRE(before_geoms.size() == 1);
+    REQUIRE(before_geoms[0].size() == 5);
+    const auto& hovered_rect = before_geoms[0][4];
+
+    EngineFrameInput input;
+    input.cluster_updates = {{std::vector<size_t>{1, 2, 3, 4}, false}};
+    input.managed_windows = {{{1, false, false, false, std::nullopt},
+                              {2, false, false, false, std::nullopt},
+                              {3, false, false, false, std::nullopt},
+                              {4, false, false, false, std::nullopt}}};
+    input.cursor_pos = compute_rect_center(hovered_rect);
+    input.has_completed_initial_tile_pass = true;
+
+    auto output = engine.process_frame(input);
+
+    CHECK(output.topology_changed == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 7);
+    CHECK(cluster.tree[4].split_dir == SplitDir::Horizontal);
+
+    auto new_window_cell = find_cluster_leaf_index(cluster, 4);
+    REQUIRE(new_window_cell.has_value());
+    CHECK(*new_window_cell == 6);
+    REQUIRE(output.geometries.size() == 1);
+    REQUIRE(output.geometries[0].size() == 7);
+    CHECK(output.geometries[0][5].width == doctest::Approx(400.0f));
+    CHECK(output.geometries[0][5].height == doctest::Approx(250.0f));
+    CHECK(output.geometries[0][6].width == doctest::Approx(400.0f));
+    CHECK(output.geometries[0][6].height == doctest::Approx(250.0f));
   }
 }
 

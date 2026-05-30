@@ -550,7 +550,8 @@ void reinitialize_system_from_monitors(std::vector<winapi::MonitorInfo>& monitor
   monitors = updated_monitors;
   auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
   filter_session_floating_windows_from_cluster_infos(floating_state, cluster_infos);
-  reinitialize_all_desktops(multi_engine, cluster_infos);
+  reinitialize_all_desktops(multi_engine, cluster_infos,
+                            to_engine_split_mode(options.layoutOptions.split_mode));
   spdlog::info("=== Reinitialized Tile Layout ===");
   // Tile layout will be printed and applied by the main loop
 }
@@ -772,7 +773,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       filter_session_floating_windows_from_cluster_infos(floating_state, cluster_infos);
     }
 
-    auto activation = activate_loop_desktop(multi_engine, current_desktop_id, cluster_infos);
+    auto activation =
+        activate_loop_desktop(multi_engine, current_desktop_id, cluster_infos,
+                              to_engine_split_mode(provider.options.layoutOptions.split_mode));
     if (!activation.has_value()) {
       spdlog::error("Failed to activate virtual desktop engine: {}", current_desktop_id);
       continue;

@@ -30,7 +30,8 @@ public:
   // Initializes the engine with provided cluster infos
   // Returns reference to created desktop, or nullopt if ID already exists
   std::optional<std::reference_wrapper<Desktop>>
-  create_desktop(DesktopId id, const std::vector<ctrl::ClusterInitInfo>& infos) {
+  create_desktop(DesktopId id, const std::vector<ctrl::ClusterInitInfo>& infos,
+                 ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag) {
     if (desktops.contains(id)) {
       return std::nullopt;
     }
@@ -40,7 +41,7 @@ public:
       return std::nullopt;
     }
 
-    it->second.engine.init(infos);
+    it->second.engine.init(infos, split_mode);
     return std::ref(it->second);
   }
 

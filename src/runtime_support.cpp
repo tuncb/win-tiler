@@ -111,6 +111,20 @@ void extract_managed_window_states_from_input_into(
   }
 }
 
+ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode) {
+  switch (split_mode) {
+  case LayoutSplitMode::Zigzag:
+    return ctrl::SplitMode::Zigzag;
+  case LayoutSplitMode::Dwindle:
+    return ctrl::SplitMode::Dwindle;
+  case LayoutSplitMode::Vertical:
+    return ctrl::SplitMode::Vertical;
+  case LayoutSplitMode::Horizontal:
+    return ctrl::SplitMode::Horizontal;
+  }
+  return ctrl::SplitMode::Zigzag;
+}
+
 ClusterTilingOptions resolve_monitor_tiling_options(const GlobalOptions& options,
                                                     const winapi::MonitorInfo& monitor,
                                                     size_t monitor_index) {
@@ -191,7 +205,7 @@ void initialize_engine_from_monitors(Engine& engine,
                                      const std::vector<winapi::MonitorInfo>& monitors,
                                      const GlobalOptions& options) {
   auto cluster_infos = create_cluster_infos_from_monitors(monitors, options);
-  engine.init(cluster_infos);
+  engine.init(cluster_infos, to_engine_split_mode(options.layoutOptions.split_mode));
 }
 
 void apply_tile_positions(const ctrl::System& system,
