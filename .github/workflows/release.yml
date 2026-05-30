@@ -30,12 +30,15 @@ jobs:
 
       - name: Package Release
         run: |
-          New-Item -ItemType Directory -Path release-package | Out-Null
-          Copy-Item x64\Release\win-tiler.exe release-package\
-          Compress-Archive -Path release-package\* -DestinationPath win-tiler-${{ github.ref_name }}.zip
+          $assetName = "win-tiler-${{ github.ref_name }}.exe"
+          Copy-Item x64\Release\win-tiler.exe $assetName
+          $hash = (Get-FileHash -Algorithm SHA256 $assetName).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -Encoding ascii "$assetName.sha256"
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          files: win-tiler-${{ github.ref_name }}.zip
+          files: |
+            win-tiler-${{ github.ref_name }}.exe
+            win-tiler-${{ github.ref_name }}.exe.sha256
           generate_release_notes: true

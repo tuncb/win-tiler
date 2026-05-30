@@ -1486,9 +1486,10 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
       spdlog::error("{}", dialog_result.error());
       return;
     }
-    if (*dialog_result == wintiler::InstallerDialogResult::UninstallStarted) {
+    if (*dialog_result == wintiler::InstallerDialogResult::UninstallStarted ||
+        *dialog_result == wintiler::InstallerDialogResult::UpdateStarted) {
       g_notification_area_exit_requested = true;
-      spdlog::info("Exit requested after uninstall was started");
+      spdlog::info("Exit requested after installer helper was started");
     }
     return;
   }

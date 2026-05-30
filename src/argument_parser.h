@@ -38,10 +38,19 @@ struct FinishUninstallCommand {
   std::string install_dir;
 };
 
+struct FinishUpdateCommand {
+  unsigned long pid = 0;
+  std::optional<unsigned long> running_pid;
+  std::string install_dir;
+  std::string downloaded_executable;
+  std::string expected_sha256;
+  bool restart = false;
+};
+
 // Variant holding all possible commands
 using Command = std::variant<HelpCommand, VersionCommand, LoopCommand, MonitorInfoCommand,
                              TrackWindowsCommand, InitConfigCommand, StartupCommand, InstallCommand,
-                             UninstallCommand, FinishUninstallCommand>;
+                             UninstallCommand, FinishUninstallCommand, FinishUpdateCommand>;
 
 // ===== CLI Options =====
 enum class LogLevel { Trace, Debug, Info, Warn, Err, Off };

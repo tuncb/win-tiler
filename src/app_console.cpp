@@ -84,7 +84,8 @@ bool command_should_attach_console(const Command& command, const CliOptions& opt
           return options.perf_stats;
         } else if constexpr (std::is_same_v<CommandType, InstallCommand> ||
                              std::is_same_v<CommandType, UninstallCommand> ||
-                             std::is_same_v<CommandType, FinishUninstallCommand>) {
+                             std::is_same_v<CommandType, FinishUninstallCommand> ||
+                             std::is_same_v<CommandType, FinishUpdateCommand>) {
           return false;
         } else {
           return true;

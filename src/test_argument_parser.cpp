@@ -170,6 +170,27 @@ TEST_SUITE("argument_parser") {
           R"(C:\Install Dir)");
   }
 
+  TEST_CASE("parses finish update option") {
+    auto result =
+        parse({"win-tiler", "--finish-update", "--pid", "1234", "--dir", R"(C:\Install Dir)",
+               "--downloaded-exe", R"(C:\Temp\win-tiler-update.exe)", "--expected-sha256",
+               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--running-pid",
+               "5678", "--restart"});
+
+    CHECK(result.success);
+    REQUIRE(result.args.command.has_value());
+    REQUIRE(std::holds_alternative<FinishUpdateCommand>(*result.args.command));
+    const auto& command = std::get<FinishUpdateCommand>(*result.args.command);
+    CHECK(command.pid == 1234);
+    REQUIRE(command.running_pid.has_value());
+    CHECK(*command.running_pid == 5678);
+    CHECK(command.install_dir == R"(C:\Install Dir)");
+    CHECK(command.downloaded_executable == R"(C:\Temp\win-tiler-update.exe)");
+    CHECK(command.expected_sha256 ==
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    CHECK(command.restart);
+  }
+
   TEST_CASE("agent command is no longer supported") {
     auto result = parse({"win-tiler", "agent"});
 
@@ -196,6 +217,14 @@ TEST_SUITE("argument_parser") {
 
     CHECK_FALSE(result.success);
     CHECK(result.error == "--finish-uninstall requires --dir");
+  }
+
+  TEST_CASE("finish update requires downloaded executable and hash") {
+    auto result =
+        parse({"win-tiler", "--finish-update", "--pid", "1234", "--dir", R"(C:\Install Dir)"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "--finish-update requires --downloaded-exe");
   }
 
   TEST_CASE("ui-test-monitor command is no longer supported") {
@@ -231,6 +260,7 @@ TEST_SUITE("argument_parser") {
     CHECK_FALSE(command_should_attach_console(Command{InstallCommand{}}, options));
     CHECK_FALSE(command_should_attach_console(Command{UninstallCommand{}}, options));
     CHECK_FALSE(command_should_attach_console(Command{FinishUninstallCommand{}}, options));
+    CHECK_FALSE(command_should_attach_console(Command{FinishUpdateCommand{}}, options));
   }
 
   TEST_CASE("loop mode only attaches to a parent console for perf stats") {
@@ -268,6 +298,8 @@ TEST_SUITE("argument_parser") {
     CHECK_FALSE(command_should_default_to_temp_log_file(Command{InstallCommand{}}, options, false));
     CHECK_FALSE(
         command_should_default_to_temp_log_file(Command{UninstallCommand{}}, options, false));
+    CHECK_FALSE(
+        command_should_default_to_temp_log_file(Command{FinishUpdateCommand{}}, options, false));
   }
 
   TEST_CASE("default temp log file uses a stable filename") {

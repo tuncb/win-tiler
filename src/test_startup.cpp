@@ -105,8 +105,77 @@ TEST_SUITE("installer") {
           L"--running-pid 5678");
   }
 
+  TEST_CASE("build_finish_update_command_line quotes paths and restart flag") {
+    std::filesystem::path helper = R"(C:\Users\Test User\AppData\Local\Temp\helper.exe)";
+    std::filesystem::path install_dir = R"(C:\Users\Test User\AppData\Local\win-tiler)";
+    std::filesystem::path downloaded_executable =
+        R"(C:\Users\Test User\AppData\Local\Temp\win-tiler-update.exe)";
+
+    CHECK(build_finish_update_command_line_wide(
+              helper, 4321, install_dir, downloaded_executable,
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 5678, true) ==
+          L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\helper.exe\" --finish-update "
+          L"--pid 4321 --dir \"C:\\Users\\Test User\\AppData\\Local\\win-tiler\" "
+          L"--downloaded-exe "
+          L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\win-tiler-update.exe\" "
+          L"--expected-sha256 "
+          L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+          L"--running-pid 5678 --restart");
+  }
+
   TEST_CASE("format_install_date_for_registry uses yyyymmdd") {
     CHECK(format_install_date_for_registry(2026, 5, 9) == L"20260509");
+  }
+
+  TEST_CASE("version tags parse and compare") {
+    auto parsed = parse_version_tag("v1.2.3");
+
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->major == 1);
+    CHECK(parsed->minor == 2);
+    CHECK(parsed->patch == 3);
+    CHECK(is_version_newer(*parsed, VersionNumber{1, 2, 2}));
+    CHECK_FALSE(is_version_newer(*parsed, VersionNumber{1, 2, 3}));
+    CHECK_FALSE(parse_version_tag("v1.2.3-beta").has_value());
+  }
+
+  TEST_CASE("extract_sha256_from_text reads first hash") {
+    auto hash = extract_sha256_from_text(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  win-tiler.exe\n");
+
+    REQUIRE(hash.has_value());
+    CHECK(*hash == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    CHECK_FALSE(extract_sha256_from_text("not a hash").has_value());
+  }
+
+  TEST_CASE("parse_latest_release_response reads tag and raw executable assets") {
+    const std::string response = R"json({
+      "tag_name": "v1.2.3",
+      "html_url": "https://github.com/tuncb/win-tiler/releases/tag/v1.2.3",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "win-tiler-v1.2.3.exe",
+          "browser_download_url": "https://github.com/tuncb/win-tiler/releases/download/v1.2.3/win-tiler-v1.2.3.exe",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "uploader": { "login": "github-actions[bot]" }
+        },
+        {
+          "name": "win-tiler-v1.2.3.exe.sha256",
+          "browser_download_url": "https://github.com/tuncb/win-tiler/releases/download/v1.2.3/win-tiler-v1.2.3.exe.sha256"
+        }
+      ]
+    })json";
+
+    auto release = parse_latest_release_response(response);
+
+    REQUIRE(release.has_value());
+    CHECK(release->tag_name == "v1.2.3");
+    CHECK(release->version.major == 1);
+    CHECK(release->assets.size() == 2);
+    CHECK(release->assets[0].name == "win-tiler-v1.2.3.exe");
+    CHECK(release->assets[1].name == "win-tiler-v1.2.3.exe.sha256");
   }
 
   TEST_CASE("startup command target detection requires installed executable command") {

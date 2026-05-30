@@ -240,6 +240,10 @@ to the fixed install folder, optionally registers startup for the installed exec
 current-user uninstall entry so `win-tiler` appears in Windows Installed Apps. The Install button is
 disabled when an install is already present, and the Uninstall and Apply buttons are disabled when no
 install is present. Apply updates only the startup option without reinstalling or uninstalling.
+When the dialog is opened from the installed executable, it shows the current app version and enables
+Check updates. Update checks query the latest GitHub release with bounded network timeouts, download
+the raw `win-tiler.exe` release asset and its `.sha256` file, verify the hash, and then start a
+temporary helper to replace the installed executable after the running app exits.
 
 Uninstall can be started from the installer dialog, Windows Installed Apps, or the tray menu. Windows
 Installed Apps calls `win-tiler --uninstall`, which starts uninstall directly without reopening the

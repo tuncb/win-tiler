@@ -108,6 +108,90 @@ ParseResult parse_finish_uninstall_command(int argc, char* argv[], int& i, Parse
   return make_success(args);
 }
 
+ParseResult parse_finish_update_command(int argc, char* argv[], int& i, ParsedArgs& args) {
+  FinishUpdateCommand command;
+  while (i < argc) {
+    std::string arg = argv[i];
+    ++i;
+
+    if (arg == "--pid") {
+      if (i >= argc) {
+        return make_error("--pid requires a value");
+      }
+      try {
+        command.pid = std::stoul(argv[i]);
+      } catch (const std::exception&) {
+        return make_error("Invalid --pid value: " + std::string(argv[i]));
+      }
+      ++i;
+      continue;
+    }
+
+    if (arg == "--dir") {
+      if (i >= argc) {
+        return make_error("--dir requires a path");
+      }
+      command.install_dir = argv[i];
+      ++i;
+      continue;
+    }
+
+    if (arg == "--downloaded-exe") {
+      if (i >= argc) {
+        return make_error("--downloaded-exe requires a path");
+      }
+      command.downloaded_executable = argv[i];
+      ++i;
+      continue;
+    }
+
+    if (arg == "--expected-sha256") {
+      if (i >= argc) {
+        return make_error("--expected-sha256 requires a value");
+      }
+      command.expected_sha256 = argv[i];
+      ++i;
+      continue;
+    }
+
+    if (arg == "--running-pid") {
+      if (i >= argc) {
+        return make_error("--running-pid requires a value");
+      }
+      try {
+        command.running_pid = std::stoul(argv[i]);
+      } catch (const std::exception&) {
+        return make_error("Invalid --running-pid value: " + std::string(argv[i]));
+      }
+      ++i;
+      continue;
+    }
+
+    if (arg == "--restart") {
+      command.restart = true;
+      continue;
+    }
+
+    return make_error("Unknown --finish-update option: " + arg);
+  }
+
+  if (command.pid == 0) {
+    return make_error("--finish-update requires --pid");
+  }
+  if (command.install_dir.empty()) {
+    return make_error("--finish-update requires --dir");
+  }
+  if (command.downloaded_executable.empty()) {
+    return make_error("--finish-update requires --downloaded-exe");
+  }
+  if (command.expected_sha256.empty()) {
+    return make_error("--finish-update requires --expected-sha256");
+  }
+
+  args.command = command;
+  return make_success(args);
+}
+
 } // namespace
 
 ParseResult parse_args(int argc, char* argv[]) {
@@ -152,6 +236,11 @@ ParseResult parse_args(int argc, char* argv[]) {
     if (arg == "--finish-uninstall") {
       ++i;
       return parse_finish_uninstall_command(argc, argv, i, args);
+    }
+
+    if (arg == "--finish-update") {
+      ++i;
+      return parse_finish_update_command(argc, argv, i, args);
     }
 
     // Check if it's an option (starts with --)
