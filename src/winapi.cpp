@@ -121,6 +121,74 @@ static bool visible_size_differs_from_target(const WindowPosition& target_visibl
           (height_delta < -kSizeTolerance || height_delta > kSizeTolerance));
 }
 
+static std::string format_window_position(const WindowPosition& position) {
+  std::ostringstream stream;
+  stream << "x=" << position.x << ", y=" << position.y << ", w=" << position.width
+         << ", h=" << position.height;
+  return stream.str();
+}
+
+std::string format_window_minmax_info(const WindowMinMaxInfo& info) {
+  std::ostringstream stream;
+  stream << "max_size=" << info.max_width << "x" << info.max_height << ", max_position=("
+         << info.max_x << "," << info.max_y << "), min_track=" << info.min_track_width << "x"
+         << info.min_track_height << ", max_track=" << info.max_track_width << "x"
+         << info.max_track_height;
+  return stream.str();
+}
+
+std::optional<WindowMinMaxInfo> get_window_minmax_info(HWND_T hwnd) {
+  HWND win = reinterpret_cast<HWND>(hwnd);
+  if (!IsWindow(win)) {
+    return std::nullopt;
+  }
+
+  MINMAXINFO raw_info{};
+  DWORD_PTR message_result = 0;
+  SetLastError(ERROR_SUCCESS);
+  auto send_result =
+      SendMessageTimeoutW(win, WM_GETMINMAXINFO, 0, reinterpret_cast<LPARAM>(&raw_info),
+                          SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &message_result);
+  if (send_result == 0) {
+    spdlog::debug("Failed to retrieve WM_GETMINMAXINFO for hwnd={}, error={}",
+                  static_cast<void*>(win), GetLastError());
+    return std::nullopt;
+  }
+
+  return WindowMinMaxInfo{
+      static_cast<int>(raw_info.ptMaxSize.x),      static_cast<int>(raw_info.ptMaxSize.y),
+      static_cast<int>(raw_info.ptMaxPosition.x),  static_cast<int>(raw_info.ptMaxPosition.y),
+      static_cast<int>(raw_info.ptMinTrackSize.x), static_cast<int>(raw_info.ptMinTrackSize.y),
+      static_cast<int>(raw_info.ptMaxTrackSize.x), static_cast<int>(raw_info.ptMaxTrackSize.y)};
+}
+
+static void log_failed_placement_correction(const TileInfo& tile_info,
+                                            const WindowPosition& actual_visible_position) {
+  WindowInfo window_info = get_window_info(tile_info.handle);
+  std::string minmax_text = "unavailable";
+  auto minmax_info = get_window_minmax_info(tile_info.handle);
+  if (minmax_info.has_value()) {
+    minmax_text = format_window_minmax_info(*minmax_info);
+  }
+
+  spdlog::error("Failed to resize window during placement correction: hwnd={}, title=\"{}\", "
+                "process=\"{}\", class=\"{}\", target=[{}], actual=[{}], WM_GETMINMAXINFO=[{}]",
+                tile_info.handle, window_info.title, window_info.processName, window_info.className,
+                format_window_position(tile_info.window_position),
+                format_window_position(actual_visible_position), minmax_text);
+}
+
+static void maybe_log_failed_placement_correction(
+    const TileInfo& tile_info, const std::optional<WindowPosition>& actual_visible_position) {
+  if (tile_info.placement_kind != TilePlacementKind::PlacementCorrection ||
+      !actual_visible_position.has_value() ||
+      !visible_size_differs_from_target(tile_info.window_position, *actual_visible_position)) {
+    return;
+  }
+
+  log_failed_placement_correction(tile_info, *actual_visible_position);
+}
+
 void log_monitors(const std::vector<MonitorInfo>& monitors) {
   spdlog::info("=== Monitor Info ({} monitors) ===", monitors.size());
   for (size_t i = 0; i < monitors.size(); ++i) {
@@ -821,7 +889,9 @@ void update_window_position(const TileInfo& tile_info) {
     if (actual_visible_rect.has_value() &&
         visible_size_differs_from_target(tile_info.window_position, *actual_visible_rect)) {
       SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+      actual_visible_rect = get_window_rect(tile_info.handle);
     }
+    maybe_log_failed_placement_correction(tile_info, actual_visible_rect);
   } else {
     // Fallback if DWM query fails
     int targetX = tile_info.window_position.x;
@@ -841,7 +911,9 @@ void update_window_position(const TileInfo& tile_info) {
     if (actual_visible_rect.has_value() &&
         visible_size_differs_from_target(tile_info.window_position, *actual_visible_rect)) {
       SetWindowPos(hwnd, NULL, targetX, targetY, targetW, targetH, SWP_NOZORDER | SWP_NOACTIVATE);
+      actual_visible_rect = get_window_rect(tile_info.handle);
     }
+    maybe_log_failed_placement_correction(tile_info, actual_visible_rect);
   }
 }
 

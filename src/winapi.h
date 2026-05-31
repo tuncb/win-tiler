@@ -37,9 +37,15 @@ struct WindowPosition {
   int height;
 };
 
+enum class TilePlacementKind {
+  Layout,
+  PlacementCorrection,
+};
+
 struct TileInfo {
   HWND_T handle;
   WindowPosition window_position;
+  TilePlacementKind placement_kind = TilePlacementKind::Layout;
 };
 
 struct WindowInfo {
@@ -48,6 +54,17 @@ struct WindowInfo {
   std::optional<DWORD_T> pid;
   std::string processName;
   std::string className;
+};
+
+struct WindowMinMaxInfo {
+  int max_width = 0;
+  int max_height = 0;
+  int max_x = 0;
+  int max_y = 0;
+  int min_track_width = 0;
+  int min_track_height = 0;
+  int max_track_width = 0;
+  int max_track_height = 0;
 };
 
 // Standard Win32 dialogs use the predefined "#32770" class and are commonly owned popups.
@@ -64,6 +81,8 @@ void update_window_position(const TileInfo& tile_info);
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
                                           const wintiler::IgnoreOptions& ignore_options);
 WindowInfo get_window_info(HWND_T hwnd);
+[[nodiscard]] std::optional<WindowMinMaxInfo> get_window_minmax_info(HWND_T hwnd);
+[[nodiscard]] std::string format_window_minmax_info(const WindowMinMaxInfo& info);
 
 // Lightweight HWND helpers used by session-scoped runtime ignore rules.
 bool is_window_valid(HWND_T hwnd);

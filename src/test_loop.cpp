@@ -194,6 +194,22 @@ TEST_SUITE("loop") {
     CHECK(states[0][0].actual_rect->height == doctest::Approx(400.0f));
   }
 
+  TEST_CASE("window minmax formatter includes retrieved tracking limits") {
+    winapi::WindowMinMaxInfo info;
+    info.max_width = 1920;
+    info.max_height = 1080;
+    info.max_x = 0;
+    info.max_y = 24;
+    info.min_track_width = 640;
+    info.min_track_height = 480;
+    info.max_track_width = 2560;
+    info.max_track_height = 1440;
+
+    CHECK(winapi::format_window_minmax_info(info) ==
+          "max_size=1920x1080, max_position=(0,24), min_track=640x480, "
+          "max_track=2560x1440");
+  }
+
   TEST_CASE("cluster option resolution reuses retained option buffer capacity") {
     std::vector<winapi::MonitorInfo> monitors = {{reinterpret_cast<winapi::HMONITOR_T>(1),
                                                   "DISPLAY1",

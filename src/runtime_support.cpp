@@ -42,7 +42,10 @@ void apply_tile_positions_impl(const ctrl::System& system,
       winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id);
       winapi::WindowPosition pos{static_cast<int>(rect.x), static_cast<int>(rect.y),
                                  static_cast<int>(rect.width), static_cast<int>(rect.height)};
-      winapi::TileInfo tile_info{hwnd, pos};
+      winapi::TileInfo tile_info{hwnd, pos,
+                                 leaf_ids == nullptr
+                                     ? winapi::TilePlacementKind::Layout
+                                     : winapi::TilePlacementKind::PlacementCorrection};
       winapi::update_window_position(tile_info);
     }
   }
