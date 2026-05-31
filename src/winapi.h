@@ -167,6 +167,7 @@ get_notification_area_menu_availability(const NotificationAreaIconOptions& optio
 void register_notification_area_icon(const NotificationAreaIconOptions& options);
 void unregister_notification_area_icon();
 void set_notification_area_manual_pause_active(bool is_paused);
+void set_notification_area_verbose_logging_active(bool is_enabled);
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] bool consume_notification_area_exit_requested();
 [[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();

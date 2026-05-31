@@ -86,6 +86,7 @@ bindings = [
   { action = "DumpWindowManagement", hotkey = "super+shift+d" },
   { action = "RestartSystem", hotkey = "super+shift+r" },
   { action = "ToggleFloating", hotkey = "super+shift+f" },
+  { action = "ToggleVerboseLogging", hotkey = "super+shift+v" },
 ]
 
 [gap]
@@ -283,4 +284,4 @@ win-tiler --install
 ## Notification Area Menu
 
 When running in loop mode, the notification area menu provides quick access to the config file, log
-file, pause/reset actions, the installer dialog, About, and Exit.
+file, pause/reset actions, a checked verbose-logging toggle, the installer dialog, About, and Exit.

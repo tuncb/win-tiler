@@ -33,6 +33,52 @@ bool operator==(const OverlayRenderSnapshot& lhs, const OverlayRenderSnapshot& r
          lhs.toast_font_size == rhs.toast_font_size;
 }
 
+const char* format_spdlog_level(spdlog::level::level_enum level) {
+  switch (level) {
+  case spdlog::level::trace:
+    return "trace";
+  case spdlog::level::debug:
+    return "debug";
+  case spdlog::level::info:
+    return "info";
+  case spdlog::level::warn:
+    return "warn";
+  case spdlog::level::err:
+    return "err";
+  case spdlog::level::critical:
+    return "critical";
+  case spdlog::level::off:
+    return "off";
+  case spdlog::level::n_levels:
+    return "unknown";
+  }
+  return "unknown";
+}
+
+void set_runtime_verbose_logging(RuntimeLoggingState& state, bool enabled) {
+  if (state.verbose_logging_enabled == enabled) {
+    return;
+  }
+
+  if (enabled) {
+    spdlog::set_level(spdlog::level::trace);
+    state.verbose_logging_enabled = true;
+    spdlog::info("Verbose logging enabled (trace)");
+    winapi::set_notification_area_verbose_logging_active(true);
+    return;
+  }
+
+  spdlog::info("Verbose logging disabled, restoring {} level",
+               format_spdlog_level(state.configured_level));
+  spdlog::set_level(state.configured_level);
+  state.verbose_logging_enabled = false;
+  winapi::set_notification_area_verbose_logging_active(false);
+}
+
+void toggle_runtime_verbose_logging(RuntimeLoggingState& state) {
+  set_runtime_verbose_logging(state, !state.verbose_logging_enabled);
+}
+
 OverlayRenderSnapshot make_overlay_render_snapshot(
     const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
     const renderer::RenderOptions& config, std::optional<StoredCell> stored_cell,
@@ -173,6 +219,8 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
     return NoDesktopHotkeyAction::DumpWindowManagement;
   case HotkeyAction::ToggleFloating:
     return NoDesktopHotkeyAction::ToggleFloating;
+  case HotkeyAction::ToggleVerboseLogging:
+    return NoDesktopHotkeyAction::ToggleVerboseLogging;
   }
 
   return NoDesktopHotkeyAction::Ignore;
@@ -188,6 +236,8 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
     return ManualPauseHotkeyAction::Resume;
   case HotkeyAction::DumpWindowManagement:
     return ManualPauseHotkeyAction::DumpWindowManagement;
+  case HotkeyAction::ToggleVerboseLogging:
+    return ManualPauseHotkeyAction::ToggleVerboseLogging;
   case HotkeyAction::Exit:
   case HotkeyAction::NavigateLeft:
   case HotkeyAction::NavigateDown:
@@ -480,7 +530,8 @@ std::optional<HotkeyAction> poll_hotkey_action() {
 void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
                         const IgnoreOptions& ignore_options,
                         const winapi::LoopInputState& input_state,
-                        SessionFloatingState& floating_state, ToastState& toast) {
+                        SessionFloatingState& floating_state, ToastState& toast,
+                        RuntimeLoggingState& logging_state) {
   if (output.clear_drag_ended) {
     winapi::clear_drag_ended();
   }
@@ -492,6 +543,10 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
     if (message.has_value()) {
       toast.show(*message);
     }
+  }
+
+  if (output.toggle_verbose_logging) {
+    toggle_runtime_verbose_logging(logging_state);
   }
 
   if (output.toast_message.has_value()) {
@@ -619,6 +674,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   winapi::register_notification_area_icon({run_options.config_path, run_options.log_file_path});
   winapi::set_notification_area_manual_pause_active(false);
+  RuntimeLoggingState logging_state{spdlog::get_level(), false};
+  winapi::set_notification_area_verbose_logging_active(false);
 
   // Initialize virtual desktop manager for desktop ID detection
   winapi::register_virtual_desktop_notifications();
@@ -687,6 +744,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         spdlog::info("Dumping window management state while manually paused");
         winapi::dump_window_management_state(options.ignoreOptions);
         continue;
+      case ManualPauseHotkeyAction::ToggleVerboseLogging:
+        toggle_runtime_verbose_logging(logging_state);
+        continue;
       case ManualPauseHotkeyAction::Ignore:
       case ManualPauseHotkeyAction::None:
         continue;
@@ -741,6 +801,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
         }
         break;
       }
+      case NoDesktopHotkeyAction::ToggleVerboseLogging:
+        toggle_runtime_verbose_logging(logging_state);
+        break;
       case NoDesktopHotkeyAction::Ignore:
         spdlog::debug("Ignoring hotkey without a desktop ID");
         break;
@@ -800,7 +863,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                       std::chrono::steady_clock::now() - compute_geometry_start);
     if (input_state.is_any_window_being_moved) {
       auto hotkey_action = poll_hotkey_action();
-      if (hotkey_action.has_value()) {
+      if (hotkey_action == HotkeyAction::ToggleVerboseLogging) {
+        toggle_runtime_verbose_logging(logging_state);
+      } else if (hotkey_action.has_value()) {
         spdlog::debug("Ignoring hotkey during move/resize frame");
       }
 
@@ -889,7 +954,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     auto apply_start = std::chrono::steady_clock::now();
     apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, input_state,
-                       floating_state, toast);
+                       floating_state, toast, logging_state);
     perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);
     perf.note_active_frame();
     if (frame_output.apply_tiles) {

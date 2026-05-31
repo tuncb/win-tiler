@@ -63,6 +63,8 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "RestartSystem";
   case HotkeyAction::ToggleFloating:
     return "ToggleFloating";
+  case HotkeyAction::ToggleVerboseLogging:
+    return "ToggleVerboseLogging";
   }
   return "Unknown";
 }
@@ -108,6 +110,8 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::RestartSystem;
   if (str == "ToggleFloating")
     return HotkeyAction::ToggleFloating;
+  if (str == "ToggleVerboseLogging")
+    return HotkeyAction::ToggleVerboseLogging;
   return std::nullopt;
 }
 
@@ -232,6 +236,8 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+r";
   case HotkeyAction::ToggleFloating:
     return "super+shift+f";
+  case HotkeyAction::ToggleVerboseLogging:
+    return "super+shift+v";
   }
   return "";
 }

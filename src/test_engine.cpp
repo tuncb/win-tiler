@@ -2111,6 +2111,20 @@ TEST_SUITE("Engine::process_action - Exit") {
     CHECK(result.layout_changed == false);
     CHECK(result.apply_tiles == false);
   }
+
+  TEST_CASE("ToggleVerboseLogging action requests runtime logging toggle") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    ActionResult result =
+        engine.process_action(HotkeyAction::ToggleVerboseLogging, geoms, 10.0f, 10.0f, 0.0f);
+
+    CHECK(result.success == true);
+    CHECK(result.control == LoopControl::Continue);
+    CHECK(result.toggle_verbose_logging == true);
+    CHECK(result.layout_changed == false);
+    CHECK(result.apply_tiles == false);
+  }
 }
 
 // =============================================================================

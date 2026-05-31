@@ -55,7 +55,8 @@ enum class HotkeyAction {
   TogglePause,
   DumpWindowManagement,
   RestartSystem,
-  ToggleFloating
+  ToggleFloating,
+  ToggleVerboseLogging
 };
 
 // Maps a hotkey action to its keyboard shortcut string

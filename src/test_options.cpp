@@ -251,6 +251,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
     CHECK(find_binding(HotkeyAction::RestartSystem) == "super+shift+r");
     CHECK(find_binding(HotkeyAction::ToggleFloating) == "super+shift+f");
+    CHECK(find_binding(HotkeyAction::ToggleVerboseLogging) == "super+shift+v");
   }
 
   TEST_CASE("empty keyboard section uses all default bindings") {
@@ -286,6 +287,7 @@ TEST_SUITE("GlobalOptionsProvider") {
     CHECK(find_binding(HotkeyAction::DumpWindowManagement) == "super+shift+d");
     CHECK(find_binding(HotkeyAction::RestartSystem) == "super+shift+r");
     CHECK(find_binding(HotkeyAction::ToggleFloating) == "super+shift+f");
+    CHECK(find_binding(HotkeyAction::ToggleVerboseLogging) == "super+shift+v");
   }
 
   TEST_CASE("restart system keyboard binding can be configured") {
@@ -306,6 +308,26 @@ TEST_SUITE("GlobalOptionsProvider") {
 
     REQUIRE(hotkey.has_value());
     CHECK(*hotkey == "super+alt+r");
+  }
+
+  TEST_CASE("verbose logging keyboard binding can be configured") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[keyboard]\n";
+      file << "bindings = [\n";
+      file << "  { action = \"ToggleVerboseLogging\", hotkey = \"super+alt+v\" }\n";
+      file << "]\n";
+    }
+
+    GlobalOptionsProvider provider(temp_path);
+    auto hotkey =
+        find_hotkey_binding(provider.options.keyboardOptions, HotkeyAction::ToggleVerboseLogging);
+
+    REQUIRE(hotkey.has_value());
+    CHECK(*hotkey == "super+alt+v");
   }
 }
 

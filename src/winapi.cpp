@@ -1389,6 +1389,7 @@ NotificationAreaIconOptions g_notification_area_icon_options;
 std::atomic<bool> g_notification_area_exit_requested{false};
 std::atomic<int> g_notification_area_hotkey_action_requested{NO_NOTIFICATION_AREA_HOTKEY_ACTION};
 std::atomic<bool> g_notification_area_manual_pause_active{false};
+std::atomic<bool> g_notification_area_verbose_logging_active{false};
 UINT g_taskbar_created_message = 0;
 
 // Pause state flags (atomic for thread safety)
@@ -1412,6 +1413,7 @@ constexpr UINT ID_RESET = 1004;
 constexpr UINT ID_ABOUT = 1005;
 constexpr UINT ID_INSTALLER = 1006;
 constexpr UINT ID_EXIT = 1007;
+constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1008;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -1542,6 +1544,11 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     spdlog::info("Reset requested from notification area menu");
     return;
 
+  case ID_TOGGLE_VERBOSE_LOGGING:
+    request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleVerboseLogging);
+    spdlog::info("Verbose logging toggle requested from notification area menu");
+    return;
+
   case ID_ABOUT:
     show_notification_area_about_dialog(hwnd);
     return;
@@ -1603,6 +1610,11 @@ void show_notification_area_menu(HWND hwnd) {
   menu_ok =
       append_notification_menu_item(menu, MF_STRING, ID_TOGGLE_PAUSE, toggle_pause_text) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_RESET, L"Reset") && menu_ok;
+  UINT verbose_logging_flags =
+      MF_STRING | (g_notification_area_verbose_logging_active.load() ? MF_CHECKED : MF_UNCHECKED);
+  menu_ok = append_notification_menu_item(menu, verbose_logging_flags, ID_TOGGLE_VERBOSE_LOGGING,
+                                          L"Verbose logging") &&
+            menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_INSTALLER, L"Install...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_ABOUT, L"About...") && menu_ok;
@@ -1916,6 +1928,10 @@ void set_notification_area_manual_pause_active(bool is_paused) {
   g_notification_area_manual_pause_active = is_paused;
 }
 
+void set_notification_area_verbose_logging_active(bool is_enabled) {
+  g_notification_area_verbose_logging_active = is_enabled;
+}
+
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action) {
   g_notification_area_hotkey_action_requested = static_cast<int>(action);
 }
@@ -1952,6 +1968,7 @@ std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() 
   case wintiler::HotkeyAction::DumpWindowManagement:
   case wintiler::HotkeyAction::RestartSystem:
   case wintiler::HotkeyAction::ToggleFloating:
+  case wintiler::HotkeyAction::ToggleVerboseLogging:
     return static_cast<wintiler::HotkeyAction>(requested);
   }
 

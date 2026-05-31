@@ -1,5 +1,7 @@
 #pragma once
 
+#include <spdlog/common.h>
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -35,8 +37,16 @@ struct OverlayRenderCache {
   std::optional<OverlayRenderSnapshot> last_presented;
 };
 
+struct RuntimeLoggingState {
+  spdlog::level::level_enum configured_level = spdlog::level::info;
+  bool verbose_logging_enabled = false;
+};
+
 [[nodiscard]] bool operator==(const OverlayRenderRect& lhs, const OverlayRenderRect& rhs);
 [[nodiscard]] bool operator==(const OverlayRenderSnapshot& lhs, const OverlayRenderSnapshot& rhs);
+[[nodiscard]] const char* format_spdlog_level(spdlog::level::level_enum level);
+void set_runtime_verbose_logging(RuntimeLoggingState& state, bool enabled);
+void toggle_runtime_verbose_logging(RuntimeLoggingState& state);
 
 [[nodiscard]] OverlayRenderSnapshot make_overlay_render_snapshot(
     const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
@@ -53,6 +63,7 @@ enum class NoDesktopHotkeyAction {
   EnterManualPause,
   DumpWindowManagement,
   ToggleFloating,
+  ToggleVerboseLogging,
 };
 
 [[nodiscard]] NoDesktopHotkeyAction
@@ -63,6 +74,7 @@ enum class ManualPauseHotkeyAction {
   Ignore,
   Resume,
   DumpWindowManagement,
+  ToggleVerboseLogging,
 };
 
 [[nodiscard]] ManualPauseHotkeyAction

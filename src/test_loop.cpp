@@ -1,6 +1,7 @@
 #ifndef DOCTEST_CONFIG_DISABLE
 
 #include <doctest/doctest.h>
+#include <spdlog/spdlog.h>
 
 #include <vector>
 
@@ -34,6 +35,11 @@ TEST_SUITE("loop") {
           NoDesktopHotkeyAction::ToggleFloating);
   }
 
+  TEST_CASE("frames without a desktop id keep verbose logging hotkeys immediate") {
+    CHECK(classify_no_desktop_hotkey(HotkeyAction::ToggleVerboseLogging) ==
+          NoDesktopHotkeyAction::ToggleVerboseLogging);
+  }
+
   TEST_CASE("frames without a desktop id do nothing when there is no queued hotkey") {
     CHECK(classify_no_desktop_hotkey(std::nullopt) == NoDesktopHotkeyAction::None);
   }
@@ -46,6 +52,11 @@ TEST_SUITE("loop") {
   TEST_CASE("manual pause keeps the window dump hotkey immediate") {
     CHECK(classify_manual_pause_hotkey(HotkeyAction::DumpWindowManagement) ==
           ManualPauseHotkeyAction::DumpWindowManagement);
+  }
+
+  TEST_CASE("manual pause keeps the verbose logging hotkey immediate") {
+    CHECK(classify_manual_pause_hotkey(HotkeyAction::ToggleVerboseLogging) ==
+          ManualPauseHotkeyAction::ToggleVerboseLogging);
   }
 
   TEST_CASE("manual pause ignores normal tiling hotkeys") {
@@ -326,6 +337,23 @@ TEST_SUITE("loop") {
     CHECK(snapshot.rects[1].color.r == 9);
     CHECK(snapshot.rects[1].color.g == 10);
     CHECK_FALSE(snapshot.message.has_value());
+  }
+
+  TEST_CASE("runtime verbose logging toggles between trace and configured level") {
+    auto original_level = spdlog::get_level();
+    spdlog::set_level(spdlog::level::warn);
+    RuntimeLoggingState logging_state{spdlog::level::warn, false};
+
+    toggle_runtime_verbose_logging(logging_state);
+
+    CHECK(logging_state.verbose_logging_enabled == true);
+    CHECK(spdlog::get_level() == spdlog::level::trace);
+
+    toggle_runtime_verbose_logging(logging_state);
+
+    CHECK(logging_state.verbose_logging_enabled == false);
+    CHECK(spdlog::get_level() == spdlog::level::warn);
+    spdlog::set_level(original_level);
   }
 }
 

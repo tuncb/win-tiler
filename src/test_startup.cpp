@@ -331,6 +331,14 @@ TEST_SUITE("winapi") {
     CHECK(*reset_action == HotkeyAction::RestartSystem);
   }
 
+  TEST_CASE("notification area verbose logging request uses logging toggle action") {
+    winapi::request_notification_area_hotkey_action(HotkeyAction::ToggleVerboseLogging);
+    auto logging_action = winapi::consume_notification_area_hotkey_action();
+
+    REQUIRE(logging_action.has_value());
+    CHECK(*logging_action == HotkeyAction::ToggleVerboseLogging);
+  }
+
   TEST_CASE("notification area pause menu text reflects manual pause state") {
     CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(false)) == L"Pause");
     CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(true)) == L"Unpause");
