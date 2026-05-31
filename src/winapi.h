@@ -37,6 +37,8 @@ struct WindowPosition {
   int height;
 };
 
+[[nodiscard]] std::string format_window_position(const WindowPosition& position);
+
 enum class TilePlacementKind {
   Layout,
   PlacementCorrection,

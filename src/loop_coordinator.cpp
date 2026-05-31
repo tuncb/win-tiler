@@ -1,5 +1,9 @@
 #include "loop_coordinator.h"
 
+#include <spdlog/spdlog.h>
+
+#include <sstream>
+
 #include "runtime_support.h"
 
 namespace wintiler {
@@ -25,6 +29,54 @@ std::optional<ctrl::Rect> find_actual_window_rect(const winapi::LoopInputState& 
   }
 
   return std::nullopt;
+}
+
+bool trace_logging_enabled() {
+  auto* logger = spdlog::default_logger_raw();
+  return logger != nullptr && logger->should_log(spdlog::level::trace);
+}
+
+std::string format_optional_rect(const std::optional<ctrl::Rect>& rect) {
+  if (!rect.has_value()) {
+    return "N/A";
+  }
+
+  std::ostringstream stream;
+  stream << "x=" << rect->x << ", y=" << rect->y << ", w=" << rect->width << ", h=" << rect->height;
+  return stream.str();
+}
+
+void trace_tiling_frame_windows(const EngineFrameInput& frame_input) {
+  if (!trace_logging_enabled()) {
+    return;
+  }
+
+  spdlog::trace("Tiling frame input: clusters={}, managed_window_clusters={}",
+                frame_input.cluster_updates.size(), frame_input.managed_windows.size());
+
+  for (size_t cluster_index = 0; cluster_index < frame_input.cluster_updates.size();
+       ++cluster_index) {
+    const auto& update = frame_input.cluster_updates[cluster_index];
+    spdlog::trace("Tiling cluster[{}]: leaf_count={}, fullscreen_cell={}", cluster_index,
+                  update.leaf_ids.size(), update.has_fullscreen_cell);
+    for (size_t leaf_index = 0; leaf_index < update.leaf_ids.size(); ++leaf_index) {
+      spdlog::trace("Tiling cluster[{}] leaf[{}]: id={}", cluster_index, leaf_index,
+                    update.leaf_ids[leaf_index]);
+    }
+  }
+
+  for (size_t cluster_index = 0; cluster_index < frame_input.managed_windows.size();
+       ++cluster_index) {
+    const auto& windows = frame_input.managed_windows[cluster_index];
+    for (const auto& window : windows) {
+      auto window_info = winapi::get_window_info(reinterpret_cast<winapi::HWND_T>(window.leaf_id));
+      spdlog::trace("Tiling managed window: cluster={}, leaf_id={}, title=\"{}\", process=\"{}\", "
+                    "fullscreen={}, maximized={}, minimized={}, actual_rect=[{}]",
+                    cluster_index, window.leaf_id, window_info.title, window_info.processName,
+                    window.is_fullscreen, window.is_maximized, window.is_minimized,
+                    format_optional_rect(window.actual_rect));
+    }
+  }
 }
 
 } // namespace
@@ -102,6 +154,8 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
 
     frame_input.completed_drag = drag_request;
   }
+
+  trace_tiling_frame_windows(frame_input);
 }
 
 } // namespace wintiler

@@ -221,6 +221,11 @@ TEST_SUITE("loop") {
           "max_track=2560x1440");
   }
 
+  TEST_CASE("window position formatter includes coordinates and size") {
+    CHECK(winapi::format_window_position(winapi::WindowPosition{10, 20, 300, 400}) ==
+          "x=10, y=20, w=300, h=400");
+  }
+
   TEST_CASE("cluster option resolution reuses retained option buffer capacity") {
     std::vector<winapi::MonitorInfo> monitors = {{reinterpret_cast<winapi::HMONITOR_T>(1),
                                                   "DISPLAY1",

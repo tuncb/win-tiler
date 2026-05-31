@@ -37,6 +37,11 @@
 
 namespace winapi {
 
+static bool trace_logging_enabled() {
+  auto* logger = spdlog::default_logger_raw();
+  return logger != nullptr && logger->should_log(spdlog::level::trace);
+}
+
 // Helper function for case-insensitive string comparison
 static bool iequals(const std::string& a, const std::string& b) {
   if (a.size() != b.size())
@@ -121,10 +126,44 @@ static bool visible_size_differs_from_target(const WindowPosition& target_visibl
           (height_delta < -kSizeTolerance || height_delta > kSizeTolerance));
 }
 
-static std::string format_window_position(const WindowPosition& position) {
+std::string format_window_position(const WindowPosition& position) {
   std::ostringstream stream;
   stream << "x=" << position.x << ", y=" << position.y << ", w=" << position.width
          << ", h=" << position.height;
+  return stream.str();
+}
+
+static std::string format_optional_window_position(const std::optional<WindowPosition>& position) {
+  if (!position.has_value()) {
+    return "N/A";
+  }
+  return format_window_position(*position);
+}
+
+static std::string format_optional_point(const std::optional<Point>& point) {
+  if (!point.has_value()) {
+    return "N/A";
+  }
+
+  std::ostringstream stream;
+  stream << "x=" << point->x << ", y=" << point->y;
+  return stream.str();
+}
+
+static std::string format_optional_pid(std::optional<DWORD_T> pid) {
+  if (!pid.has_value()) {
+    return "N/A";
+  }
+  return std::to_string(*pid);
+}
+
+static std::string format_drag_info(const std::optional<DragInfo>& drag_info) {
+  if (!drag_info.has_value()) {
+    return "N/A";
+  }
+
+  std::ostringstream stream;
+  stream << "hwnd=" << drag_info->hwnd << ", move_ended=" << drag_info->move_ended;
   return stream.str();
 }
 
@@ -400,6 +439,7 @@ struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
   size_t generation;
+  bool trace_enabled = false;
 };
 
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
@@ -411,11 +451,18 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
 
   BOOL cloaked = FALSE;
   if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=cloaked", static_cast<void*>(hwnd));
+    }
     return TRUE;
   }
 
   char title[256];
   if (GetWindowTextA(hwnd, title, sizeof(title)) == 0) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=empty title",
+                    static_cast<void*>(hwnd));
+    }
     return TRUE;
   }
 
@@ -423,33 +470,78 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   std::string class_name = get_window_class_name_for_pid(hwnd, pid, ctx->generation);
 
   if (class_name == "SysDragImage") {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=SysDragImage window, title=\"{}\", "
+                    "class=\"{}\", pid={}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid));
+    }
     return TRUE;
   }
 
   if (class_name == "tooltips_class32") {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=tooltip window, title=\"{}\", "
+                    "class=\"{}\", pid={}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid));
+    }
     return TRUE;
   }
 
   HWND owner = GetWindow(hwnd, GW_OWNER);
   if (should_ignore_owned_dialog_window(owner != nullptr, class_name)) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=owned #32770 dialog, title=\"{}\", "
+                    "class=\"{}\", pid={}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid));
+    }
     return TRUE;
   }
 
   LONG ex_style = GetWindowLong(hwnd, GWL_EXSTYLE);
   if (ex_style & WS_EX_TOOLWINDOW) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=WS_EX_TOOLWINDOW, title=\"{}\", "
+                    "class=\"{}\", pid={}, ex_style=0x{:08X}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                    static_cast<unsigned long>(ex_style));
+    }
     return TRUE;
   }
   if (ex_style & WS_EX_TOPMOST) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=WS_EX_TOPMOST, title=\"{}\", "
+                    "class=\"{}\", pid={}, ex_style=0x{:08X}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                    static_cast<unsigned long>(ex_style));
+    }
     return TRUE;
   }
   if (ex_style & WS_EX_TRANSPARENT) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=WS_EX_TRANSPARENT, title=\"{}\", "
+                    "class=\"{}\", pid={}, ex_style=0x{:08X}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                    static_cast<unsigned long>(ex_style));
+    }
     return TRUE;
   }
   if (ex_style & WS_EX_NOACTIVATE) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=WS_EX_NOACTIVATE, title=\"{}\", "
+                    "class=\"{}\", pid={}, ex_style=0x{:08X}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                    static_cast<unsigned long>(ex_style));
+    }
     return TRUE;
   }
 
   if (IsHungAppWindow(hwnd)) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=hung window, title=\"{}\", "
+                    "class=\"{}\", pid={}, ex_style=0x{:08X}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                    static_cast<unsigned long>(ex_style));
+    }
     return TRUE;
   }
 
@@ -459,6 +551,11 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   }
 
   if (process_name.empty()) {
+    if (ctx->trace_enabled) {
+      spdlog::trace("WinAPI window rejected: hwnd={}, reason=missing process name, title=\"{}\", "
+                    "class=\"{}\", pid={}",
+                    static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid));
+    }
     return TRUE;
   }
 
@@ -466,18 +563,36 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
 
   for (const auto& proc : options.ignored_processes) {
     if (process_name == proc) {
+      if (ctx->trace_enabled) {
+        spdlog::trace("WinAPI window rejected: hwnd={}, reason=ignored process, title=\"{}\", "
+                      "class=\"{}\", pid={}, process=\"{}\"",
+                      static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                      process_name);
+      }
       return TRUE;
     }
   }
 
   for (const auto& ignored_title : options.ignored_window_titles) {
     if (title == ignored_title) {
+      if (ctx->trace_enabled) {
+        spdlog::trace("WinAPI window rejected: hwnd={}, reason=ignored title, title=\"{}\", "
+                      "class=\"{}\", pid={}, process=\"{}\"",
+                      static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                      process_name);
+      }
       return TRUE;
     }
   }
 
   for (const auto& pair : options.ignored_process_title_pairs) {
     if (iequals(process_name, pair.first) && iequals(title, pair.second)) {
+      if (ctx->trace_enabled) {
+        spdlog::trace("WinAPI window rejected: hwnd={}, reason=ignored process/title pair, "
+                      "title=\"{}\", class=\"{}\", pid={}, process=\"{}\"",
+                      static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                      process_name);
+      }
       return TRUE;
     }
   }
@@ -489,6 +604,12 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
       int height = rect.bottom - rect.top;
       if (width < options.small_window_barrier->width ||
           height < options.small_window_barrier->height) {
+        if (ctx->trace_enabled) {
+          spdlog::trace("WinAPI window rejected: hwnd={}, reason=below small window barrier, "
+                        "title=\"{}\", class=\"{}\", pid={}, process=\"{}\", size={}x{}",
+                        static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                        process_name, width, height);
+        }
         return TRUE;
       }
     }
@@ -501,12 +622,26 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     if (owner != nullptr || parent != nullptr) {
       for (const auto& proc : options.ignore_children_of_processes) {
         if (iequals(process_name, proc)) {
+          if (ctx->trace_enabled) {
+            spdlog::trace("WinAPI window rejected: hwnd={}, reason=ignored child/owned window, "
+                          "title=\"{}\", class=\"{}\", pid={}, process=\"{}\", owner_present={}, "
+                          "parent_present={}",
+                          static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid),
+                          process_name, owner != nullptr, parent != nullptr);
+          }
           return TRUE;
         }
       }
     }
   }
 
+  if (ctx->trace_enabled) {
+    spdlog::trace(
+        "WinAPI window accepted as tiling candidate: hwnd={}, title=\"{}\", class=\"{}\", "
+        "pid={}, process=\"{}\", ex_style=0x{:08X}",
+        static_cast<void*>(hwnd), title, class_name, format_optional_pid(pid), process_name,
+        static_cast<unsigned long>(ex_style));
+  }
   ctx->handles->push_back(reinterpret_cast<HWND_T>(hwnd));
   return TRUE;
 }
@@ -515,9 +650,12 @@ static void fill_windows_list(const wintiler::IgnoreOptions& ignore_options,
                               std::vector<HWND_T>& handles) {
   handles.clear();
   size_t generation = ++g_metadata_cache_generation;
-  WindowEnumContext ctx{&handles, &ignore_options, generation};
+  WindowEnumContext ctx{&handles, &ignore_options, generation, trace_logging_enabled()};
   EnumWindows(WindowEnumProc, (LPARAM)&ctx);
   prune_metadata_caches_after_enumeration(generation);
+  if (ctx.trace_enabled) {
+    spdlog::trace("WinAPI window enumeration complete: accepted_candidates={}", handles.size());
+  }
 }
 
 static void gather_raw_window_data_into(const wintiler::IgnoreOptions& ignore_options,
@@ -2155,11 +2293,27 @@ static bool is_window_fullscreen(HWND_T hwnd) {
 
 void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
                                   LoopInputState& state, std::vector<HWND_T>& all_handles) {
+  bool trace_enabled = trace_logging_enabled();
+
   // Gather monitor and window data
   fill_monitors(state.monitors);
   state.windows_per_monitor.resize(state.monitors.size());
 
   gather_raw_window_data_into(ignore_options, all_handles);
+
+  if (trace_enabled) {
+    spdlog::trace("WinAPI input gather: monitors={}, tiling_candidates={}", state.monitors.size(),
+                  all_handles.size());
+    for (size_t i = 0; i < state.monitors.size(); ++i) {
+      const auto& monitor = state.monitors[i];
+      spdlog::trace("WinAPI monitor[{}]: handle={}, device=\"{}\", primary={}, rect=[{}, {}, {}, "
+                    "{}], work_area=[{}, {}, {}, {}]",
+                    i, monitor.handle, monitor.deviceName, monitor.isPrimary, monitor.rect.left,
+                    monitor.rect.top, monitor.rect.right, monitor.rect.bottom,
+                    monitor.workArea.left, monitor.workArea.top, monitor.workArea.right,
+                    monitor.workArea.bottom);
+    }
+  }
 
   for (size_t i = 0; i < state.monitors.size(); ++i) {
     const auto& monitor = state.monitors[i];
@@ -2176,7 +2330,18 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
         managed_info.is_minimized = is_window_minimized(hwnd);
         managed_info.actual_rect = get_window_rect(hwnd);
         monitor_windows.push_back(managed_info);
+        if (trace_enabled) {
+          spdlog::trace("WinAPI managed window: monitor={}, hwnd={}, fullscreen={}, maximized={}, "
+                        "minimized={}, actual_rect=[{}]",
+                        i, managed_info.handle, managed_info.is_fullscreen,
+                        managed_info.is_maximized, managed_info.is_minimized,
+                        format_optional_window_position(managed_info.actual_rect));
+        }
       }
+    }
+
+    if (trace_enabled) {
+      spdlog::trace("WinAPI monitor[{}] managed window count={}", i, monitor_windows.size());
     }
   }
 
@@ -2202,7 +2367,19 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
                desktop_guid.Data4[4], desktop_guid.Data4[5], desktop_guid.Data4[6],
                desktop_guid.Data4[7]);
       state.desktop_id = guid_str;
+    } else if (trace_enabled) {
+      spdlog::trace("WinAPI desktop ID unavailable: hwnd={}, hr=0x{:08X}", all_handles[0],
+                    static_cast<unsigned long>(hr));
     }
+  }
+
+  if (trace_enabled) {
+    spdlog::trace("WinAPI input state: moving={}, drag=[{}], cursor=[{}], ctrl_pressed={}, "
+                  "right_mouse_pressed={}, foreground={}, desktop_id={}",
+                  state.is_any_window_being_moved, format_drag_info(state.drag_info),
+                  format_optional_point(state.cursor_pos), state.is_ctrl_pressed,
+                  state.is_right_mouse_pressed, state.foreground_window,
+                  state.desktop_id.value_or("N/A"));
   }
 }
 

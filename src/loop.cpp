@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <iostream>
 #include <magic_enum/magic_enum.hpp>
+#include <sstream>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -77,6 +78,11 @@ void set_runtime_verbose_logging(RuntimeLoggingState& state, bool enabled) {
 
 void toggle_runtime_verbose_logging(RuntimeLoggingState& state) {
   set_runtime_verbose_logging(state, !state.verbose_logging_enabled);
+}
+
+bool trace_logging_enabled() {
+  auto* logger = spdlog::default_logger_raw();
+  return logger != nullptr && logger->should_log(spdlog::level::trace);
 }
 
 OverlayRenderSnapshot make_overlay_render_snapshot(
@@ -506,6 +512,98 @@ void print_tile_layout(const ctrl::System& system,
                     static_cast<int>(global_rect.y));
       spdlog::debug("    Size: {}x{}", static_cast<int>(global_rect.width),
                     static_cast<int>(global_rect.height));
+    }
+  }
+}
+
+std::string format_optional_int(std::optional<int> value) {
+  if (!value.has_value()) {
+    return "N/A";
+  }
+  return std::to_string(*value);
+}
+
+std::string format_optional_size(std::optional<size_t> value) {
+  if (!value.has_value()) {
+    return "N/A";
+  }
+  return std::to_string(*value);
+}
+
+std::string format_optional_rect(const std::optional<ctrl::Rect>& rect) {
+  if (!rect.has_value()) {
+    return "N/A";
+  }
+
+  std::ostringstream stream;
+  stream << "x=" << rect->x << ", y=" << rect->y << ", w=" << rect->width << ", h=" << rect->height;
+  return stream.str();
+}
+
+std::optional<ctrl::Rect>
+find_geometry_for_node(const std::vector<std::vector<ctrl::Rect>>& geometries, size_t cluster_index,
+                       int node_index) {
+  if (cluster_index >= geometries.size() || node_index < 0) {
+    return std::nullopt;
+  }
+
+  const auto& cluster_geometries = geometries[cluster_index];
+  if (static_cast<size_t>(node_index) >= cluster_geometries.size()) {
+    return std::nullopt;
+  }
+
+  return cluster_geometries[static_cast<size_t>(node_index)];
+}
+
+void trace_tiling_execution_result(const ctrl::System& system, const EngineFrameOutput& output) {
+  if (!trace_logging_enabled()) {
+    return;
+  }
+
+  spdlog::trace("Tiling execution result: clusters={}, geometry_clusters={}, apply_tiles={}, "
+                "topology_changed={}, layout_changed={}, selection_changed={}, "
+                "placement_corrections={}",
+                system.clusters.size(), output.geometries.size(), output.apply_tiles,
+                output.topology_changed, output.layout_changed, output.selection_changed,
+                output.placement_correction_leaf_ids.size());
+
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    const auto& cluster = system.clusters[cluster_index];
+    spdlog::trace("Tiling result cluster[{}]: global=({}, {}), monitor=({}, {} {}x{}), "
+                  "window={}x{}, tree_nodes={}, zen_cell={}",
+                  cluster_index, cluster.global_x, cluster.global_y, cluster.monitor_x,
+                  cluster.monitor_y, cluster.monitor_width, cluster.monitor_height,
+                  cluster.window_width, cluster.window_height, cluster.tree.size(),
+                  format_optional_int(cluster.zen_cell_index));
+
+    for (int node_index = 0; node_index < static_cast<int>(cluster.tree.size()); ++node_index) {
+      const auto& tree_node = cluster.tree.node(node_index);
+      const auto& cell_data = tree_node.data;
+      std::string title = "N/A";
+      std::string process_name = "N/A";
+      if (cell_data.leaf_id.has_value()) {
+        auto window_info =
+            winapi::get_window_info(reinterpret_cast<winapi::HWND_T>(*cell_data.leaf_id));
+        title = window_info.title;
+        process_name = window_info.processName;
+      }
+
+      bool is_selected = system.selection.has_value() &&
+                         system.selection->cluster_index == static_cast<int>(cluster_index) &&
+                         system.selection->cell_index == node_index;
+      bool is_zen = cluster.zen_cell_index.has_value() && *cluster.zen_cell_index == node_index;
+
+      spdlog::trace("Tiling result tree node: cluster={}, node={}, parent={}, first_child={}, "
+                    "second_child={}, kind={}, selected={}, zen={}, split_dir={}, "
+                    "split_ratio={}, leaf_id={}, title=\"{}\", process=\"{}\", rect=[{}]",
+                    cluster_index, node_index, format_optional_int(tree_node.parent),
+                    format_optional_int(tree_node.first_child),
+                    format_optional_int(tree_node.second_child),
+                    cluster.tree.is_leaf(node_index) ? "leaf" : "split", is_selected, is_zen,
+                    magic_enum::enum_name(cell_data.split_dir), cell_data.split_ratio,
+                    format_optional_size(cell_data.leaf_id), title, process_name,
+                    format_optional_rect(
+                        find_geometry_for_node(output.geometries, cluster_index, node_index)));
     }
   }
 }
@@ -951,6 +1049,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       spdlog::debug("=== Updated Tile Layout After Restart Hotkey ===");
       print_tile_layout(engine.system, geometries);
     }
+
+    trace_tiling_execution_result(engine.system, frame_output);
 
     auto apply_start = std::chrono::steady_clock::now();
     apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, input_state,
