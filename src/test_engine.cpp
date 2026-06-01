@@ -1887,33 +1887,27 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
     Engine engine = create_test_engine();
     auto geoms = compute_default_geometries(engine);
 
-    CHECK(engine.system.split_mode == SplitMode::Zigzag);
+    CHECK(engine.system.split_mode == SplitMode::Dwindle);
 
     ActionResult result1 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result1.success == true);
     CHECK(result1.layout_changed == false);
     CHECK(result1.apply_tiles == false);
-    CHECK(result1.toast_message == std::optional<std::string>{"Split mode: Dwindle"});
-    CHECK(engine.system.split_mode == SplitMode::Dwindle);
+    CHECK(result1.toast_message == std::optional<std::string>{"Split mode: Vertical"});
+    CHECK(engine.system.split_mode == SplitMode::Vertical);
 
     ActionResult result2 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result2.success == true);
-    CHECK(result2.toast_message == std::optional<std::string>{"Split mode: Vertical"});
-    CHECK(engine.system.split_mode == SplitMode::Vertical);
+    CHECK(result2.toast_message == std::optional<std::string>{"Split mode: Horizontal"});
+    CHECK(engine.system.split_mode == SplitMode::Horizontal);
 
     ActionResult result3 =
         engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(result3.success == true);
-    CHECK(result3.toast_message == std::optional<std::string>{"Split mode: Horizontal"});
-    CHECK(engine.system.split_mode == SplitMode::Horizontal);
-
-    ActionResult result4 =
-        engine.process_action(HotkeyAction::CycleSplitMode, geoms, 10.0f, 10.0f, 0.0f);
-    CHECK(result4.success == true);
-    CHECK(result4.toast_message == std::optional<std::string>{"Split mode: Zigzag"});
-    CHECK(engine.system.split_mode == SplitMode::Zigzag);
+    CHECK(result3.toast_message == std::optional<std::string>{"Split mode: Dwindle"});
+    CHECK(engine.system.split_mode == SplitMode::Dwindle);
   }
 
   TEST_CASE("dwindle split mode uses selected cell aspect ratio") {

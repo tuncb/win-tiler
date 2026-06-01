@@ -86,19 +86,8 @@ SplitDir determine_split_dir(const Cluster& cluster, int selected_index, SplitMo
     return SplitDir::Horizontal;
   case SplitMode::Dwindle:
     return determine_dwindle_split_dir(cluster, selected_index);
-  case SplitMode::Zigzag:
-  default: {
-    if (cluster.tree.is_valid_index(selected_index)) {
-      auto parent_opt = cluster.tree.get_parent(selected_index);
-      if (parent_opt.has_value()) {
-        const CellData& parent_data = cluster.tree[*parent_opt];
-        return (parent_data.split_dir == SplitDir::Vertical) ? SplitDir::Horizontal
-                                                             : SplitDir::Vertical;
-      }
-    }
-    return SplitDir::Vertical;
   }
-  }
+  return determine_dwindle_split_dir(cluster, selected_index);
 }
 
 struct SplitResult {
@@ -942,9 +931,6 @@ bool toggle_selected_split_dir(System& system) {
 
 bool cycle_split_mode(System& system) {
   switch (system.split_mode) {
-  case SplitMode::Zigzag:
-    system.split_mode = SplitMode::Dwindle;
-    break;
   case SplitMode::Dwindle:
     system.split_mode = SplitMode::Vertical;
     break;
@@ -952,7 +938,7 @@ bool cycle_split_mode(System& system) {
     system.split_mode = SplitMode::Horizontal;
     break;
   case SplitMode::Horizontal:
-    system.split_mode = SplitMode::Zigzag;
+    system.split_mode = SplitMode::Dwindle;
     break;
   }
   return true;

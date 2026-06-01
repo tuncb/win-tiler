@@ -140,8 +140,6 @@ std::optional<LayoutSplitDir> string_to_layout_split_dir(std::string value) {
 
 std::string layout_split_mode_to_string(LayoutSplitMode split_mode) {
   switch (split_mode) {
-  case LayoutSplitMode::Zigzag:
-    return "zigzag";
   case LayoutSplitMode::Dwindle:
     return "dwindle";
   case LayoutSplitMode::Vertical:
@@ -149,16 +147,13 @@ std::string layout_split_mode_to_string(LayoutSplitMode split_mode) {
   case LayoutSplitMode::Horizontal:
     return "horizontal";
   }
-  return "zigzag";
+  return "dwindle";
 }
 
 std::optional<LayoutSplitMode> string_to_layout_split_mode(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
-  if (value == "zigzag") {
-    return LayoutSplitMode::Zigzag;
-  }
   if (value == "dwindle") {
     return LayoutSplitMode::Dwindle;
   }
@@ -377,8 +372,8 @@ LayoutOptions parse_layout_options(toml::table& table) {
     if (parsed_split_mode.has_value()) {
       options.split_mode = *parsed_split_mode;
     } else {
-      spdlog::error("Invalid layout.split_mode value ({}): must be \"zigzag\", \"dwindle\", "
-                    "\"vertical\", or \"horizontal\". Using default.",
+      spdlog::error("Invalid layout.split_mode value ({}): must be \"dwindle\", \"vertical\", "
+                    "or \"horizontal\". Using default.",
                     split_mode->get());
     }
   }

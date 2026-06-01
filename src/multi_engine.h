@@ -31,7 +31,7 @@ public:
   // Returns reference to created desktop, or nullopt if ID already exists
   std::optional<std::reference_wrapper<Desktop>>
   create_desktop(DesktopId id, const std::vector<ctrl::ClusterInitInfo>& infos,
-                 ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag) {
+                 ctrl::SplitMode split_mode = ctrl::SplitMode::Dwindle) {
     if (desktops.contains(id)) {
       return std::nullopt;
     }

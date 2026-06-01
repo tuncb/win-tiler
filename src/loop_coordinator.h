@@ -35,7 +35,7 @@ void mark_all_desktops_for_layout_reapply(MultiEngine<LoopDesktopData, DesktopId
 template <typename DesktopId>
 void reinitialize_all_desktops(MultiEngine<LoopDesktopData, DesktopId>& multi_engine,
                                const std::vector<ctrl::ClusterInitInfo>& cluster_infos,
-                               ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag) {
+                               ctrl::SplitMode split_mode = ctrl::SplitMode::Dwindle) {
   for (auto& [id, desktop] : multi_engine.desktops) {
     desktop.engine.init(cluster_infos, split_mode);
     desktop.engine.clear_stored_cell();
@@ -54,7 +54,7 @@ struct LoopDesktopActivation {
 activate_loop_desktop(MultiEngine<LoopDesktopData, std::string>& multi_engine,
                       const std::string& desktop_id,
                       const std::vector<ctrl::ClusterInitInfo>& cluster_infos,
-                      ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag);
+                      ctrl::SplitMode split_mode = ctrl::SplitMode::Dwindle);
 
 [[nodiscard]] bool should_exchange_mouse_drag_drop(MouseDragDropAction base_action,
                                                    bool is_ctrl_pressed,

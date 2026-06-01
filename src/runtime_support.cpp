@@ -116,8 +116,6 @@ void extract_managed_window_states_from_input_into(
 
 ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode) {
   switch (split_mode) {
-  case LayoutSplitMode::Zigzag:
-    return ctrl::SplitMode::Zigzag;
   case LayoutSplitMode::Dwindle:
     return ctrl::SplitMode::Dwindle;
   case LayoutSplitMode::Vertical:
@@ -125,7 +123,7 @@ ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode) {
   case LayoutSplitMode::Horizontal:
     return ctrl::SplitMode::Horizontal;
   }
-  return ctrl::SplitMode::Zigzag;
+  return ctrl::SplitMode::Dwindle;
 }
 
 ClusterTilingOptions resolve_monitor_tiling_options(const GlobalOptions& options,

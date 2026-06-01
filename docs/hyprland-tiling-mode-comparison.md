@@ -43,10 +43,9 @@ Hyprland currently exposes four built-in layout engines:
 - `scrolling`: columns on an infinitely growing tape.
 - `monocle`: all windows occupy the full available area, with cycling.
 
-win-tiler exposes four split modes inside its BSP engine:
+win-tiler exposes three split modes inside its BSP engine:
 
-- `zigzag`: default; alternates split direction from the selected leaf's parent split.
-- `dwindle`: chooses vertical for wide target cells and horizontal for tall target cells.
+- `dwindle`: default; chooses vertical for wide target cells and horizontal for tall target cells.
 - `vertical`: always splits left/right.
 - `horizontal`: always splits top/bottom.
 
@@ -78,7 +77,6 @@ window is split into a target leaf:
 
 | win-tiler split mode | Behavior | Hyprland comparison |
 | --- | --- | --- |
-| `zigzag` | Starts vertical, then alternates relative to the selected leaf's parent split. | No built-in Hyprland layout with this exact policy. It resembles a simple alternating BSP insertion strategy. |
 | `dwindle` | Uses the target cell's current aspect ratio: wide cells split left/right; tall cells split top/bottom. | Closest to Hyprland `dwindle`, especially to a persistent-split interpretation. Hyprland default dwindle can keep recalculating split orientation from container dimensions. |
 | `vertical` | Always creates left/right splits. | No separate Hyprland layout. Hyprland Dwindle can be steered with split controls, and a custom layout could implement this directly. |
 | `horizontal` | Always creates top/bottom splits. | No separate Hyprland layout. Same caveat as `vertical`. |
@@ -86,7 +84,7 @@ window is split into a target leaf:
 The runtime `CycleSplitMode` action cycles:
 
 ```text
-Zigzag -> Dwindle -> Vertical -> Horizontal -> Zigzag
+Dwindle -> Vertical -> Horizontal -> Dwindle
 ```
 
 Changing split mode does not rebuild existing tree geometry by itself; it changes future split
@@ -120,7 +118,6 @@ counted as direct layout modes:
 | Does win-tiler have Hyprland `master`? | No. Templates can approximate fixed master-like geometries for exact window counts, but there is no master/slave stack, `mfact`, orientation cycling, or add/remove-master operation. |
 | Does win-tiler have Hyprland `scrolling`? | No. win-tiler layouts are bounded to monitor work areas and do not have a scrollable tape or viewport. |
 | Does win-tiler have Hyprland `monocle`? | No native monocle engine. Zen/fullscreen can approximate "focus one window" behavior, but not a full stack where all tiled windows occupy the same layout rectangle and cycle through focus. |
-| Does Hyprland have win-tiler `zigzag`? | Not as a built-in layout. It could be implemented with a custom Lua layout or approximated manually with Dwindle split controls. |
 | Does Hyprland have win-tiler `vertical` / `horizontal`? | Not as built-in layout names. A user can steer Dwindle split direction or write a custom Lua layout, but Hyprland's built-in set is layout-engine oriented, not insertion-policy oriented. |
 
 ## Implementation Implications for win-tiler

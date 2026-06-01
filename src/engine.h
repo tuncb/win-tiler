@@ -25,7 +25,6 @@ struct Point {
 enum class SplitDir { Vertical, Horizontal };
 
 enum class SplitMode {
-  Zigzag,
   Dwindle,
   Vertical,
   Horizontal,
@@ -61,7 +60,7 @@ struct CellIndicatorByIndex {
 struct System {
   std::vector<Cluster> clusters;
   std::optional<CellIndicatorByIndex> selection;
-  SplitMode split_mode = SplitMode::Zigzag;
+  SplitMode split_mode = SplitMode::Dwindle;
 };
 
 struct ClusterInitInfo {
@@ -194,7 +193,7 @@ struct Engine {
 
   // Initialize engine from cluster init info
   void init(const std::vector<ctrl::ClusterInitInfo>& infos,
-            ctrl::SplitMode split_mode = ctrl::SplitMode::Zigzag);
+            ctrl::SplitMode split_mode = ctrl::SplitMode::Dwindle);
 
   // Compute geometry for all clusters (call once per frame)
   [[nodiscard]] std::vector<std::vector<ctrl::Rect>> compute_geometries(float gap_h, float gap_v,

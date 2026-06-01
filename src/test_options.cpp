@@ -644,7 +644,23 @@ TEST_SUITE("Layout Options") {
     auto result = read_options_toml(temp_path);
     REQUIRE(result.has_value());
 
-    CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Zigzag);
+    CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
+  }
+
+  TEST_CASE("removed zigzag split mode uses default") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "split_mode = \"zigzag\"\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
   }
 
   TEST_CASE("parses two-window layout with implicit window leaves") {
