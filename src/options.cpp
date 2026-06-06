@@ -437,6 +437,167 @@ toml::table layout_options_to_toml(const LayoutOptions& options) {
   return layout;
 }
 
+std::string get_options_toml_documentation() {
+  return R"(# win-tiler configuration
+# This file is TOML. Lines that start with # are comments and can be copied,
+# uncommented, and edited. Missing options use built-in defaults.
+#
+# Keyboard hotkey format:
+# - Join key names with '+', for example "super+shift+h" or "ctrl+alt+left".
+# - "super" is the Windows key.
+# - Set a hotkey to an empty string to disable that action.
+#
+# Keyboard options:
+# [keyboard]
+# bindings = [
+#   { action = "NavigateLeft", hotkey = "super+shift+h" },
+# ]
+#
+# action: one of the hotkey actions below.
+# hotkey: shortcut text in the format described above.
+#
+# Hotkey actions and what they do:
+# NavigateLeft, NavigateDown, NavigateUp, NavigateRight, ToggleSplit, Exit,
+# CycleSplitMode, StoreCell, ClearStored, Exchange, Move, SplitIncrease,
+# SplitDecrease, ExchangeSiblings, ToggleZen, ResetSplitRatio, TogglePause,
+# DumpWindowManagement, RestartSystem, ToggleFloating, ToggleVerboseLogging.
+#
+# Ignore options:
+# [ignore]
+# merge_processes_with_defaults = true
+# merge_window_titles_with_defaults = true
+# merge_process_title_pairs_with_defaults = true
+# merge_ignore_children_of_processes_with_defaults = true
+# processes = ["MyPopupApp.exe"]
+# window_titles = ["Settings"]
+# process_title_pairs = [{ process = "app.exe", title = "Tool Window" }]
+# ignore_children_of_processes = ["launcher.exe"]
+# small_window_barrier = { width = 200, height = 150 }
+#
+# merge_*_with_defaults: true merges your list with built-in ignored windows;
+# false uses only the list in this file.
+# processes: executable names to ignore.
+# window_titles: exact window titles to ignore.
+# process_title_pairs: ignore only when process and title both match.
+# ignore_children_of_processes: ignore child windows spawned by these processes.
+# small_window_barrier: ignore windows at or below this width and height.
+#
+# Gap options:
+# [gap]
+# horizontal = 10.0
+# vertical = 10.0
+#
+# horizontal: pixels between tiled windows horizontally. Must be non-negative.
+# vertical: pixels between tiled windows vertically. Must be non-negative.
+#
+# Loop options:
+# [loop]
+# interval_ms = 100
+# config_refresh_interval_ms = 1000
+# toggle_zen_on_window_maximize = true
+# mouse_drag_drop = "exchange"
+#
+# interval_ms: main loop polling interval in milliseconds. Must be non-negative.
+# config_refresh_interval_ms: how often the config file is checked for changes.
+# toggle_zen_on_window_maximize: true toggles zen when a tiled window is maximized.
+# mouse_drag_drop: "exchange" swaps windows, "split" inserts as a split.
+#
+# Layout options:
+# [layout]
+# enabled = true
+# split_mode = "dwindle"
+# split_width_multiplier = 1.0
+# rules = []
+#
+# enabled: false disables layout rules while keeping normal tiling active.
+# split_mode:
+# - "dwindle": each new window splits the selected cell.
+# - "vertical": prefer left/right splits.
+# - "horizontal": prefer top/bottom splits.
+# split_width_multiplier: positive multiplier for split width changes.
+# rules: optional fixed layouts selected by window_count.
+#
+# Layout rule example:
+# [[layout.rules]]
+# window_count = 3
+# [layout.rules.tree]
+# split = "vertical"       # "vertical" means left/right, "horizontal" means top/bottom.
+# ratio = 0.35             # first child gets 35%, second child gets 65%.
+# first = "window"         # "window" is a leaf.
+# [layout.rules.tree.second]
+# split = "horizontal"
+# ratio = 0.50
+# first = "window"
+# second = "window"
+#
+# Layout rule fields:
+# window_count: number of tiled windows this rule applies to.
+# split: "vertical" for left/right or "horizontal" for top/bottom.
+# ratio: split ratio from 0.1 to 0.9. Values outside that range are clamped.
+# first: "window" for a leaf, or a nested split table.
+# second: "window" for a leaf, or a nested split table.
+#
+# Visualization options:
+# [visualization]
+# toast_duration_ms = 2000
+# [visualization.render]
+# normal_color = [255, 255, 255, 100]
+# selected_color = [0, 120, 255, 200]
+# stored_color = [255, 180, 0, 200]
+# border_width = 3.0
+# toast_font_size = 60.0
+# zen_percentage = 0.90
+#
+# toast_duration_ms: how long status toast messages stay visible.
+# normal_color: overlay rectangle color for normal cells.
+# selected_color: overlay rectangle color for the selected cell.
+# stored_color: overlay rectangle color for the stored cell.
+# border_width: overlay border width in pixels. Must be non-negative.
+# toast_font_size: toast text size. Must be at least 1.0.
+# zen_percentage: zen cell size from 0.1 to 1.0 of the monitor cluster.
+# Color values are [red, green, blue, alpha], each in the 0-255 range.
+# Alpha controls opacity: 0 is transparent, 255 is opaque.
+#
+# Monitor profile options:
+# [[monitor_profiles]]
+# name = "Laptop display"
+# [monitor_profiles.match]
+# primary = true
+# index = 0
+# device_name = "\\\\.\\DISPLAY1"
+# [monitor_profiles.gap]
+# horizontal = 8
+# vertical = 8
+# [monitor_profiles.layout]
+# enabled = true
+# split_mode = "vertical"
+# split_width_multiplier = 0.8
+# [monitor_profiles.visualization.render]
+# zen_percentage = 0.80
+#
+# name: optional label for your own reference.
+# match.primary: true matches the primary display, false matches non-primary displays.
+# match.index: zero-based monitor index from the Windows monitor list.
+# match.device_name: Windows monitor device name such as "\\\\.\\DISPLAY1".
+# At least one match field is required for a monitor profile.
+# gap: optional per-monitor horizontal and/or vertical gap override.
+# layout: optional per-monitor layout override using the same layout fields above.
+# visualization.render.zen_percentage: optional per-monitor zen size override.
+#
+# Monitor profile example:
+# [[monitor_profiles]]
+# name = "Laptop display"
+# [monitor_profiles.match]
+# primary = true           # Match by primary display, index, or device_name.
+# [monitor_profiles.gap]
+# horizontal = 8
+# vertical = 8
+# [monitor_profiles.visualization.render]
+# zen_percentage = 0.80
+
+)";
+}
+
 std::optional<GapOverrideOptions> parse_gap_override_options(toml::table& table) {
   GapOverrideOptions options;
 
@@ -753,7 +914,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     if (!file) {
       return tl::unexpected("Failed to open file for writing: " + filepath.string());
     }
-    file << root;
+    file << get_options_toml_documentation() << root;
     return {};
   } catch (const std::exception& e) {
     return tl::unexpected(std::string("Error writing TOML: ") + e.what());

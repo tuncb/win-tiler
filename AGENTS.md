@@ -1,6 +1,7 @@
 # Task compilation requirements
 
 - If the task changes behavior add a unit test.
+- If the task changes configuration options, update the generated configuration comments so every user-facing option remains documented.
 - Run pre-commit hooks, all hooks should pass
 ```
 pre-commit run --all-files         # Run all pre-commit hooks

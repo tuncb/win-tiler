@@ -6,7 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
 #include <thread>
+#include <vector>
 
 #include "options.h"
 #include "runtime_support.h"
@@ -32,6 +34,13 @@ void write_valid_config(const std::filesystem::path& path, float gap_h = 20.0f, 
   file << "vertical = " << gap_v << "\n";
   file << "\n[loop]\n";
   file << "config_refresh_interval_ms = " << config_refresh_interval_ms << "\n";
+}
+
+std::string read_text_file(const std::filesystem::path& path) {
+  std::ifstream file(path);
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  return buffer.str();
 }
 
 // RAII helper to clean up temp files
@@ -354,6 +363,77 @@ TEST_SUITE("KeyboardOptions helpers") {
     auto hotkey = find_hotkey_binding(keyboard_options, HotkeyAction::Exit);
 
     CHECK(!hotkey.has_value());
+  }
+}
+
+TEST_SUITE("Generated TOML") {
+  TEST_CASE("written config includes comments and examples") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    auto write_result = write_options_toml(get_default_global_options(), temp_path);
+    REQUIRE(write_result.has_value());
+
+    auto text = read_text_file(temp_path);
+    auto generated_toml_start = text.find("\n[");
+    REQUIRE(generated_toml_start != std::string::npos);
+    auto documentation = text.substr(0, generated_toml_start);
+
+    CHECK(text.find("# win-tiler configuration") != std::string::npos);
+    CHECK(text.find("# Hotkey actions and what they do:") != std::string::npos);
+    CHECK(text.find("# Layout rule example:") != std::string::npos);
+    CHECK(text.find("# Monitor profile example:") != std::string::npos);
+    CHECK(text.find("# Ignore options:") != std::string::npos);
+
+    const std::vector<std::string> documented_keys = {
+        "merge_processes_with_defaults",
+        "merge_window_titles_with_defaults",
+        "merge_process_title_pairs_with_defaults",
+        "merge_ignore_children_of_processes_with_defaults",
+        "processes",
+        "window_titles",
+        "process_title_pairs",
+        "ignore_children_of_processes",
+        "small_window_barrier",
+        "width",
+        "height",
+        "bindings",
+        "action",
+        "hotkey",
+        "horizontal",
+        "vertical",
+        "interval_ms",
+        "config_refresh_interval_ms",
+        "toggle_zen_on_window_maximize",
+        "mouse_drag_drop",
+        "enabled",
+        "split_mode",
+        "split_width_multiplier",
+        "rules",
+        "window_count",
+        "split",
+        "ratio",
+        "first",
+        "second",
+        "toast_duration_ms",
+        "normal_color",
+        "selected_color",
+        "stored_color",
+        "border_width",
+        "toast_font_size",
+        "zen_percentage",
+        "name",
+        "primary",
+        "index",
+        "device_name",
+    };
+    for (const auto& key : documented_keys) {
+      CHECK(documentation.find(key) != std::string::npos);
+    }
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    CHECK(read_result.value().gapOptions.horizontal == kDefaultGapHorizontal);
   }
 }
 
