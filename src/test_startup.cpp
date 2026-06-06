@@ -299,18 +299,21 @@ TEST_SUITE("winapi") {
     auto availability = winapi::get_notification_area_menu_availability(options);
     CHECK_FALSE(availability.can_open_config);
     CHECK_FALSE(availability.can_show_log);
+    CHECK_FALSE(availability.can_save_layout);
     CHECK(availability.can_exit);
 
     options.config_path = R"(C:\Users\Test User\AppData\Roaming\win-tiler\config.toml)";
     availability = winapi::get_notification_area_menu_availability(options);
     CHECK(availability.can_open_config);
     CHECK_FALSE(availability.can_show_log);
+    CHECK(availability.can_save_layout);
     CHECK(availability.can_exit);
 
     options.log_file_path = R"(C:\Users\Test User\AppData\Local\Temp\win-tiler.log)";
     availability = winapi::get_notification_area_menu_availability(options);
     CHECK(availability.can_open_config);
     CHECK(availability.can_show_log);
+    CHECK(availability.can_save_layout);
     CHECK(availability.can_exit);
   }
 
@@ -361,6 +364,13 @@ TEST_SUITE("winapi") {
   TEST_CASE("notification area pause menu text reflects manual pause state") {
     CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(false)) == L"Pause");
     CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(true)) == L"Unpause");
+  }
+
+  TEST_CASE("notification area save layout monitor item requires at least two windows") {
+    CHECK_FALSE(winapi::should_enable_notification_area_save_layout_monitor(0));
+    CHECK_FALSE(winapi::should_enable_notification_area_save_layout_monitor(1));
+    CHECK(winapi::should_enable_notification_area_save_layout_monitor(2));
+    CHECK(winapi::should_enable_notification_area_save_layout_monitor(3));
   }
 
   TEST_CASE("application icon resource is available") {

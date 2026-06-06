@@ -6,12 +6,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "options.h"
 #include "runtime_support.h"
+#include "save_layout.h"
 
 using namespace wintiler;
 
@@ -34,6 +37,29 @@ void write_valid_config(const std::filesystem::path& path, float gap_h = 20.0f, 
   file << "vertical = " << gap_v << "\n";
   file << "\n[loop]\n";
   file << "config_refresh_interval_ms = " << config_refresh_interval_ms << "\n";
+}
+
+LayoutRule make_test_layout_rule(size_t window_count, LayoutSplitDir split_dir, float ratio) {
+  LayoutRule rule;
+  rule.window_count = window_count;
+  rule.tree.split_dir = split_dir;
+  rule.tree.split_ratio = ratio;
+  if (window_count == 3) {
+    auto second = std::make_shared<LayoutTreeNode>();
+    second->split_dir = LayoutSplitDir::Horizontal;
+    second->split_ratio = 0.50f;
+    rule.tree.second = second;
+  }
+  return rule;
+}
+
+winapi::MonitorInfo make_test_monitor(std::string device_name, long left, bool primary = false) {
+  winapi::MonitorInfo monitor;
+  monitor.deviceName = std::move(device_name);
+  monitor.rect = {left, 0, left + 1920, 1080};
+  monitor.workArea = monitor.rect;
+  monitor.isPrimary = primary;
+  return monitor;
 }
 
 std::string read_text_file(const std::filesystem::path& path) {
@@ -996,6 +1022,128 @@ TEST_SUITE("Monitor Profile Options") {
     CHECK(resolved.layoutOptions.split_width_multiplier == doctest::Approx(0.60f));
     REQUIRE(resolved.layoutOptions.rules.size() == 1);
     CHECK(resolved.layoutOptions.rules[0].tree.split_ratio == doctest::Approx(0.30f));
+  }
+
+  TEST_CASE("save layout replaces only matching monitor profile rule") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "# keep this comment\n";
+      file << "[gap]\n";
+      file << "horizontal = 21\n";
+      file << "\n";
+      file << "[layout]\n";
+      file << "enabled = true\n";
+      file << "\n";
+      file << "[[layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"horizontal\"\n";
+      file << "ratio = 0.80\n";
+      file << "\n";
+      file << "[[monitor_profiles]]\n";
+      file << "name = \"Left\"\n";
+      file << "match = { device_name = \"\\\\\\\\.\\\\DISPLAY1\" }\n";
+      file << "\n";
+      file << "[[monitor_profiles.layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.70\n";
+      file << "\n";
+      file << "[[monitor_profiles.layout.rules]]\n";
+      file << "window_count = 3\n";
+      file << "[monitor_profiles.layout.rules.tree]\n";
+      file << "split = \"vertical\"\n";
+      file << "ratio = 0.40\n";
+      file << "first = \"window\"\n";
+      file << "[monitor_profiles.layout.rules.tree.second]\n";
+      file << "split = \"horizontal\"\n";
+      file << "ratio = 0.50\n";
+      file << "first = \"window\"\n";
+      file << "second = \"window\"\n";
+      file << "\n";
+      file << "[[monitor_profiles]]\n";
+      file << "name = \"Right\"\n";
+      file << "match = { device_name = \"\\\\\\\\.\\\\DISPLAY2\" }\n";
+      file << "\n";
+      file << "[[monitor_profiles.layout.rules]]\n";
+      file << "window_count = 2\n";
+      file << "split = \"horizontal\"\n";
+      file << "ratio = 0.20\n";
+    }
+
+    std::vector<winapi::MonitorInfo> monitors = {
+        make_test_monitor("\\\\.\\DISPLAY1", 0, true),
+        make_test_monitor("\\\\.\\DISPLAY2", 1920)};
+    MonitorLayoutRuleUpdate update{0, monitors[0],
+                                   make_test_layout_rule(2, LayoutSplitDir::Horizontal, 0.25f)};
+
+    auto save_result = save_monitor_layout_rules_to_config(temp_path, monitors, {update});
+    REQUIRE(save_result.has_value());
+    CHECK(save_result->saved_monitor_count == 1);
+
+    std::string text = read_text_file(temp_path);
+    CHECK(text.find("# keep this comment") != std::string::npos);
+    CHECK(text.find("horizontal = 21") != std::string::npos);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    CHECK(read_result->layoutOptions.rules[0].tree.split_ratio == doctest::Approx(0.80f));
+    REQUIRE(read_result->monitorProfiles.size() == 2);
+
+    const auto& left_profile = read_result->monitorProfiles[0];
+    REQUIRE(left_profile.layoutOptions.has_value());
+    REQUIRE(left_profile.layoutOptions->rules.size() == 2);
+    auto left_two =
+        find_layout_rule_for_window_count(*left_profile.layoutOptions, static_cast<size_t>(2));
+    REQUIRE(left_two.has_value());
+    CHECK(left_two->tree.split_dir == LayoutSplitDir::Horizontal);
+    CHECK(left_two->tree.split_ratio == doctest::Approx(0.25f));
+    auto left_three =
+        find_layout_rule_for_window_count(*left_profile.layoutOptions, static_cast<size_t>(3));
+    REQUIRE(left_three.has_value());
+    CHECK(left_three->tree.split_ratio == doctest::Approx(0.40f));
+
+    const auto& right_profile = read_result->monitorProfiles[1];
+    REQUIRE(right_profile.layoutOptions.has_value());
+    auto right_two =
+        find_layout_rule_for_window_count(*right_profile.layoutOptions, static_cast<size_t>(2));
+    REQUIRE(right_two.has_value());
+    CHECK(right_two->tree.split_dir == LayoutSplitDir::Horizontal);
+    CHECK(right_two->tree.split_ratio == doctest::Approx(0.20f));
+  }
+
+  TEST_CASE("save layout appends monitor profile when no profile matches") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 12\n";
+    }
+
+    std::vector<winapi::MonitorInfo> monitors = {
+        make_test_monitor("\\\\.\\DISPLAY3", 0, true)};
+    MonitorLayoutRuleUpdate update{0, monitors[0],
+                                   make_test_layout_rule(3, LayoutSplitDir::Vertical, 0.33f)};
+
+    auto save_result = save_monitor_layout_rules_to_config(temp_path, monitors, {update});
+    REQUIRE(save_result.has_value());
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    REQUIRE(read_result->monitorProfiles.size() == 1);
+    const auto& profile = read_result->monitorProfiles[0];
+    REQUIRE(profile.match.device_name.has_value());
+    CHECK(*profile.match.device_name == "\\\\.\\DISPLAY3");
+    REQUIRE(profile.layoutOptions.has_value());
+    auto rule = find_layout_rule_for_window_count(*profile.layoutOptions, static_cast<size_t>(3));
+    REQUIRE(rule.has_value());
+    CHECK(rule->tree.split_ratio == doctest::Approx(0.33f));
+    REQUIRE(rule->tree.second);
+    CHECK(rule->tree.second->split_dir == LayoutSplitDir::Horizontal);
   }
 }
 

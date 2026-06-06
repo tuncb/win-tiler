@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "engine.h"
+#include "save_layout.h"
 
 using namespace wintiler;
 using namespace wintiler::ctrl;
@@ -211,6 +212,61 @@ get_leaf_center_from_geometries(const Engine& engine,
 }
 
 } // namespace
+
+TEST_SUITE("Save layout rule serialization") {
+  TEST_CASE("builds layout rule from cluster split tree without window ids") {
+    Cluster cluster;
+    CellData root;
+    root.split_dir = SplitDir::Vertical;
+    root.split_ratio = 0.30f;
+    int root_index = cluster.tree.add_node(root);
+
+    CellData first_leaf;
+    first_leaf.leaf_id = 101;
+    int first_index = cluster.tree.add_node(first_leaf, root_index);
+
+    CellData second_split;
+    second_split.split_dir = SplitDir::Horizontal;
+    second_split.split_ratio = 0.60f;
+    int second_index = cluster.tree.add_node(second_split, root_index);
+    cluster.tree.set_children(root_index, first_index, second_index);
+
+    CellData second_first_leaf;
+    second_first_leaf.leaf_id = 202;
+    int second_first_index = cluster.tree.add_node(second_first_leaf, second_index);
+
+    CellData second_second_leaf;
+    second_second_leaf.leaf_id = 303;
+    int second_second_index = cluster.tree.add_node(second_second_leaf, second_index);
+    cluster.tree.set_children(second_index, second_first_index, second_second_index);
+
+    auto rule = build_layout_rule_from_cluster(cluster);
+
+    REQUIRE(rule.has_value());
+    CHECK(rule->window_count == 3);
+    CHECK(count_layout_windows(rule->tree) == 3);
+    CHECK(rule->tree.split_dir == LayoutSplitDir::Vertical);
+    CHECK(rule->tree.split_ratio == doctest::Approx(0.30f));
+    CHECK_FALSE(rule->tree.first);
+    REQUIRE(rule->tree.second);
+    CHECK(rule->tree.second->split_dir == LayoutSplitDir::Horizontal);
+    CHECK(rule->tree.second->split_ratio == doctest::Approx(0.60f));
+    CHECK_FALSE(rule->tree.second->first);
+    CHECK_FALSE(rule->tree.second->second);
+  }
+
+  TEST_CASE("rejects single window cluster") {
+    Cluster cluster;
+    CellData leaf;
+    leaf.leaf_id = 101;
+    cluster.tree.add_node(leaf);
+
+    auto rule = build_layout_rule_from_cluster(cluster);
+
+    CHECK(!rule.has_value());
+    CHECK(rule.error() == "Need at least 2 tiled windows");
+  }
+}
 
 // =============================================================================
 // Engine::init Tests
