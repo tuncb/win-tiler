@@ -1053,30 +1053,38 @@ void select_after_layout_rebuild(System& system, size_t cluster_idx,
   }
 }
 
+bool apply_layout_template_for_cluster(System& system, size_t cluster_idx,
+                                       const LayoutOptions& layout_options) {
+  if (cluster_idx >= system.clusters.size()) {
+    return false;
+  }
+
+  auto& cluster = system.clusters[cluster_idx];
+  std::vector<size_t> leaf_ids = get_cluster_leaf_ids(cluster);
+  auto layout_rule = find_layout_rule_for_window_count(layout_options, leaf_ids.size());
+  if (!layout_rule.has_value()) {
+    return false;
+  }
+
+  bool selection_was_in_cluster = system.selection.has_value() &&
+                                  system.selection->cluster_index == static_cast<int>(cluster_idx);
+  auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
+  auto fallback_leaf_index = rebuild_cluster_from_layout_rule(cluster, leaf_ids, *layout_rule);
+  if (!fallback_leaf_index.has_value()) {
+    return false;
+  }
+
+  if (selection_was_in_cluster || !system.selection.has_value()) {
+    select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id, *fallback_leaf_index);
+  }
+  return true;
+}
+
 bool apply_layout_templates(System& system, const LayoutOptions& layout_options) {
   bool updated = false;
 
   for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    auto& cluster = system.clusters[cluster_idx];
-    std::vector<size_t> leaf_ids = get_cluster_leaf_ids(cluster);
-    auto layout_rule = find_layout_rule_for_window_count(layout_options, leaf_ids.size());
-    if (!layout_rule.has_value()) {
-      continue;
-    }
-
-    bool selection_was_in_cluster =
-        system.selection.has_value() &&
-        system.selection->cluster_index == static_cast<int>(cluster_idx);
-    auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
-    auto fallback_leaf_index = rebuild_cluster_from_layout_rule(cluster, leaf_ids, *layout_rule);
-    if (!fallback_leaf_index.has_value()) {
-      continue;
-    }
-
-    if (selection_was_in_cluster || !system.selection.has_value()) {
-      select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id, *fallback_leaf_index);
-    }
-    updated = true;
+    updated |= apply_layout_template_for_cluster(system, cluster_idx, layout_options);
   }
 
   return updated;
@@ -1091,27 +1099,8 @@ bool apply_layout_templates(System& system,
       continue;
     }
 
-    auto& cluster = system.clusters[cluster_idx];
-    const auto& layout_options = cluster_options[cluster_idx].layoutOptions;
-    std::vector<size_t> leaf_ids = get_cluster_leaf_ids(cluster);
-    auto layout_rule = find_layout_rule_for_window_count(layout_options, leaf_ids.size());
-    if (!layout_rule.has_value()) {
-      continue;
-    }
-
-    bool selection_was_in_cluster =
-        system.selection.has_value() &&
-        system.selection->cluster_index == static_cast<int>(cluster_idx);
-    auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
-    auto fallback_leaf_index = rebuild_cluster_from_layout_rule(cluster, leaf_ids, *layout_rule);
-    if (!fallback_leaf_index.has_value()) {
-      continue;
-    }
-
-    if (selection_was_in_cluster || !system.selection.has_value()) {
-      select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id, *fallback_leaf_index);
-    }
-    updated = true;
+    updated |= apply_layout_template_for_cluster(system, cluster_idx,
+                                                 cluster_options[cluster_idx].layoutOptions);
   }
 
   return updated;
@@ -1624,6 +1613,28 @@ cluster_options_or_default(const std::vector<ClusterTilingOptions>& cluster_opti
   return default_options;
 }
 
+bool apply_layout_templates_for_clusters(ctrl::System& system,
+                                         const std::vector<ClusterTilingOptions>& cluster_options,
+                                         const std::vector<size_t>& cluster_indices) {
+  bool updated = false;
+  std::set<size_t> unique_cluster_indices;
+
+  for (size_t cluster_index : cluster_indices) {
+    if (cluster_index >= system.clusters.size()) {
+      continue;
+    }
+    if (!unique_cluster_indices.insert(cluster_index).second) {
+      continue;
+    }
+
+    const auto& options = cluster_options_or_default(cluster_options, cluster_index);
+    updated |=
+        ctrl::apply_layout_template_for_cluster(system, cluster_index, options.layoutOptions);
+  }
+
+  return updated;
+}
+
 float normalized_split_width_multiplier(float multiplier) {
   if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
     return kDefaultSplitWidthMultiplier;
@@ -1926,7 +1937,8 @@ update_zen_for_maximized_windows(ctrl::System& system,
 }
 
 DragResult process_completed_drag(ctrl::System& system, const CompletedDragRequest& request,
-                                  const std::vector<std::vector<ctrl::Rect>>& geometries) {
+                                  const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                  const std::vector<ClusterTilingOptions>& cluster_options) {
   DragResult result;
   result.clear_drag_ended = true;
 
@@ -1945,6 +1957,7 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
   if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
     return result;
   }
+  size_t source_cluster_before_move = static_cast<size_t>(cluster_index);
 
   const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
 
@@ -1985,6 +1998,17 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
     result.selection_changed = !selections_equal(previous_selection, system.selection);
     result.apply_tiles = true;
     return result;
+  }
+
+  if (!drop_result->was_exchange) {
+    auto moved_cell = find_cell_by_leaf_id(system, request.leaf_id);
+    std::vector<size_t> affected_clusters = {source_cluster_before_move};
+    if (moved_cell.has_value() && moved_cell->cluster_index >= 0) {
+      affected_clusters.push_back(static_cast<size_t>(moved_cell->cluster_index));
+    }
+    if (apply_layout_templates_for_clusters(system, cluster_options, affected_clusters)) {
+      result.layout_changed = true;
+    }
   }
 
   result.handled = true;
@@ -2297,7 +2321,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   if (input.completed_drag.has_value()) {
     DragResult drag_result =
-        process_completed_drag(system, *input.completed_drag, ensure_geometries());
+        process_completed_drag(system, *input.completed_drag, ensure_geometries(), cluster_options);
     output.clear_drag_ended = drag_result.clear_drag_ended;
     output.selection_changed = output.selection_changed || drag_result.selection_changed;
     output.layout_changed = output.layout_changed || drag_result.layout_changed;
@@ -2577,12 +2601,20 @@ ActionResult Engine::process_action(HotkeyAction action,
     spdlog::info("Move: moving stored cell to selected cell's position");
     if (stored_cell.has_value() && system.selection.has_value()) {
       auto previous_selection = system.selection;
+      size_t source_cluster_before_move = stored_cell->cluster_index;
+      size_t moved_leaf_id = stored_cell->leaf_id;
       // Find stored cell index from leaf_id
       auto stored_cell_idx = ctrl::find_cell_by_leaf_id(system.clusters[stored_cell->cluster_index],
                                                         stored_cell->leaf_id);
       if (stored_cell_idx.has_value()) {
         if (ctrl::move_cell(system, static_cast<int>(stored_cell->cluster_index), *stored_cell_idx,
                             system.selection->cluster_index, system.selection->cell_index)) {
+          auto moved_cell = find_cell_by_leaf_id(system, moved_leaf_id);
+          std::vector<size_t> affected_clusters = {source_cluster_before_move};
+          if (moved_cell.has_value() && moved_cell->cluster_index >= 0) {
+            affected_clusters.push_back(static_cast<size_t>(moved_cell->cluster_index));
+          }
+          apply_layout_templates_for_clusters(system, cluster_options, affected_clusters);
           clear_stored_cell();
           result.success = true;
           result.selection_changed = !selections_equal(previous_selection, system.selection);

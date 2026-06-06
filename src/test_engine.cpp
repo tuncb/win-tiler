@@ -1029,6 +1029,45 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(engine.system.clusters[1].tree.empty());
   }
 
+  TEST_CASE("completed drag split reapplies per-cluster layout rule") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    size_t source_leaf_id = 3;
+    const auto& target_rect = geoms[0][2];
+
+    std::vector<ClusterTilingOptions> cluster_options(2);
+    cluster_options[0].layoutOptions =
+        create_three_window_vertical_right_horizontal_layout_options();
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2, 3}, false}, {{}, false}};
+    input.has_completed_initial_tile_pass = true;
+    input.cluster_options = cluster_options;
+    input.completed_drag = CompletedDragRequest{
+        source_leaf_id,
+        ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
+                    static_cast<long>(target_rect.y + target_rect.height / 2.0f)},
+        std::nullopt, false};
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.clear_drag_ended == true);
+    CHECK(output.layout_changed == true);
+    CHECK(output.apply_tiles == true);
+
+    auto moved_leaf = engine.find_leaf(source_leaf_id);
+    REQUIRE(moved_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 0);
+
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    auto right_child = cluster.tree.get_second_child(0);
+    REQUIRE(right_child.has_value());
+    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree[*right_child].split_dir == SplitDir::Horizontal);
+  }
+
   TEST_CASE("completed drag exchange across clusters is preserved until the next frame") {
     Engine engine = create_test_engine();
     auto geoms = compute_default_geometries(engine);
@@ -1770,6 +1809,38 @@ TEST_SUITE("Engine::process_action - Exchange/Move") {
     CHECK(result.focus_leaf_id == std::optional<size_t>{1});
     REQUIRE(engine.system.selection.has_value());
     CHECK(engine.system.selection->cluster_index == 1);
+  }
+
+  TEST_CASE("Move reapplies per-cluster layout rule after splitting target cell") {
+    Engine engine = create_test_engine();
+    auto geoms = compute_default_geometries(engine);
+
+    set_selection(engine, 1, 0);
+    ActionResult store_result =
+        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    REQUIRE(store_result.success == true);
+
+    std::vector<ClusterTilingOptions> cluster_options(2);
+    cluster_options[0].layoutOptions =
+        create_three_window_vertical_right_horizontal_layout_options();
+
+    set_selection(engine, 0, 2);
+    ActionResult result = engine.process_action(HotkeyAction::Move, geoms, cluster_options);
+
+    CHECK(result.success == true);
+    CHECK(result.layout_changed == true);
+    CHECK(result.apply_tiles == true);
+
+    auto moved_leaf = engine.find_leaf(3);
+    REQUIRE(moved_leaf.has_value());
+    CHECK(moved_leaf->cluster_index == 0);
+
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    auto right_child = cluster.tree.get_second_child(0);
+    REQUIRE(right_child.has_value());
+    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree[*right_child].split_dir == SplitDir::Horizontal);
   }
 }
 
