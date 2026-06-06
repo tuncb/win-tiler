@@ -2,10 +2,6 @@
 
 - If the task changes behavior add a unit test.
 - If the task changes configuration options, update the generated configuration comments so every user-facing option remains documented.
-- Run pre-commit hooks, all hooks should pass
-```
-pre-commit run --all-files         # Run all pre-commit hooks
-```
 - Compile and run unit tests, all tests should pass. Compilation should be successful and not have warnings
 ```
 .\build-run.bat build-run --Test-Debug  # Build and run unit tests
