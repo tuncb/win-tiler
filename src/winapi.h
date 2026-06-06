@@ -203,6 +203,7 @@ struct ManagedWindowInfo {
   bool is_maximized = false;
   bool is_minimized = false;
   std::optional<WindowPosition> actual_rect;
+  std::optional<WindowMinMaxInfo> minmax_info;
 };
 
 // Consolidated input state for the main loop

@@ -108,8 +108,15 @@ void extract_managed_window_states_from_input_into(
                                  static_cast<float>(win.actual_rect->width),
                                  static_cast<float>(win.actual_rect->height)};
       }
+      int min_track_width = 0;
+      int min_track_height = 0;
+      if (win.minmax_info.has_value()) {
+        min_track_width = win.minmax_info->min_track_width;
+        min_track_height = win.minmax_info->min_track_height;
+      }
       monitor_state.push_back({reinterpret_cast<size_t>(win.handle), win.is_fullscreen,
-                               win.is_maximized, win.is_minimized, actual_rect});
+                               win.is_maximized, win.is_minimized, actual_rect, min_track_width,
+                               min_track_height});
     }
   }
 }
@@ -196,7 +203,8 @@ create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monit
 
     auto layout_rule =
         find_layout_rule_for_window_count(cluster_options[i].layoutOptions, cell_ids.size());
-    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids, layout_rule});
+    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids, layout_rule,
+                             cluster_options[i].layoutOptions.split_width_multiplier});
   }
 
   return cluster_infos;

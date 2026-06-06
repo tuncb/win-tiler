@@ -63,19 +63,29 @@ std::optional<Rect> get_cell_rect_for_split(const Cluster& cluster, int selected
   return result;
 }
 
+float effective_split_width_multiplier(float multiplier) {
+  if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
+    return kDefaultSplitWidthMultiplier;
+  }
+  return multiplier;
+}
+
+SplitDir split_dir_from_rect(const Cluster& cluster, float width, float height) {
+  float effective_width = width * effective_split_width_multiplier(cluster.split_width_multiplier);
+  return effective_width >= height ? SplitDir::Vertical : SplitDir::Horizontal;
+}
+
 SplitDir determine_dwindle_split_dir(const Cluster& cluster, int selected_index) {
   if (cluster.tree.empty() || selected_index < 0) {
-    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
-                                                         : SplitDir::Horizontal;
+    return split_dir_from_rect(cluster, cluster.window_width, cluster.window_height);
   }
 
   auto rect = get_cell_rect_for_split(cluster, selected_index);
   if (!rect.has_value()) {
-    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
-                                                         : SplitDir::Horizontal;
+    return split_dir_from_rect(cluster, cluster.window_width, cluster.window_height);
   }
 
-  return rect->width >= rect->height ? SplitDir::Vertical : SplitDir::Horizontal;
+  return split_dir_from_rect(cluster, rect->width, rect->height);
 }
 
 SplitDir determine_split_dir(const Cluster& cluster, int selected_index, SplitMode mode) {
@@ -275,6 +285,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, SplitMode split_
     cluster.monitor_height = info.monitor_height;
     cluster.window_width = info.width;
     cluster.window_height = info.height;
+    cluster.split_width_multiplier = effective_split_width_multiplier(info.split_width_multiplier);
 
     int selection_index = -1;
     if (!info.initial_cell_ids.empty()) {
@@ -1613,6 +1624,40 @@ cluster_options_or_default(const std::vector<ClusterTilingOptions>& cluster_opti
   return default_options;
 }
 
+float normalized_split_width_multiplier(float multiplier) {
+  if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
+    return kDefaultSplitWidthMultiplier;
+  }
+  return multiplier;
+}
+
+void apply_split_width_multiplier(ctrl::System& system, size_t cluster_index,
+                                  float split_width_multiplier) {
+  if (cluster_index >= system.clusters.size()) {
+    return;
+  }
+  system.clusters[cluster_index].split_width_multiplier =
+      normalized_split_width_multiplier(split_width_multiplier);
+}
+
+void apply_split_width_multiplier(ctrl::System& system, const LayoutOptions* layout_options) {
+  if (layout_options == nullptr) {
+    return;
+  }
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    apply_split_width_multiplier(system, cluster_index, layout_options->split_width_multiplier);
+  }
+}
+
+void apply_split_width_multipliers(ctrl::System& system,
+                                   const std::vector<ClusterTilingOptions>& cluster_options) {
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    const auto& options = cluster_options_or_default(cluster_options, cluster_index);
+    apply_split_width_multiplier(system, cluster_index,
+                                 options.layoutOptions.split_width_multiplier);
+  }
+}
+
 // Find the cluster and cell index at a global point using precomputed geometries
 std::optional<std::pair<size_t, int>>
 find_cell_at_global_point(const ctrl::System& system,
@@ -1959,10 +2004,62 @@ bool rect_differs_from_target(const ctrl::Rect& actual_rect, const ctrl::Rect& t
          std::abs(actual_rect.height - target_rect.height) > kPlacementTolerance;
 }
 
+PlacementCorrectionTarget make_placement_correction_target(const ctrl::Rect& rect) {
+  return PlacementCorrectionTarget{static_cast<int>(rect.x), static_cast<int>(rect.y),
+                                   static_cast<int>(rect.width), static_cast<int>(rect.height)};
+}
+
+bool placement_correction_targets_equal(const PlacementCorrectionTarget& a,
+                                        const PlacementCorrectionTarget& b) {
+  return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+}
+
+bool placement_target_violates_min_track(const ManagedWindowState& window,
+                                         const PlacementCorrectionTarget& target) {
+  return (window.min_track_width > 0 && target.width < window.min_track_width) ||
+         (window.min_track_height > 0 && target.height < window.min_track_height);
+}
+
+void clear_placement_correction_failures_for_leaf(std::vector<PlacementCorrectionFailure>& failures,
+                                                  size_t leaf_id) {
+  failures.erase(std::remove_if(failures.begin(), failures.end(),
+                                [leaf_id](const PlacementCorrectionFailure& failure) {
+                                  return failure.leaf_id == leaf_id;
+                                }),
+                 failures.end());
+}
+
+PlacementCorrectionFailure&
+find_or_create_placement_correction_failure(std::vector<PlacementCorrectionFailure>& failures,
+                                            size_t leaf_id,
+                                            const PlacementCorrectionTarget& target) {
+  failures.erase(std::remove_if(failures.begin(), failures.end(),
+                                [leaf_id, &target](const PlacementCorrectionFailure& failure) {
+                                  return failure.leaf_id == leaf_id &&
+                                         !placement_correction_targets_equal(failure.target,
+                                                                             target);
+                                }),
+                 failures.end());
+
+  auto existing = std::find_if(failures.begin(), failures.end(),
+                               [leaf_id, &target](const PlacementCorrectionFailure& failure) {
+                                 return failure.leaf_id == leaf_id &&
+                                        placement_correction_targets_equal(failure.target, target);
+                               });
+  if (existing != failures.end()) {
+    return *existing;
+  }
+
+  failures.push_back(PlacementCorrectionFailure{leaf_id, target, 0});
+  return failures.back();
+}
+
 std::vector<size_t>
 find_placement_correction_leaf_ids(const ctrl::System& system,
                                    const std::vector<std::vector<ManagedWindowState>>& windows,
-                                   const std::vector<std::vector<ctrl::Rect>>& geometries) {
+                                   const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                   std::vector<PlacementCorrectionFailure>& failures) {
+  constexpr int kMaxPlacementCorrectionAttempts = 3;
   std::vector<size_t> leaf_ids;
   size_t cluster_count = std::min(system.clusters.size(), windows.size());
 
@@ -1992,9 +2089,43 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
       }
 
       const auto& target_rect = geometries[cluster_index][static_cast<size_t>(*cell_index)];
-      if (rect_differs_from_target(*window.actual_rect, target_rect)) {
-        leaf_ids.push_back(window.leaf_id);
+      if (!rect_differs_from_target(*window.actual_rect, target_rect)) {
+        if (std::any_of(failures.begin(), failures.end(),
+                        [&window](const PlacementCorrectionFailure& failure) {
+                          return failure.leaf_id == window.leaf_id;
+                        })) {
+          spdlog::trace("Placement correction reset: leaf_id={} reached target", window.leaf_id);
+        }
+        clear_placement_correction_failures_for_leaf(failures, window.leaf_id);
+        continue;
       }
+
+      PlacementCorrectionTarget target = make_placement_correction_target(target_rect);
+      if (placement_target_violates_min_track(window, target)) {
+        spdlog::trace("Placement correction skipped: leaf_id={}, target=[x={}, y={}, w={}, h={}], "
+                      "min_track={}x{}",
+                      window.leaf_id, target.x, target.y, target.width, target.height,
+                      window.min_track_width, window.min_track_height);
+        clear_placement_correction_failures_for_leaf(failures, window.leaf_id);
+        continue;
+      }
+
+      PlacementCorrectionFailure& failure =
+          find_or_create_placement_correction_failure(failures, window.leaf_id, target);
+      if (failure.attempts >= kMaxPlacementCorrectionAttempts) {
+        spdlog::trace("Placement correction suppressed: leaf_id={}, target=[x={}, y={}, w={}, "
+                      "h={}], attempts={}",
+                      window.leaf_id, target.x, target.y, target.width, target.height,
+                      failure.attempts);
+        continue;
+      }
+
+      ++failure.attempts;
+      spdlog::trace("Placement correction attempt: leaf_id={}, target=[x={}, y={}, w={}, h={}], "
+                    "attempt={}/{}",
+                    window.leaf_id, target.x, target.y, target.width, target.height,
+                    failure.attempts, kMaxPlacementCorrectionAttempts);
+      leaf_ids.push_back(window.leaf_id);
     }
   }
 
@@ -2006,6 +2137,7 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
   system = ctrl::create_system(infos, split_mode);
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
+  placement_correction_failures.clear();
 }
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
@@ -2047,6 +2179,7 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
                             std::optional<int> redirect_cluster_index,
                             const LayoutOptions* layout_options, bool reapply_layout_templates) {
   UpdateResult result;
+  apply_split_width_multiplier(system, layout_options);
   auto previous_selection = system.selection;
   std::vector<bool> previous_fullscreen_state;
   previous_fullscreen_state.reserve(system.clusters.size());
@@ -2083,6 +2216,7 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
                             const std::vector<ClusterTilingOptions>& cluster_options,
                             bool reapply_layout_templates) {
   UpdateResult result;
+  apply_split_width_multipliers(system, cluster_options);
   auto previous_selection = system.selection;
   std::vector<bool> previous_fullscreen_state;
   previous_fullscreen_state.reserve(system.clusters.size());
@@ -2137,6 +2271,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     cluster_options = make_legacy_cluster_options(system.clusters.size(), input.gap_h, input.gap_v,
                                                   input.zen_pct, input.layout_options);
   }
+  apply_split_width_multipliers(system, cluster_options);
 
   if (!input.has_completed_initial_tile_pass) {
     output.apply_tiles = true;
@@ -2282,9 +2417,11 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   output.geometries = ensure_geometries();
-  if (!output.apply_tiles) {
-    output.placement_correction_leaf_ids =
-        find_placement_correction_leaf_ids(system, input.managed_windows, output.geometries);
+  if (output.apply_tiles) {
+    placement_correction_failures.clear();
+  } else {
+    output.placement_correction_leaf_ids = find_placement_correction_leaf_ids(
+        system, input.managed_windows, output.geometries, placement_correction_failures);
   }
   return output;
 }

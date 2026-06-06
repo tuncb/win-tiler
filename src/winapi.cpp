@@ -79,10 +79,26 @@ namespace {
 std::mutex g_monitor_cache_mutex;
 std::vector<MonitorInfo> g_monitor_cache;
 bool g_monitor_cache_dirty = true;
+std::mutex g_window_minmax_cache_mutex;
+std::unordered_map<HWND_T, WindowMinMaxInfo> g_window_minmax_cache;
 
 void fill_monitors_uncached(std::vector<MonitorInfo>& monitors) {
   monitors.clear();
   EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)&monitors);
+}
+
+void cache_window_minmax_info(HWND_T hwnd, const WindowMinMaxInfo& info) {
+  std::scoped_lock lock(g_window_minmax_cache_mutex);
+  g_window_minmax_cache[hwnd] = info;
+}
+
+std::optional<WindowMinMaxInfo> lookup_cached_window_minmax_info(HWND_T hwnd) {
+  std::scoped_lock lock(g_window_minmax_cache_mutex);
+  auto found = g_window_minmax_cache.find(hwnd);
+  if (found == g_window_minmax_cache.end()) {
+    return std::nullopt;
+  }
+  return found->second;
 }
 } // namespace
 
@@ -194,11 +210,13 @@ std::optional<WindowMinMaxInfo> get_window_minmax_info(HWND_T hwnd) {
     return std::nullopt;
   }
 
-  return WindowMinMaxInfo{
+  WindowMinMaxInfo info{
       static_cast<int>(raw_info.ptMaxSize.x),      static_cast<int>(raw_info.ptMaxSize.y),
       static_cast<int>(raw_info.ptMaxPosition.x),  static_cast<int>(raw_info.ptMaxPosition.y),
       static_cast<int>(raw_info.ptMinTrackSize.x), static_cast<int>(raw_info.ptMinTrackSize.y),
       static_cast<int>(raw_info.ptMaxTrackSize.x), static_cast<int>(raw_info.ptMaxTrackSize.y)};
+  cache_window_minmax_info(hwnd, info);
+  return info;
 }
 
 static void log_failed_placement_correction(const TileInfo& tile_info,
@@ -2329,6 +2347,9 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
         managed_info.is_maximized = is_window_maximized(hwnd);
         managed_info.is_minimized = is_window_minimized(hwnd);
         managed_info.actual_rect = get_window_rect(hwnd);
+        if (!managed_info.is_minimized) {
+          managed_info.minmax_info = lookup_cached_window_minmax_info(hwnd);
+        }
         monitor_windows.push_back(managed_info);
         if (trace_enabled) {
           spdlog::trace("WinAPI managed window: monitor={}, hwnd={}, fullscreen={}, maximized={}, "

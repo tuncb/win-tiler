@@ -50,6 +50,7 @@ struct Cluster {
   float monitor_y = 0.0f;
   float monitor_width = 0.0f;
   float monitor_height = 0.0f;
+  float split_width_multiplier = kDefaultSplitWidthMultiplier;
 };
 
 struct CellIndicatorByIndex {
@@ -74,6 +75,7 @@ struct ClusterInitInfo {
   float monitor_height = 0.0f;
   std::vector<size_t> initial_cell_ids;
   std::optional<LayoutRule> initial_layout_rule;
+  float split_width_multiplier = kDefaultSplitWidthMultiplier;
 };
 
 struct ClusterCellUpdateInfo {
@@ -132,6 +134,21 @@ struct ManagedWindowState {
   bool is_maximized = false;
   bool is_minimized = false;
   std::optional<ctrl::Rect> actual_rect;
+  int min_track_width = 0;
+  int min_track_height = 0;
+};
+
+struct PlacementCorrectionTarget {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
+struct PlacementCorrectionFailure {
+  size_t leaf_id = 0;
+  PlacementCorrectionTarget target;
+  int attempts = 0;
 };
 
 struct CompletedDragRequest {
@@ -190,6 +207,7 @@ struct Engine {
   ctrl::System system;
   std::optional<StoredCell> stored_cell;
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
+  std::vector<PlacementCorrectionFailure> placement_correction_failures;
 
   // Initialize engine from cluster init info
   void init(const std::vector<ctrl::ClusterInitInfo>& infos,

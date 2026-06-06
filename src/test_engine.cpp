@@ -1367,6 +1367,80 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.apply_tiles == false);
     CHECK(output.placement_correction_leaf_ids.empty());
   }
+
+  TEST_CASE("steady placement correction skips target smaller than min track size") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState constrained_window;
+    constrained_window.leaf_id = 1;
+    constrained_window.actual_rect =
+        Rect{target_rect.x, target_rect.y, target_rect.width + 40.0f, target_rect.height};
+    constrained_window.min_track_width = static_cast<int>(target_rect.width) + 1;
+    constrained_window.min_track_height = static_cast<int>(target_rect.height);
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{constrained_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.apply_tiles == false);
+    CHECK(output.placement_correction_leaf_ids.empty());
+    CHECK(engine.placement_correction_failures.empty());
+  }
+
+  TEST_CASE("steady placement correction suppresses repeated failed target after three attempts") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState mismatched_window;
+    mismatched_window.leaf_id = 1;
+    mismatched_window.actual_rect =
+        Rect{target_rect.x + 20.0f, target_rect.y, target_rect.width, target_rect.height};
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{mismatched_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    for (int i = 0; i < 3; ++i) {
+      EngineFrameOutput output = engine.process_frame(input);
+      REQUIRE(output.placement_correction_leaf_ids.size() == 1);
+      CHECK(output.placement_correction_leaf_ids[0] == 1);
+    }
+
+    EngineFrameOutput suppressed_output = engine.process_frame(input);
+    CHECK(suppressed_output.placement_correction_leaf_ids.empty());
+    REQUIRE(engine.placement_correction_failures.size() == 1);
+    CHECK(engine.placement_correction_failures[0].attempts == 3);
+
+    mismatched_window.actual_rect = target_rect;
+    input.managed_windows = {{mismatched_window}, {}};
+    EngineFrameOutput matched_output = engine.process_frame(input);
+    CHECK(matched_output.placement_correction_leaf_ids.empty());
+    CHECK(engine.placement_correction_failures.empty());
+
+    mismatched_window.actual_rect =
+        Rect{target_rect.x + 20.0f, target_rect.y, target_rect.width, target_rect.height};
+    input.managed_windows = {{mismatched_window}, {}};
+    EngineFrameOutput retried_output = engine.process_frame(input);
+    REQUIRE(retried_output.placement_correction_leaf_ids.size() == 1);
+    CHECK(retried_output.placement_correction_leaf_ids[0] == 1);
+  }
 }
 
 // =============================================================================
@@ -1982,6 +2056,48 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
     CHECK(geoms[0][3].height == doctest::Approx(400.0f));
     CHECK(geoms[0][4].width == doctest::Approx(250.0f));
     CHECK(geoms[0][4].height == doctest::Approx(400.0f));
+  }
+
+  TEST_CASE("dwindle split mode uses split width multiplier") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2, 3}, std::nullopt, 0.10f}};
+    engine.init(infos, SplitMode::Dwindle);
+
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.split_width_multiplier == doctest::Approx(0.10f));
+    CHECK(cluster.tree[0].split_dir == SplitDir::Horizontal);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Horizontal);
+  }
+
+  TEST_CASE("process frame applies cluster split width multiplier before insertion") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2}}};
+    engine.init(infos, SplitMode::Dwindle);
+    set_selection(engine, 0, 2);
+
+    ClusterTilingOptions cluster_options;
+    cluster_options.layoutOptions.split_width_multiplier = 0.75f;
+
+    EngineFrameInput input;
+    input.cluster_options = {cluster_options};
+    input.cluster_updates = {{std::vector<size_t>{1, 2, 3}, false}};
+    input.managed_windows = {{{1, false, false, false, std::nullopt},
+                              {2, false, false, false, std::nullopt},
+                              {3, false, false, false, std::nullopt}}};
+    input.has_completed_initial_tile_pass = true;
+
+    auto output = engine.process_frame(input);
+
+    CHECK(output.topology_changed == true);
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    CHECK(cluster.split_width_multiplier == doctest::Approx(0.75f));
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Horizontal);
   }
 
   TEST_CASE("dwindle uses hovered cell for new window insertion") {
