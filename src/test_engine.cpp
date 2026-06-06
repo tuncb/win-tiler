@@ -1367,6 +1367,80 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.apply_tiles == false);
     CHECK(output.placement_correction_leaf_ids.empty());
   }
+
+  TEST_CASE("steady placement correction skips target smaller than min track size") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState constrained_window;
+    constrained_window.leaf_id = 1;
+    constrained_window.actual_rect =
+        Rect{target_rect.x, target_rect.y, target_rect.width + 40.0f, target_rect.height};
+    constrained_window.min_track_width = static_cast<int>(target_rect.width) + 1;
+    constrained_window.min_track_height = static_cast<int>(target_rect.height);
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{constrained_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.apply_tiles == false);
+    CHECK(output.placement_correction_leaf_ids.empty());
+    CHECK(engine.placement_correction_failures.empty());
+  }
+
+  TEST_CASE("steady placement correction suppresses repeated failed target after three attempts") {
+    Engine engine = create_test_engine();
+    auto expected_geometries = compute_default_geometries(engine);
+    auto leaf_cell = engine.find_leaf(1);
+    REQUIRE(leaf_cell.has_value());
+    const auto& target_rect = expected_geometries[static_cast<size_t>(leaf_cell->cluster_index)]
+                                                 [static_cast<size_t>(leaf_cell->cell_index)];
+
+    ManagedWindowState mismatched_window;
+    mismatched_window.leaf_id = 1;
+    mismatched_window.actual_rect =
+        Rect{target_rect.x + 20.0f, target_rect.y, target_rect.width, target_rect.height};
+
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.managed_windows = {{mismatched_window}, {}};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    for (int i = 0; i < 3; ++i) {
+      EngineFrameOutput output = engine.process_frame(input);
+      REQUIRE(output.placement_correction_leaf_ids.size() == 1);
+      CHECK(output.placement_correction_leaf_ids[0] == 1);
+    }
+
+    EngineFrameOutput suppressed_output = engine.process_frame(input);
+    CHECK(suppressed_output.placement_correction_leaf_ids.empty());
+    REQUIRE(engine.placement_correction_failures.size() == 1);
+    CHECK(engine.placement_correction_failures[0].attempts == 3);
+
+    mismatched_window.actual_rect = target_rect;
+    input.managed_windows = {{mismatched_window}, {}};
+    EngineFrameOutput matched_output = engine.process_frame(input);
+    CHECK(matched_output.placement_correction_leaf_ids.empty());
+    CHECK(engine.placement_correction_failures.empty());
+
+    mismatched_window.actual_rect =
+        Rect{target_rect.x + 20.0f, target_rect.y, target_rect.width, target_rect.height};
+    input.managed_windows = {{mismatched_window}, {}};
+    EngineFrameOutput retried_output = engine.process_frame(input);
+    REQUIRE(retried_output.placement_correction_leaf_ids.size() == 1);
+    CHECK(retried_output.placement_correction_leaf_ids[0] == 1);
+  }
 }
 
 // =============================================================================

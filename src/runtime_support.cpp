@@ -108,8 +108,15 @@ void extract_managed_window_states_from_input_into(
                                  static_cast<float>(win.actual_rect->width),
                                  static_cast<float>(win.actual_rect->height)};
       }
+      int min_track_width = 0;
+      int min_track_height = 0;
+      if (win.minmax_info.has_value()) {
+        min_track_width = win.minmax_info->min_track_width;
+        min_track_height = win.minmax_info->min_track_height;
+      }
       monitor_state.push_back({reinterpret_cast<size_t>(win.handle), win.is_fullscreen,
-                               win.is_maximized, win.is_minimized, actual_rect});
+                               win.is_maximized, win.is_minimized, actual_rect, min_track_width,
+                               min_track_height});
     }
   }
 }

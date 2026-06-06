@@ -1959,10 +1959,62 @@ bool rect_differs_from_target(const ctrl::Rect& actual_rect, const ctrl::Rect& t
          std::abs(actual_rect.height - target_rect.height) > kPlacementTolerance;
 }
 
+PlacementCorrectionTarget make_placement_correction_target(const ctrl::Rect& rect) {
+  return PlacementCorrectionTarget{static_cast<int>(rect.x), static_cast<int>(rect.y),
+                                   static_cast<int>(rect.width), static_cast<int>(rect.height)};
+}
+
+bool placement_correction_targets_equal(const PlacementCorrectionTarget& a,
+                                        const PlacementCorrectionTarget& b) {
+  return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+}
+
+bool placement_target_violates_min_track(const ManagedWindowState& window,
+                                         const PlacementCorrectionTarget& target) {
+  return (window.min_track_width > 0 && target.width < window.min_track_width) ||
+         (window.min_track_height > 0 && target.height < window.min_track_height);
+}
+
+void clear_placement_correction_failures_for_leaf(std::vector<PlacementCorrectionFailure>& failures,
+                                                  size_t leaf_id) {
+  failures.erase(std::remove_if(failures.begin(), failures.end(),
+                                [leaf_id](const PlacementCorrectionFailure& failure) {
+                                  return failure.leaf_id == leaf_id;
+                                }),
+                 failures.end());
+}
+
+PlacementCorrectionFailure&
+find_or_create_placement_correction_failure(std::vector<PlacementCorrectionFailure>& failures,
+                                            size_t leaf_id,
+                                            const PlacementCorrectionTarget& target) {
+  failures.erase(std::remove_if(failures.begin(), failures.end(),
+                                [leaf_id, &target](const PlacementCorrectionFailure& failure) {
+                                  return failure.leaf_id == leaf_id &&
+                                         !placement_correction_targets_equal(failure.target,
+                                                                             target);
+                                }),
+                 failures.end());
+
+  auto existing = std::find_if(failures.begin(), failures.end(),
+                               [leaf_id, &target](const PlacementCorrectionFailure& failure) {
+                                 return failure.leaf_id == leaf_id &&
+                                        placement_correction_targets_equal(failure.target, target);
+                               });
+  if (existing != failures.end()) {
+    return *existing;
+  }
+
+  failures.push_back(PlacementCorrectionFailure{leaf_id, target, 0});
+  return failures.back();
+}
+
 std::vector<size_t>
 find_placement_correction_leaf_ids(const ctrl::System& system,
                                    const std::vector<std::vector<ManagedWindowState>>& windows,
-                                   const std::vector<std::vector<ctrl::Rect>>& geometries) {
+                                   const std::vector<std::vector<ctrl::Rect>>& geometries,
+                                   std::vector<PlacementCorrectionFailure>& failures) {
+  constexpr int kMaxPlacementCorrectionAttempts = 3;
   std::vector<size_t> leaf_ids;
   size_t cluster_count = std::min(system.clusters.size(), windows.size());
 
@@ -1992,9 +2044,43 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
       }
 
       const auto& target_rect = geometries[cluster_index][static_cast<size_t>(*cell_index)];
-      if (rect_differs_from_target(*window.actual_rect, target_rect)) {
-        leaf_ids.push_back(window.leaf_id);
+      if (!rect_differs_from_target(*window.actual_rect, target_rect)) {
+        if (std::any_of(failures.begin(), failures.end(),
+                        [&window](const PlacementCorrectionFailure& failure) {
+                          return failure.leaf_id == window.leaf_id;
+                        })) {
+          spdlog::trace("Placement correction reset: leaf_id={} reached target", window.leaf_id);
+        }
+        clear_placement_correction_failures_for_leaf(failures, window.leaf_id);
+        continue;
       }
+
+      PlacementCorrectionTarget target = make_placement_correction_target(target_rect);
+      if (placement_target_violates_min_track(window, target)) {
+        spdlog::trace("Placement correction skipped: leaf_id={}, target=[x={}, y={}, w={}, h={}], "
+                      "min_track={}x{}",
+                      window.leaf_id, target.x, target.y, target.width, target.height,
+                      window.min_track_width, window.min_track_height);
+        clear_placement_correction_failures_for_leaf(failures, window.leaf_id);
+        continue;
+      }
+
+      PlacementCorrectionFailure& failure =
+          find_or_create_placement_correction_failure(failures, window.leaf_id, target);
+      if (failure.attempts >= kMaxPlacementCorrectionAttempts) {
+        spdlog::trace("Placement correction suppressed: leaf_id={}, target=[x={}, y={}, w={}, "
+                      "h={}], attempts={}",
+                      window.leaf_id, target.x, target.y, target.width, target.height,
+                      failure.attempts);
+        continue;
+      }
+
+      ++failure.attempts;
+      spdlog::trace("Placement correction attempt: leaf_id={}, target=[x={}, y={}, w={}, h={}], "
+                    "attempt={}/{}",
+                    window.leaf_id, target.x, target.y, target.width, target.height,
+                    failure.attempts, kMaxPlacementCorrectionAttempts);
+      leaf_ids.push_back(window.leaf_id);
     }
   }
 
@@ -2006,6 +2092,7 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
   system = ctrl::create_system(infos, split_mode);
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
+  placement_correction_failures.clear();
 }
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
@@ -2282,9 +2369,11 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   output.geometries = ensure_geometries();
-  if (!output.apply_tiles) {
-    output.placement_correction_leaf_ids =
-        find_placement_correction_leaf_ids(system, input.managed_windows, output.geometries);
+  if (output.apply_tiles) {
+    placement_correction_failures.clear();
+  } else {
+    output.placement_correction_leaf_ids = find_placement_correction_leaf_ids(
+        system, input.managed_windows, output.geometries, placement_correction_failures);
   }
   return output;
 }

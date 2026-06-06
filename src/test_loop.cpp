@@ -184,8 +184,11 @@ TEST_SUITE("loop") {
     input.windows_per_monitor.resize(1);
     input.windows_per_monitor[0].push_back(
         {nullptr, false, false, false, winapi::WindowPosition{1, 2, 3, 4}});
+    winapi::WindowMinMaxInfo minmax_info;
+    minmax_info.min_track_width = 640;
+    minmax_info.min_track_height = 480;
     input.windows_per_monitor[0].push_back({reinterpret_cast<winapi::HWND_T>(7), true, false, true,
-                                            winapi::WindowPosition{10, 20, 300, 400}});
+                                            winapi::WindowPosition{10, 20, 300, 400}, minmax_info});
 
     std::vector<std::vector<ManagedWindowState>> states(1);
     states[0].reserve(4);
@@ -203,6 +206,8 @@ TEST_SUITE("loop") {
     REQUIRE(states[0][0].actual_rect.has_value());
     CHECK(states[0][0].actual_rect->x == doctest::Approx(10.0f));
     CHECK(states[0][0].actual_rect->height == doctest::Approx(400.0f));
+    CHECK(states[0][0].min_track_width == 640);
+    CHECK(states[0][0].min_track_height == 480);
   }
 
   TEST_CASE("window minmax formatter includes retrieved tracking limits") {
