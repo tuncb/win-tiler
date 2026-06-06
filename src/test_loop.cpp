@@ -7,6 +7,7 @@
 
 #include "loop.h"
 #include "runtime_support.h"
+#include "winapi.h"
 
 namespace wintiler {
 
@@ -86,6 +87,12 @@ TEST_SUITE("loop") {
     CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, false, true) == false);
     CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Split, false, true) == true);
     CHECK(should_exchange_mouse_drag_drop(MouseDragDropAction::Exchange, true, true) == false);
+  }
+
+  TEST_CASE("fullscreen topmost windows remain tiling candidates") {
+    CHECK(winapi::should_ignore_topmost_window(false, false) == false);
+    CHECK(winapi::should_ignore_topmost_window(true, false) == true);
+    CHECK(winapi::should_ignore_topmost_window(true, true) == false);
   }
 
   TEST_CASE("desktop activation creates and switches multi-engine state") {

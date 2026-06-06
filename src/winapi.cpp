@@ -453,6 +453,12 @@ static bool is_window_minimized(HWND_T hwnd) {
   return IsIconic((HWND)hwnd);
 }
 
+static bool is_window_fullscreen(HWND_T hwnd);
+
+bool should_ignore_topmost_window(bool is_topmost, bool is_fullscreen) {
+  return is_topmost && !is_fullscreen;
+}
+
 struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
@@ -525,7 +531,8 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     }
     return TRUE;
   }
-  if (ex_style & WS_EX_TOPMOST) {
+  bool is_fullscreen = is_window_fullscreen(reinterpret_cast<HWND_T>(hwnd));
+  if (should_ignore_topmost_window((ex_style & WS_EX_TOPMOST) != 0, is_fullscreen)) {
     if (ctx->trace_enabled) {
       spdlog::trace("WinAPI window rejected: hwnd={}, reason=WS_EX_TOPMOST, title=\"{}\", "
                     "class=\"{}\", pid={}, ex_style=0x{:08X}",
@@ -684,8 +691,6 @@ static void gather_raw_window_data_into(const wintiler::IgnoreOptions& ignore_op
     return reinterpret_cast<uintptr_t>(lhs) < reinterpret_cast<uintptr_t>(rhs);
   });
 }
-
-static bool is_window_fullscreen(HWND_T hwnd);
 
 struct WindowManagementState {
   HWND_T handle = nullptr;

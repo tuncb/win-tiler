@@ -71,6 +71,7 @@ struct WindowMinMaxInfo {
 
 // Standard Win32 dialogs use the predefined "#32770" class and are commonly owned popups.
 bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name);
+[[nodiscard]] bool should_ignore_topmost_window(bool is_topmost, bool is_fullscreen);
 
 void fill_monitors(std::vector<MonitorInfo>& monitors);
 void invalidate_monitor_cache();
