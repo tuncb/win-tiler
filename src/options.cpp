@@ -378,6 +378,16 @@ LayoutOptions parse_layout_options(toml::table& table) {
     }
   }
 
+  if (auto split_width_multiplier = get_number<float>(table["split_width_multiplier"])) {
+    if (*split_width_multiplier <= 0.0f) {
+      spdlog::error("Invalid layout.split_width_multiplier value ({}): must be positive. "
+                    "Using default.",
+                    *split_width_multiplier);
+    } else {
+      options.split_width_multiplier = *split_width_multiplier;
+    }
+  }
+
   if (auto rules = table["rules"].as_array()) {
     for (auto& rule_value : *rules) {
       if (auto rule_table = rule_value.as_table()) {
@@ -413,6 +423,7 @@ toml::table layout_options_to_toml(const LayoutOptions& options) {
   toml::table layout;
   layout.insert("enabled", options.enabled);
   layout.insert("split_mode", layout_split_mode_to_string(options.split_mode));
+  layout.insert("split_width_multiplier", options.split_width_multiplier);
 
   toml::array layout_rules;
   for (const auto& rule : options.rules) {

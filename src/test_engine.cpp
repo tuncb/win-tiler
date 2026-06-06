@@ -2058,6 +2058,48 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
     CHECK(geoms[0][4].height == doctest::Approx(400.0f));
   }
 
+  TEST_CASE("dwindle split mode uses split width multiplier") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2, 3}, std::nullopt, 0.10f}};
+    engine.init(infos, SplitMode::Dwindle);
+
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.split_width_multiplier == doctest::Approx(0.10f));
+    CHECK(cluster.tree[0].split_dir == SplitDir::Horizontal);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Horizontal);
+  }
+
+  TEST_CASE("process frame applies cluster split width multiplier before insertion") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2}}};
+    engine.init(infos, SplitMode::Dwindle);
+    set_selection(engine, 0, 2);
+
+    ClusterTilingOptions cluster_options;
+    cluster_options.layoutOptions.split_width_multiplier = 0.75f;
+
+    EngineFrameInput input;
+    input.cluster_options = {cluster_options};
+    input.cluster_updates = {{std::vector<size_t>{1, 2, 3}, false}};
+    input.managed_windows = {{{1, false, false, false, std::nullopt},
+                              {2, false, false, false, std::nullopt},
+                              {3, false, false, false, std::nullopt}}};
+    input.has_completed_initial_tile_pass = true;
+
+    auto output = engine.process_frame(input);
+
+    CHECK(output.topology_changed == true);
+    REQUIRE(engine.system.clusters.size() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    CHECK(cluster.split_width_multiplier == doctest::Approx(0.75f));
+    REQUIRE(cluster.tree.size() == 5);
+    CHECK(cluster.tree[2].split_dir == SplitDir::Horizontal);
+  }
+
   TEST_CASE("dwindle uses hovered cell for new window insertion") {
     Engine engine;
     std::vector<ClusterInitInfo> infos = {

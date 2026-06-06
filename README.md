@@ -102,6 +102,7 @@ mouse_drag_drop = "exchange"
 [layout]
 enabled = true
 split_mode = "dwindle"
+split_width_multiplier = 1.0
 rules = []
 
 [visualization]
@@ -153,7 +154,9 @@ ratio = 0.30
 
 `layout.split_mode` controls how new or moved windows choose the split direction when no declarative
 layout rule is applied. Supported values are `dwindle`, `vertical`, and `horizontal`.
-`dwindle` splits wide target cells left/right and tall target cells top/bottom.
+`dwindle` splits wide target cells left/right and tall target cells top/bottom. The
+`split_width_multiplier` value defaults to `1.0` and is applied to the target cell width before
+dwindle compares width and height.
 
 Declarative layout rules describe only the tiling structure, not specific apps. Rules are selected
 by the number of managed windows on a monitor. A missing `first` or `second` child means that side is

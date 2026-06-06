@@ -663,6 +663,39 @@ TEST_SUITE("Layout Options") {
     CHECK(result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
   }
 
+  TEST_CASE("parses split width multiplier") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "split_width_multiplier = 0.75\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.split_width_multiplier == doctest::Approx(0.75f));
+  }
+
+  TEST_CASE("invalid split width multiplier uses default") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[layout]\n";
+      file << "split_width_multiplier = 0\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    CHECK(result.value().layoutOptions.split_width_multiplier ==
+          doctest::Approx(kDefaultSplitWidthMultiplier));
+  }
+
   TEST_CASE("parses two-window layout with implicit window leaves") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);
@@ -770,6 +803,7 @@ TEST_SUITE("Layout Options") {
 
     GlobalOptions options = get_default_global_options();
     options.layoutOptions.split_mode = LayoutSplitMode::Dwindle;
+    options.layoutOptions.split_width_multiplier = 0.80f;
 
     auto write_result = write_options_toml(options, temp_path);
     REQUIRE(write_result.has_value());
@@ -778,6 +812,7 @@ TEST_SUITE("Layout Options") {
     REQUIRE(read_result.has_value());
 
     CHECK(read_result.value().layoutOptions.split_mode == LayoutSplitMode::Dwindle);
+    CHECK(read_result.value().layoutOptions.split_width_multiplier == doctest::Approx(0.80f));
   }
 }
 
@@ -824,6 +859,8 @@ TEST_SUITE("Monitor Profile Options") {
     REQUIRE(profile.zen_percentage.has_value());
     CHECK(*profile.zen_percentage == doctest::Approx(0.75f));
     REQUIRE(profile.layoutOptions.has_value());
+    CHECK(profile.layoutOptions->split_width_multiplier ==
+          doctest::Approx(kDefaultSplitWidthMultiplier));
     REQUIRE(profile.layoutOptions->rules.size() == 1);
     CHECK(profile.layoutOptions->rules[0].tree.split_dir == LayoutSplitDir::Horizontal);
   }
@@ -862,6 +899,7 @@ TEST_SUITE("Monitor Profile Options") {
     rule.tree.split_dir = LayoutSplitDir::Vertical;
     rule.tree.split_ratio = 0.30f;
     LayoutOptions layout;
+    layout.split_width_multiplier = 0.60f;
     layout.rules.push_back(rule);
     profile.layoutOptions = layout;
     options.monitorProfiles.push_back(profile);
@@ -875,6 +913,7 @@ TEST_SUITE("Monitor Profile Options") {
     CHECK(resolved.gapOptions.horizontal == 4.0f);
     CHECK(resolved.gapOptions.vertical == 12.0f);
     CHECK(resolved.zen_percentage == doctest::Approx(0.75f));
+    CHECK(resolved.layoutOptions.split_width_multiplier == doctest::Approx(0.60f));
     REQUIRE(resolved.layoutOptions.rules.size() == 1);
     CHECK(resolved.layoutOptions.rules[0].tree.split_ratio == doctest::Approx(0.30f));
   }

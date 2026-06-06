@@ -63,19 +63,29 @@ std::optional<Rect> get_cell_rect_for_split(const Cluster& cluster, int selected
   return result;
 }
 
+float effective_split_width_multiplier(float multiplier) {
+  if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
+    return kDefaultSplitWidthMultiplier;
+  }
+  return multiplier;
+}
+
+SplitDir split_dir_from_rect(const Cluster& cluster, float width, float height) {
+  float effective_width = width * effective_split_width_multiplier(cluster.split_width_multiplier);
+  return effective_width >= height ? SplitDir::Vertical : SplitDir::Horizontal;
+}
+
 SplitDir determine_dwindle_split_dir(const Cluster& cluster, int selected_index) {
   if (cluster.tree.empty() || selected_index < 0) {
-    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
-                                                         : SplitDir::Horizontal;
+    return split_dir_from_rect(cluster, cluster.window_width, cluster.window_height);
   }
 
   auto rect = get_cell_rect_for_split(cluster, selected_index);
   if (!rect.has_value()) {
-    return cluster.window_width >= cluster.window_height ? SplitDir::Vertical
-                                                         : SplitDir::Horizontal;
+    return split_dir_from_rect(cluster, cluster.window_width, cluster.window_height);
   }
 
-  return rect->width >= rect->height ? SplitDir::Vertical : SplitDir::Horizontal;
+  return split_dir_from_rect(cluster, rect->width, rect->height);
 }
 
 SplitDir determine_split_dir(const Cluster& cluster, int selected_index, SplitMode mode) {
@@ -275,6 +285,7 @@ System create_system(const std::vector<ClusterInitInfo>& infos, SplitMode split_
     cluster.monitor_height = info.monitor_height;
     cluster.window_width = info.width;
     cluster.window_height = info.height;
+    cluster.split_width_multiplier = effective_split_width_multiplier(info.split_width_multiplier);
 
     int selection_index = -1;
     if (!info.initial_cell_ids.empty()) {
@@ -1613,6 +1624,40 @@ cluster_options_or_default(const std::vector<ClusterTilingOptions>& cluster_opti
   return default_options;
 }
 
+float normalized_split_width_multiplier(float multiplier) {
+  if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
+    return kDefaultSplitWidthMultiplier;
+  }
+  return multiplier;
+}
+
+void apply_split_width_multiplier(ctrl::System& system, size_t cluster_index,
+                                  float split_width_multiplier) {
+  if (cluster_index >= system.clusters.size()) {
+    return;
+  }
+  system.clusters[cluster_index].split_width_multiplier =
+      normalized_split_width_multiplier(split_width_multiplier);
+}
+
+void apply_split_width_multiplier(ctrl::System& system, const LayoutOptions* layout_options) {
+  if (layout_options == nullptr) {
+    return;
+  }
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    apply_split_width_multiplier(system, cluster_index, layout_options->split_width_multiplier);
+  }
+}
+
+void apply_split_width_multipliers(ctrl::System& system,
+                                   const std::vector<ClusterTilingOptions>& cluster_options) {
+  for (size_t cluster_index = 0; cluster_index < system.clusters.size(); ++cluster_index) {
+    const auto& options = cluster_options_or_default(cluster_options, cluster_index);
+    apply_split_width_multiplier(system, cluster_index,
+                                 options.layoutOptions.split_width_multiplier);
+  }
+}
+
 // Find the cluster and cell index at a global point using precomputed geometries
 std::optional<std::pair<size_t, int>>
 find_cell_at_global_point(const ctrl::System& system,
@@ -2134,6 +2179,7 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
                             std::optional<int> redirect_cluster_index,
                             const LayoutOptions* layout_options, bool reapply_layout_templates) {
   UpdateResult result;
+  apply_split_width_multiplier(system, layout_options);
   auto previous_selection = system.selection;
   std::vector<bool> previous_fullscreen_state;
   previous_fullscreen_state.reserve(system.clusters.size());
@@ -2170,6 +2216,7 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
                             const std::vector<ClusterTilingOptions>& cluster_options,
                             bool reapply_layout_templates) {
   UpdateResult result;
+  apply_split_width_multipliers(system, cluster_options);
   auto previous_selection = system.selection;
   std::vector<bool> previous_fullscreen_state;
   previous_fullscreen_state.reserve(system.clusters.size());
@@ -2224,6 +2271,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     cluster_options = make_legacy_cluster_options(system.clusters.size(), input.gap_h, input.gap_v,
                                                   input.zen_pct, input.layout_options);
   }
+  apply_split_width_multipliers(system, cluster_options);
 
   if (!input.has_completed_initial_tile_pass) {
     output.apply_tiles = true;

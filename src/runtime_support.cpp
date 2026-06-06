@@ -203,7 +203,8 @@ create_cluster_infos_from_monitors(const std::vector<winapi::MonitorInfo>& monit
 
     auto layout_rule =
         find_layout_rule_for_window_count(cluster_options[i].layoutOptions, cell_ids.size());
-    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids, layout_rule});
+    cluster_infos.push_back({x, y, w, h, mx, my, mw, mh, cell_ids, layout_rule,
+                             cluster_options[i].layoutOptions.split_width_multiplier});
   }
 
   return cluster_infos;

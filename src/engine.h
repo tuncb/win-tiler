@@ -50,6 +50,7 @@ struct Cluster {
   float monitor_y = 0.0f;
   float monitor_width = 0.0f;
   float monitor_height = 0.0f;
+  float split_width_multiplier = kDefaultSplitWidthMultiplier;
 };
 
 struct CellIndicatorByIndex {
@@ -74,6 +75,7 @@ struct ClusterInitInfo {
   float monitor_height = 0.0f;
   std::vector<size_t> initial_cell_ids;
   std::optional<LayoutRule> initial_layout_rule;
+  float split_width_multiplier = kDefaultSplitWidthMultiplier;
 };
 
 struct ClusterCellUpdateInfo {
