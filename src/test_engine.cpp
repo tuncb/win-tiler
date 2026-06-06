@@ -935,6 +935,34 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(new_leaf->cluster_index == 1);
   }
 
+  TEST_CASE("keeps newly observed fullscreen windows on their reported monitor") {
+    Engine engine;
+    std::vector<ClusterInitInfo> infos = {
+        {0.0f, 0.0f, 800.0f, 560.0f, 0.0f, 0.0f, 800.0f, 600.0f, {10}},
+        {800.0f, 0.0f, 800.0f, 560.0f, 800.0f, 0.0f, 800.0f, 600.0f, {20}}};
+    engine.init(infos);
+    set_selection(engine, 1, 0);
+
+    EngineFrameInput input;
+    input.cluster_updates = {{{30}, true}, {{20}, false}};
+    input.cursor_pos = ctrl::Point{900, 300};
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    EngineFrameOutput output = engine.process_frame(input);
+
+    CHECK(output.topology_changed == true);
+    auto fullscreen_leaf = engine.find_leaf(30);
+    auto right_leaf = engine.find_leaf(20);
+    REQUIRE(fullscreen_leaf.has_value());
+    REQUIRE(right_leaf.has_value());
+    CHECK(fullscreen_leaf->cluster_index == 0);
+    CHECK(right_leaf->cluster_index == 1);
+    CHECK(engine.system.clusters[0].has_fullscreen_cell == true);
+    CHECK(engine.system.clusters[1].has_fullscreen_cell == false);
+  }
+
   TEST_CASE("completed drag move is handled inside process_frame") {
     Engine engine = create_test_engine();
     auto geoms = compute_default_geometries(engine);

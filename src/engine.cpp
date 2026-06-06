@@ -1117,6 +1117,9 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
     if (target_idx >= 0 && static_cast<size_t>(target_idx) < system.clusters.size()) {
       std::vector<size_t> new_windows;
       for (const auto& upd : redirected_updates) {
+        if (upd.has_fullscreen_cell) {
+          continue;
+        }
         for (size_t leaf_id : upd.leaf_ids) {
           bool exists = false;
           for (const auto& cluster : system.clusters) {
