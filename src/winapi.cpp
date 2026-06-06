@@ -1573,8 +1573,9 @@ constexpr UINT ID_TOGGLE_PAUSE = 1003;
 constexpr UINT ID_RESET = 1004;
 constexpr UINT ID_ABOUT = 1005;
 constexpr UINT ID_INSTALLER = 1006;
-constexpr UINT ID_EXIT = 1007;
-constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1008;
+constexpr UINT ID_CHECK_UPDATES = 1007;
+constexpr UINT ID_EXIT = 1008;
+constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1009;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -1734,6 +1735,29 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     return;
   }
 
+  case ID_CHECK_UPDATES: {
+    auto executable_path = get_module_file_path();
+    if (executable_path.empty()) {
+      spdlog::error("Failed to determine executable path for update check");
+      return;
+    }
+
+    auto update_result =
+        wintiler::check_for_updates_from_installed_instance(hwnd, executable_path);
+    if (!update_result.has_value()) {
+      const std::string& error = update_result.error();
+      std::wstring message(error.begin(), error.end());
+      MessageBoxW(hwnd, message.c_str(), L"win-tiler updater", MB_OK | MB_ICONERROR);
+      spdlog::error("{}", error);
+      return;
+    }
+    if (*update_result == wintiler::InstallerDialogResult::UpdateStarted) {
+      g_notification_area_exit_requested = true;
+      spdlog::info("Exit requested after update helper was started");
+    }
+    return;
+  }
+
   case ID_EXIT:
     g_notification_area_exit_requested = true;
     spdlog::info("Exit requested from notification area menu");
@@ -1778,6 +1802,9 @@ void show_notification_area_menu(HWND hwnd) {
             menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_INSTALLER, L"Install...") && menu_ok;
+  menu_ok =
+      append_notification_menu_item(menu, MF_STRING, ID_CHECK_UPDATES, L"Check updates...") &&
+      menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_ABOUT, L"About...") && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_EXIT, L"Exit") && menu_ok;

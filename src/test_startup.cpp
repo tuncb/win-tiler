@@ -207,6 +207,25 @@ TEST_SUITE("installer") {
     std::filesystem::remove_all(install_dir);
   }
 
+  TEST_CASE("installed instance can update only from the installed executable") {
+    auto install_dir = make_unique_temp_directory("win-tiler-update-state-test");
+    auto installed_executable = get_installed_executable_path(install_dir);
+    std::filesystem::path other_executable = install_dir / "downloaded-win-tiler.exe";
+    {
+      std::ofstream executable(installed_executable);
+      executable << "exe";
+    }
+    {
+      std::ofstream executable(other_executable);
+      executable << "exe";
+    }
+
+    CHECK(can_update_installed_instance(installed_executable, install_dir));
+    CHECK_FALSE(can_update_installed_instance(other_executable, install_dir));
+
+    std::filesystem::remove_all(install_dir);
+  }
+
   TEST_CASE("ensure_installed_config_file creates default config when missing") {
     auto install_dir = make_unique_temp_directory("win-tiler-config-create-test");
     auto config_path = get_installed_config_path(install_dir);

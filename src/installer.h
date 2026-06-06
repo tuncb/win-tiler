@@ -92,6 +92,10 @@ install_current_executable(const std::filesystem::path& current_executable, bool
 start_uninstall_helper(const std::filesystem::path& current_executable,
                        const std::filesystem::path& install_dir);
 
+[[nodiscard]] tl::expected<InstallerDialogResult, std::string>
+check_for_updates_from_installed_instance(void* owner_window,
+                                          const std::filesystem::path& current_executable);
+
 [[nodiscard]] tl::expected<void, std::string>
 finish_update(unsigned long original_pid, const std::filesystem::path& install_dir,
               const std::filesystem::path& downloaded_executable,

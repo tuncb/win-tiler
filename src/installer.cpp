@@ -44,7 +44,6 @@ constexpr wchar_t kPublisher[] = L"tuncb";
 constexpr int kInstallButtonId = 1001;
 constexpr int kUninstallButtonId = 1002;
 constexpr int kApplyButtonId = 1003;
-constexpr int kCheckUpdatesButtonId = 1004;
 constexpr wchar_t kGitHubLatestReleaseUrl[] =
     L"https://api.github.com/repos/tuncb/win-tiler/releases/latest";
 constexpr size_t kMaxReleaseResponseBytes = 2 * 1024 * 1024;
@@ -58,7 +57,6 @@ constexpr DWORD kUpdateProcessWaitTimeoutMs = 60000;
 
 struct InstallerDialogCallbackState {
   bool installed = false;
-  bool can_update = false;
 };
 
 tl::expected<void, std::string> launch_process(const std::wstring& command_line);
@@ -1101,7 +1099,6 @@ HRESULT CALLBACK installer_dialog_callback(HWND hwnd, UINT notification, WPARAM,
   SendMessageW(hwnd, TDM_ENABLE_BUTTON, kInstallButtonId, state->installed ? FALSE : TRUE);
   SendMessageW(hwnd, TDM_ENABLE_BUTTON, kUninstallButtonId, state->installed ? TRUE : FALSE);
   SendMessageW(hwnd, TDM_ENABLE_BUTTON, kApplyButtonId, state->installed ? TRUE : FALSE);
-  SendMessageW(hwnd, TDM_ENABLE_BUTTON, kCheckUpdatesButtonId, state->can_update ? TRUE : FALSE);
 
   return S_OK;
 }
@@ -1464,6 +1461,24 @@ start_uninstall_helper(const std::filesystem::path& current_executable,
   return launch_process(command_line);
 }
 
+tl::expected<InstallerDialogResult, std::string> check_for_updates_from_installed_instance(
+    void* owner_window, const std::filesystem::path& current_executable) {
+  auto install_dir = get_default_install_directory();
+  if (!install_dir.has_value()) {
+    return tl::unexpected(install_dir.error());
+  }
+
+  HWND owner = static_cast<HWND>(owner_window);
+  if (!can_update_installed_instance(current_executable, *install_dir)) {
+    show_result_message(owner, L"win-tiler updater",
+                        L"Updates can only be checked from the installed win-tiler executable.",
+                        MB_ICONERROR);
+    return InstallerDialogResult::Closed;
+  }
+
+  return check_download_and_start_update(owner, current_executable, *install_dir);
+}
+
 tl::expected<void, std::string>
 finish_update(unsigned long original_pid, const std::filesystem::path& install_dir,
               const std::filesystem::path& downloaded_executable,
@@ -1638,13 +1653,12 @@ show_installer_dialog(void* owner_window, const std::filesystem::path& current_e
       startup_command_targets_executable(*startup_status->command_line, installed_executable)) {
     auto_start_checked = TRUE;
   }
-  InstallerDialogCallbackState callback_state{installed, can_update};
+  InstallerDialogCallbackState callback_state{installed};
 
   TASKDIALOG_BUTTON buttons[] = {
       {kInstallButtonId, L"Install"},
       {kUninstallButtonId, L"Uninstall"},
       {kApplyButtonId, L"Apply"},
-      {kCheckUpdatesButtonId, L"Check updates"},
   };
 
   TASKDIALOGCONFIG config = {};
@@ -1659,7 +1673,7 @@ show_installer_dialog(void* owner_window, const std::filesystem::path& current_e
   config.pszMainInstruction = L"Install win-tiler for this user";
   config.pszContent = content.c_str();
   config.pszVerificationText = L"Start win-tiler when Windows starts";
-  config.cButtons = 4;
+  config.cButtons = 3;
   config.pButtons = buttons;
   config.nDefaultButton = installed ? kUninstallButtonId : kInstallButtonId;
   config.pfCallback = installer_dialog_callback;
@@ -1695,23 +1709,6 @@ show_installer_dialog(void* owner_window, const std::filesystem::path& current_e
     }
 
     return InstallerDialogResult::UninstallStarted;
-  }
-
-  if (pressed_button == kCheckUpdatesButtonId) {
-    if (!can_update) {
-      show_result_message(owner, L"win-tiler updater",
-                          L"Updates can only be checked from the installed win-tiler executable.",
-                          MB_ICONERROR);
-      return InstallerDialogResult::Closed;
-    }
-
-    auto update_result = check_download_and_start_update(owner, current_executable, *install_dir);
-    if (!update_result.has_value()) {
-      show_result_message(owner, L"win-tiler updater", widen_ascii(update_result.error()),
-                          MB_ICONERROR);
-      return tl::unexpected(update_result.error());
-    }
-    return *update_result;
   }
 
   if (pressed_button == kApplyButtonId) {
