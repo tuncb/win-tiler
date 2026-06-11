@@ -63,6 +63,9 @@
     <ClCompile Include="src\installer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\ignore_config.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\multi_cell_renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -108,6 +111,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\installer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ignore_config.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\track_windows.h">

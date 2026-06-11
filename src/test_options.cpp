@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "ignore_config.h"
 #include "options.h"
 #include "runtime_support.h"
 #include "save_layout.h"
@@ -1144,6 +1145,164 @@ TEST_SUITE("Monitor Profile Options") {
     CHECK(rule->tree.split_ratio == doctest::Approx(0.33f));
     REQUIRE(rule->tree.second);
     CHECK(rule->tree.second->split_dir == LayoutSplitDir::Horizontal);
+  }
+}
+
+TEST_SUITE("Ignore Config Updates") {
+  TEST_CASE("add process title pair creates missing ignore section and preserves other sections") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 12\n";
+    }
+
+    auto result = add_ignore_process_title_pair_to_config(temp_path, "app.exe", "Tool Window");
+    REQUIRE(result.has_value());
+    CHECK(result->changed);
+    CHECK(result->process_title_pair_count == 1);
+
+    std::string text = read_text_file(temp_path);
+    CHECK(text.find("[gap]") != std::string::npos);
+    CHECK(text.find("horizontal = 12") != std::string::npos);
+    CHECK(text.find("[ignore]") != std::string::npos);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& pairs = read_result->ignoreOptions.ignored_process_title_pairs;
+    CHECK(std::find(pairs.begin(), pairs.end(), std::make_pair(std::string("app.exe"),
+                                                               std::string("Tool Window"))) !=
+          pairs.end());
+  }
+
+  TEST_CASE("add process title pair updates existing ignore section without duplicating") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_process_title_pairs_with_defaults = false\n";
+      file << "process_title_pairs = [{ process = \"app.exe\", title = \"Tool Window\" }]\n";
+      file << "\n";
+      file << "[gap]\n";
+      file << "horizontal = 12\n";
+    }
+
+    auto duplicate =
+        add_ignore_process_title_pair_to_config(temp_path, "APP.exe", "tool window");
+    REQUIRE(duplicate.has_value());
+    CHECK_FALSE(duplicate->changed);
+    CHECK(duplicate->process_title_pair_count == 1);
+
+    auto added = add_ignore_process_title_pair_to_config(temp_path, "other.exe", "Other Window");
+    REQUIRE(added.has_value());
+    CHECK(added->changed);
+    CHECK(added->process_title_pair_count == 2);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& pairs = read_result->ignoreOptions.ignored_process_title_pairs;
+    CHECK(pairs.size() == 2);
+    CHECK(std::find(pairs.begin(), pairs.end(), std::make_pair(std::string("other.exe"),
+                                                               std::string("Other Window"))) !=
+          pairs.end());
+  }
+
+  TEST_CASE("remove process title pair removes only matching user rule") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_process_title_pairs_with_defaults = false\n";
+      file << "process_title_pairs = [\n";
+      file << "  { process = \"app.exe\", title = \"Tool Window\" },\n";
+      file << "  { process = \"other.exe\", title = \"Other Window\" },\n";
+      file << "]\n";
+    }
+
+    auto result = remove_ignore_process_title_pair_from_config(temp_path, "APP.exe", "tool window");
+    REQUIRE(result.has_value());
+    CHECK(result->changed);
+    CHECK(result->process_title_pair_count == 1);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& pairs = read_result->ignoreOptions.ignored_process_title_pairs;
+    REQUIRE(pairs.size() == 1);
+    CHECK(pairs[0] == std::make_pair(std::string("other.exe"), std::string("Other Window")));
+  }
+
+  TEST_CASE("remove missing process title pair leaves config unchanged") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "process_title_pairs = [{ process = \"app.exe\", title = \"Tool Window\" }]\n";
+    }
+    std::string before = read_text_file(temp_path);
+
+    auto result =
+        remove_ignore_process_title_pair_from_config(temp_path, "missing.exe", "Missing");
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result->changed);
+    CHECK(result->process_title_pair_count == 1);
+    CHECK(read_text_file(temp_path) == before);
+  }
+
+  TEST_CASE("invalid TOML is rejected without modifying file") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore\n";
+      file << "process_title_pairs = []\n";
+    }
+    std::string before = read_text_file(temp_path);
+
+    auto result = add_ignore_process_title_pair_to_config(temp_path, "app.exe", "Tool Window");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().find("TOML parse error") != std::string::npos);
+    CHECK(read_text_file(temp_path) == before);
+  }
+}
+
+TEST_SUITE("Ignore Dialog Window Filtering") {
+  TEST_CASE("shows windows ignored only by a user-facing ignore rule") {
+    winapi::WindowManagementSnapshot snapshot;
+    snapshot.status = winapi::WindowManagementStatus::Ignored;
+    snapshot.is_ignored_by_user_configuration = true;
+    snapshot.is_rejected_by_runtime_or_system_filter = false;
+
+    CHECK(winapi::should_show_window_management_snapshot_in_ignore_dialog(snapshot));
+  }
+
+  TEST_CASE("hides windows that also match runtime or system filters") {
+    winapi::WindowManagementSnapshot snapshot;
+    snapshot.status = winapi::WindowManagementStatus::Ignored;
+    snapshot.is_ignored_by_user_configuration = true;
+    snapshot.is_rejected_by_runtime_or_system_filter = true;
+
+    CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(snapshot));
+  }
+
+  TEST_CASE("hides managed and runtime-only rejected windows") {
+    winapi::WindowManagementSnapshot managed;
+    managed.status = winapi::WindowManagementStatus::Managed;
+
+    winapi::WindowManagementSnapshot rejected;
+    rejected.status = winapi::WindowManagementStatus::Rejected;
+    rejected.is_rejected_by_runtime_or_system_filter = true;
+
+    CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(managed));
+    CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(rejected));
   }
 }
 

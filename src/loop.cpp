@@ -688,6 +688,45 @@ bool reload_provider_after_save(GlobalOptionsProvider& provider) {
   return true;
 }
 
+bool reload_provider_after_ignore_config_edit(GlobalOptionsProvider& provider) {
+  if (!provider.configPath.has_value()) {
+    return false;
+  }
+
+  auto result = read_options_toml(*provider.configPath);
+  if (!result.has_value()) {
+    spdlog::error("Failed to reload config after ignore rule edit: {}", result.error());
+    return false;
+  }
+
+  provider.options = std::move(result.value());
+  winapi::set_notification_area_ignore_options(provider.options.ignoreOptions);
+  std::error_code error;
+  auto current_modified = std::filesystem::last_write_time(*provider.configPath, error);
+  if (!error) {
+    provider.lastModified = current_modified;
+  }
+  provider.nextConfigRefreshCheck = std::chrono::steady_clock::time_point::min();
+  return true;
+}
+
+template <typename DesktopId>
+void handle_ignore_config_changed_request(GlobalOptionsProvider& provider, ToastState& toast,
+                                          MultiEngine<LoopDesktopData, DesktopId>& multi_engine) {
+  if (!winapi::consume_notification_area_ignore_config_changed_request()) {
+    return;
+  }
+
+  if (!reload_provider_after_ignore_config_edit(provider)) {
+    toast.show("Failed to reload ignore config");
+    return;
+  }
+
+  mark_all_desktops_for_layout_reapply(multi_engine);
+  toast.show("Ignore rules updated");
+  spdlog::info("Reloaded ignore rules after notification-area dialog edit");
+}
+
 template <typename DesktopId>
 void handle_save_layout_request(
     const winapi::NotificationAreaSaveLayoutRequest& request, GlobalOptionsProvider& provider,
@@ -836,6 +875,7 @@ bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
+  winapi::set_notification_area_ignore_options(options.ignoreOptions);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
   return true;
@@ -921,6 +961,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   winapi::register_notification_area_icon({run_options.config_path, run_options.log_file_path});
   winapi::set_notification_area_manual_pause_active(false);
+  winapi::set_notification_area_ignore_options(options.ignoreOptions);
   RuntimeLoggingState logging_state{spdlog::get_level(), false};
   winapi::set_notification_area_verbose_logging_active(false);
 
@@ -967,6 +1008,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
     winapi::process_pending_non_hotkey_messages();
+    handle_ignore_config_changed_request(provider, toast, multi_engine);
 
     // Block if session is paused (locked, sleeping, or display off)
     if (winapi::is_session_paused()) {

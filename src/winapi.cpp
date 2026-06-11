@@ -1,6 +1,7 @@
 #include "winapi.h"
 
 #include <commctrl.h>
+#include <commdlg.h>
 #include <dwmapi.h>
 #include <objbase.h>
 #include <psapi.h>
@@ -13,13 +14,16 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstring>
 #include <limits>
 #include <mutex>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
 
+#include "ignore_config.h"
 #include "installer.h"
+#include "options.h"
 #include "resource.h"
 #include "version.h"
 
@@ -902,6 +906,89 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   return state;
 }
 
+static bool is_ignored_by_user_configuration(const WindowManagementState& state) {
+  return state.matches_ignored_process || state.matches_ignored_title ||
+         state.matches_ignored_process_title_pair || state.is_below_small_window_barrier ||
+         state.is_ignored_child_of_process;
+}
+
+static bool is_rejected_by_runtime_or_system_filter(const WindowManagementState& state) {
+  return !state.is_visible || state.is_cloaked || !state.has_title || state.is_sys_drag_image ||
+         state.is_tooltip || state.is_tool_window ||
+         should_ignore_topmost_window(state.is_topmost, state.is_fullscreen) ||
+         state.is_transparent || state.is_no_activate || state.is_hung ||
+         state.process_name_missing || state.is_owned_dialog || !state.monitor_index.has_value();
+}
+
+static std::string classify_rule_source_for_state(const WindowManagementState& state,
+                                                  const wintiler::IgnoreOptions& options) {
+  const auto defaults = wintiler::get_default_ignore_options();
+  if (state.matches_ignored_process_title_pair && options.merge_process_title_pairs) {
+    for (const auto& pair : defaults.ignored_process_title_pairs) {
+      if (iequals(state.process_name, pair.first) && iequals(state.title, pair.second)) {
+        return "built-in default";
+      }
+    }
+  }
+  if (state.matches_ignored_process && options.merge_processes) {
+    for (const auto& process : defaults.ignored_processes) {
+      if (matches_ignored_process_name(state.process_name, process)) {
+        return "built-in default";
+      }
+    }
+  }
+  if (state.matches_ignored_title && options.merge_window_titles) {
+    for (const auto& title : defaults.ignored_window_titles) {
+      if (state.title == title) {
+        return "built-in default";
+      }
+    }
+  }
+  if (state.is_ignored_child_of_process && options.merge_ignore_children_of_processes) {
+    for (const auto& process : defaults.ignore_children_of_processes) {
+      if (iequals(state.process_name, process)) {
+        return "built-in default";
+      }
+    }
+  }
+  if (state.is_below_small_window_barrier) {
+    return "user config";
+  }
+  if (is_ignored_by_user_configuration(state)) {
+    return "user config";
+  }
+  if (state.is_currently_managed) {
+    return "none";
+  }
+  return "runtime/system filter";
+}
+
+static WindowManagementSnapshot make_window_management_snapshot(
+    const WindowManagementState& state, const wintiler::IgnoreOptions& options) {
+  WindowManagementSnapshot snapshot;
+  snapshot.handle = state.handle;
+  snapshot.title = state.title;
+  snapshot.class_name = state.class_name;
+  snapshot.pid = state.pid;
+  snapshot.process_name = state.process_name;
+  snapshot.rect = state.rect;
+  snapshot.is_currently_managed = state.is_currently_managed;
+  snapshot.is_ignored_by_user_configuration = is_ignored_by_user_configuration(state);
+  snapshot.is_rejected_by_runtime_or_system_filter = is_rejected_by_runtime_or_system_filter(state);
+  snapshot.matches_ignored_process_title_pair = state.matches_ignored_process_title_pair;
+  snapshot.monitor_index = state.monitor_index;
+  snapshot.ignore_reason = join_reasons(state.reasons);
+  snapshot.rule_source = classify_rule_source_for_state(state, options);
+  if (state.is_currently_managed) {
+    snapshot.status = WindowManagementStatus::Managed;
+  } else if (snapshot.is_ignored_by_user_configuration) {
+    snapshot.status = WindowManagementStatus::Ignored;
+  } else {
+    snapshot.status = WindowManagementStatus::Rejected;
+  }
+  return snapshot;
+}
+
 BOOL CALLBACK DumpWindowEnumProc(HWND hwnd, LPARAM lParam) {
   auto* ctx = reinterpret_cast<DumpWindowEnumContext*>(lParam);
   ctx->windows->push_back(
@@ -923,6 +1010,27 @@ gather_window_management_states(const wintiler::IgnoreOptions& ignore_options,
             });
 
   return windows;
+}
+
+std::vector<WindowManagementSnapshot>
+gather_window_management_snapshots(const wintiler::IgnoreOptions& ignore_options) {
+  std::vector<MonitorInfo> monitors;
+  fill_monitors(monitors);
+  auto states = gather_window_management_states(ignore_options, monitors);
+
+  std::vector<WindowManagementSnapshot> snapshots;
+  snapshots.reserve(states.size());
+  for (const auto& state : states) {
+    snapshots.push_back(make_window_management_snapshot(state, ignore_options));
+  }
+  return snapshots;
+}
+
+bool should_show_window_management_snapshot_in_ignore_dialog(
+    const WindowManagementSnapshot& snapshot) {
+  return snapshot.status == WindowManagementStatus::Ignored &&
+         snapshot.is_ignored_by_user_configuration &&
+         !snapshot.is_rejected_by_runtime_or_system_filter;
 }
 
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
@@ -1561,6 +1669,9 @@ std::atomic<bool> g_notification_area_verbose_logging_active{false};
 std::mutex g_notification_area_save_layout_mutex;
 std::optional<NotificationAreaSaveLayoutRequest> g_notification_area_save_layout_request;
 std::vector<NotificationAreaSaveLayoutMonitor> g_notification_area_save_layout_monitors;
+std::mutex g_notification_area_ignore_options_mutex;
+wintiler::IgnoreOptions g_notification_area_ignore_options;
+std::atomic<bool> g_notification_area_ignore_config_changed_requested{false};
 UINT g_taskbar_created_message = 0;
 
 // Pause state flags (atomic for thread safety)
@@ -1586,6 +1697,7 @@ constexpr UINT ID_INSTALLER = 1006;
 constexpr UINT ID_CHECK_UPDATES = 1007;
 constexpr UINT ID_EXIT = 1008;
 constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1009;
+constexpr UINT ID_MANAGE_IGNORED_WINDOWS = 1010;
 constexpr UINT ID_SAVE_LAYOUT_MONITOR_BASE = 1100;
 constexpr UINT ID_SAVE_LAYOUT_MONITOR_MAX = 1199;
 constexpr UINT ID_SAVE_LAYOUT_ALL = 1200;
@@ -1619,6 +1731,513 @@ bool shell_open_path(HWND owner, const std::filesystem::path& path, const char* 
 
   spdlog::info("Opened {}: {}", label, path.string());
   return true;
+}
+
+std::wstring widen(std::string_view text) {
+  std::wstring result;
+  result.reserve(text.size());
+  for (char character : text) {
+    result.push_back(static_cast<unsigned char>(character));
+  }
+  return result;
+}
+
+std::string status_to_string(WindowManagementStatus status) {
+  switch (status) {
+  case WindowManagementStatus::Managed:
+    return "managed";
+  case WindowManagementStatus::Ignored:
+    return "ignored";
+  case WindowManagementStatus::Rejected:
+    return "rejected";
+  }
+  return "unknown";
+}
+
+std::string format_snapshot_size(const WindowManagementSnapshot& snapshot) {
+  if (!snapshot.rect.has_value()) {
+    return "N/A";
+  }
+  return std::to_string(snapshot.rect->right - snapshot.rect->left) + "x" +
+         std::to_string(snapshot.rect->bottom - snapshot.rect->top);
+}
+
+std::string format_snapshot_monitor(const WindowManagementSnapshot& snapshot) {
+  if (!snapshot.monitor_index.has_value()) {
+    return "N/A";
+  }
+  return std::to_string(*snapshot.monitor_index);
+}
+
+constexpr const wchar_t* IGNORE_DIALOG_WINDOW_CLASS = L"WinTilerIgnoreDialog";
+constexpr UINT_PTR ID_IGNORE_DIALOG_LIST = 2100;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_PAIR = 2101;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_PAIR = 2102;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REFRESH = 2103;
+constexpr UINT_PTR ID_IGNORE_DIALOG_COPY = 2104;
+constexpr UINT_PTR ID_IGNORE_DIALOG_OPEN_CONFIG = 2105;
+constexpr UINT_PTR ID_IGNORE_DIALOG_CLOSE = 2106;
+
+struct IgnoreDialogState {
+  HWND hwnd = nullptr;
+  HWND list = nullptr;
+  HWND add_pair_button = nullptr;
+  HWND remove_pair_button = nullptr;
+  HWND refresh_button = nullptr;
+  HWND copy_button = nullptr;
+  HWND open_config_button = nullptr;
+  HWND close_button = nullptr;
+  std::optional<std::filesystem::path> config_path;
+  wintiler::IgnoreOptions ignore_options;
+  std::vector<WindowManagementSnapshot> rows;
+};
+
+HWND g_ignore_dialog_hwnd = nullptr;
+
+wintiler::IgnoreOptions get_notification_area_ignore_options_copy() {
+  std::scoped_lock lock(g_notification_area_ignore_options_mutex);
+  return g_notification_area_ignore_options;
+}
+
+void request_ignore_config_changed() {
+  g_notification_area_ignore_config_changed_requested = true;
+}
+
+void show_dialog_error(HWND owner, const std::string& message) {
+  std::wstring wide = widen(message);
+  MessageBoxW(owner, wide.c_str(), L"win-tiler ignored windows", MB_OK | MB_ICONERROR);
+}
+
+void show_dialog_info(HWND owner, const std::string& message) {
+  std::wstring wide = widen(message);
+  MessageBoxW(owner, wide.c_str(), L"win-tiler ignored windows", MB_OK | MB_ICONINFORMATION);
+}
+
+IgnoreDialogState* get_ignore_dialog_state(HWND hwnd) {
+  return reinterpret_cast<IgnoreDialogState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+}
+
+void add_list_column(HWND list, int index, int width, const wchar_t* title) {
+  LVCOLUMNW column = {};
+  column.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+  column.pszText = const_cast<wchar_t*>(title);
+  column.cx = width;
+  column.iSubItem = index;
+  if (ListView_InsertColumn(list, index, &column) == -1) {
+    spdlog::error("Failed to insert ignore dialog list column {}", index);
+  }
+}
+
+void initialize_ignore_dialog_list(HWND list) {
+  ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES |
+                                              LVS_EX_DOUBLEBUFFER | LVS_EX_LABELTIP);
+  add_list_column(list, 0, 80, L"Status");
+  add_list_column(list, 1, 150, L"Process");
+  add_list_column(list, 2, 280, L"Title");
+  add_list_column(list, 3, 150, L"Class");
+  add_list_column(list, 4, 70, L"Monitor");
+  add_list_column(list, 5, 80, L"Size");
+  add_list_column(list, 6, 240, L"Ignore reason");
+  add_list_column(list, 7, 130, L"Rule source");
+}
+
+std::vector<WindowManagementSnapshot> make_ignore_dialog_rows(
+    const wintiler::IgnoreOptions& ignore_options) {
+  auto snapshots = gather_window_management_snapshots(ignore_options);
+  std::vector<WindowManagementSnapshot> rows;
+  rows.reserve(snapshots.size());
+  for (auto& snapshot : snapshots) {
+    if (should_show_window_management_snapshot_in_ignore_dialog(snapshot)) {
+      rows.push_back(std::move(snapshot));
+    }
+  }
+  return rows;
+}
+
+void set_list_item_text(HWND list, int row, int column, std::string_view text) {
+  std::wstring wide = widen(text);
+  ListView_SetItemText(list, row, column, wide.data());
+}
+
+void insert_snapshot_row(HWND list, int row, const WindowManagementSnapshot& snapshot) {
+  std::wstring status = widen(status_to_string(snapshot.status));
+  LVITEMW item = {};
+  item.mask = LVIF_TEXT;
+  item.iItem = row;
+  item.iSubItem = 0;
+  item.pszText = status.data();
+  if (ListView_InsertItem(list, &item) == -1) {
+    spdlog::error("Failed to insert ignore dialog list row {}", row);
+    return;
+  }
+
+  set_list_item_text(list, row, 1, snapshot.process_name);
+  set_list_item_text(list, row, 2, snapshot.title);
+  set_list_item_text(list, row, 3, snapshot.class_name);
+  set_list_item_text(list, row, 4, format_snapshot_monitor(snapshot));
+  set_list_item_text(list, row, 5, format_snapshot_size(snapshot));
+  set_list_item_text(list, row, 6, snapshot.ignore_reason);
+  set_list_item_text(list, row, 7, snapshot.rule_source);
+}
+
+std::optional<size_t> get_selected_ignore_dialog_row(const IgnoreDialogState& state) {
+  int selected = ListView_GetNextItem(state.list, -1, LVNI_SELECTED);
+  if (selected < 0) {
+    return std::nullopt;
+  }
+  size_t index = static_cast<size_t>(selected);
+  if (index >= state.rows.size()) {
+    return std::nullopt;
+  }
+  return index;
+}
+
+void update_ignore_dialog_action_state(IgnoreDialogState& state) {
+  bool has_selection = get_selected_ignore_dialog_row(state).has_value();
+  bool has_config = state.config_path.has_value() && !state.config_path->empty();
+  EnableWindow(state.add_pair_button, has_selection && has_config);
+  EnableWindow(state.remove_pair_button, has_selection && has_config);
+  EnableWindow(state.copy_button, has_selection);
+  EnableWindow(state.open_config_button, has_config);
+}
+
+void refresh_ignore_dialog(IgnoreDialogState& state) {
+  state.ignore_options = get_notification_area_ignore_options_copy();
+  state.rows = make_ignore_dialog_rows(state.ignore_options);
+  ListView_DeleteAllItems(state.list);
+  for (size_t i = 0; i < state.rows.size(); ++i) {
+    insert_snapshot_row(state.list, static_cast<int>(i), state.rows[i]);
+  }
+  update_ignore_dialog_action_state(state);
+}
+
+std::string format_snapshot_details(const WindowManagementSnapshot& snapshot) {
+  std::ostringstream stream;
+  stream << "status: " << status_to_string(snapshot.status) << "\n";
+  stream << "process: " << snapshot.process_name << "\n";
+  stream << "title: " << snapshot.title << "\n";
+  stream << "class: " << snapshot.class_name << "\n";
+  stream << "pid: " << (snapshot.pid.has_value() ? std::to_string(*snapshot.pid) : "N/A") << "\n";
+  stream << "monitor: " << format_snapshot_monitor(snapshot) << "\n";
+  stream << "size: " << format_snapshot_size(snapshot) << "\n";
+  stream << "ignore reason: " << snapshot.ignore_reason << "\n";
+  stream << "rule source: " << snapshot.rule_source << "\n";
+  return stream.str();
+}
+
+bool copy_text_to_clipboard(HWND owner, const std::wstring& text) {
+  if (OpenClipboard(owner) == 0) {
+    spdlog::error("Failed to open clipboard, error={}", GetLastError());
+    return false;
+  }
+
+  bool success = false;
+  if (EmptyClipboard() == 0) {
+    spdlog::error("Failed to empty clipboard, error={}", GetLastError());
+  } else {
+    size_t byte_count = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, byte_count);
+    if (memory == nullptr) {
+      spdlog::error("Failed to allocate clipboard memory, error={}", GetLastError());
+    } else {
+      void* locked = GlobalLock(memory);
+      if (locked == nullptr) {
+        spdlog::error("Failed to lock clipboard memory, error={}", GetLastError());
+        HGLOBAL freed = GlobalFree(memory);
+        if (freed != nullptr) {
+          spdlog::error("Failed to free clipboard memory, error={}", GetLastError());
+        }
+      } else {
+        std::memcpy(locked, text.c_str(), byte_count);
+        if (GlobalUnlock(memory) == 0 && GetLastError() != NO_ERROR) {
+          spdlog::error("Failed to unlock clipboard memory, error={}", GetLastError());
+        }
+        if (SetClipboardData(CF_UNICODETEXT, memory) == nullptr) {
+          spdlog::error("Failed to set clipboard data, error={}", GetLastError());
+          HGLOBAL freed = GlobalFree(memory);
+          if (freed != nullptr) {
+            spdlog::error("Failed to free clipboard memory after SetClipboardData failure, error={}",
+                          GetLastError());
+          }
+        } else {
+          success = true;
+        }
+      }
+    }
+  }
+
+  if (CloseClipboard() == 0) {
+    spdlog::error("Failed to close clipboard, error={}", GetLastError());
+  }
+  return success;
+}
+
+void reload_ignore_options_after_dialog_config_update(IgnoreDialogState& state) {
+  if (!state.config_path.has_value()) {
+    return;
+  }
+
+  auto read_result = wintiler::read_options_toml(*state.config_path);
+  if (!read_result.has_value()) {
+    spdlog::error("Failed to reload ignore config in dialog: {}", read_result.error());
+    return;
+  }
+
+  set_notification_area_ignore_options(read_result->ignoreOptions);
+  request_ignore_config_changed();
+  refresh_ignore_dialog(state);
+}
+
+void add_selected_process_title_pair(IgnoreDialogState& state) {
+  auto selected = get_selected_ignore_dialog_row(state);
+  if (!selected.has_value() || !state.config_path.has_value()) {
+    return;
+  }
+
+  const auto& snapshot = state.rows[*selected];
+  auto result = wintiler::add_ignore_process_title_pair_to_config(
+      *state.config_path, snapshot.process_name, snapshot.title);
+  if (!result.has_value()) {
+    show_dialog_error(state.hwnd, result.error());
+    spdlog::error("Failed to add process/title ignore rule: {}", result.error());
+    return;
+  }
+  if (!result->changed) {
+    show_dialog_info(state.hwnd, "That process/title ignore rule already exists.");
+    return;
+  }
+
+  reload_ignore_options_after_dialog_config_update(state);
+}
+
+void remove_selected_process_title_pair(IgnoreDialogState& state) {
+  auto selected = get_selected_ignore_dialog_row(state);
+  if (!selected.has_value() || !state.config_path.has_value()) {
+    return;
+  }
+
+  const auto& snapshot = state.rows[*selected];
+  auto result = wintiler::remove_ignore_process_title_pair_from_config(
+      *state.config_path, snapshot.process_name, snapshot.title);
+  if (!result.has_value()) {
+    show_dialog_error(state.hwnd, result.error());
+    spdlog::error("Failed to remove process/title ignore rule: {}", result.error());
+    return;
+  }
+  if (!result->changed) {
+    show_dialog_info(state.hwnd, "No matching user process/title ignore rule was found.");
+    return;
+  }
+
+  reload_ignore_options_after_dialog_config_update(state);
+}
+
+void copy_selected_ignore_dialog_details(IgnoreDialogState& state) {
+  auto selected = get_selected_ignore_dialog_row(state);
+  if (!selected.has_value()) {
+    return;
+  }
+
+  std::wstring wide = widen(format_snapshot_details(state.rows[*selected]));
+  if (copy_text_to_clipboard(state.hwnd, wide)) {
+    spdlog::info("Copied ignored-window dialog details to clipboard");
+  }
+}
+
+void layout_ignore_dialog_controls(IgnoreDialogState& state, int width, int height) {
+  constexpr int margin = 10;
+  constexpr int button_height = 28;
+  constexpr int button_gap = 8;
+  constexpr int bottom_height = button_height + margin * 2;
+  int list_width = std::max(100, width - margin * 2);
+  int list_height = std::max(80, height - bottom_height - margin);
+  if (MoveWindow(state.list, margin, margin, list_width, list_height, TRUE) == 0) {
+    spdlog::debug("Failed to move ignore dialog list, error={}", GetLastError());
+  }
+
+  int y = height - margin - button_height;
+  int x = margin;
+  const int widths[] = {180, 150, 88, 105, 112};
+  HWND buttons[] = {state.add_pair_button, state.remove_pair_button, state.refresh_button,
+                    state.copy_button, state.open_config_button};
+  for (size_t i = 0; i < std::size(buttons); ++i) {
+    if (MoveWindow(buttons[i], x, y, widths[i], button_height, TRUE) == 0) {
+      spdlog::debug("Failed to move ignore dialog button, error={}", GetLastError());
+    }
+    x += widths[i] + button_gap;
+  }
+
+  constexpr int close_width = 76;
+  if (MoveWindow(state.close_button, width - margin - close_width, y, close_width, button_height,
+                 TRUE) == 0) {
+    spdlog::debug("Failed to move ignore dialog close button, error={}", GetLastError());
+  }
+}
+
+HWND create_ignore_dialog_button(HWND parent, UINT_PTR id, const wchar_t* text) {
+  HWND button = CreateWindowExW(0, L"BUTTON", text, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 0,
+                               0, parent, reinterpret_cast<HMENU>(id), GetModuleHandleW(nullptr),
+                               nullptr);
+  if (button == nullptr) {
+    spdlog::error("Failed to create ignore dialog button {}, error={}", id, GetLastError());
+  }
+  return button;
+}
+
+LRESULT CALLBACK ignore_dialog_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  switch (msg) {
+  case WM_CREATE: {
+    auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+    auto* state = reinterpret_cast<IgnoreDialogState*>(create->lpCreateParams);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+    state->hwnd = hwnd;
+    state->list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
+                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL, 0, 0, 0, 0,
+                                  hwnd, reinterpret_cast<HMENU>(ID_IGNORE_DIALOG_LIST),
+                                  GetModuleHandleW(nullptr), nullptr);
+    if (state->list == nullptr) {
+      spdlog::error("Failed to create ignore dialog list, error={}", GetLastError());
+      return -1;
+    }
+    initialize_ignore_dialog_list(state->list);
+    state->add_pair_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_ADD_PAIR, L"Ignore process + title");
+    state->remove_pair_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_REMOVE_PAIR, L"Remove user rule");
+    state->refresh_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_REFRESH, L"Refresh");
+    state->copy_button = create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_COPY, L"Copy details");
+    state->open_config_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_OPEN_CONFIG, L"Open config");
+    state->close_button = create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_CLOSE, L"Close");
+    refresh_ignore_dialog(*state);
+    return 0;
+  }
+
+  case WM_SIZE: {
+    auto* state = get_ignore_dialog_state(hwnd);
+    if (state != nullptr) {
+      layout_ignore_dialog_controls(*state, LOWORD(lParam), HIWORD(lParam));
+    }
+    return 0;
+  }
+
+  case WM_NOTIFY: {
+    auto* state = get_ignore_dialog_state(hwnd);
+    auto* header = reinterpret_cast<NMHDR*>(lParam);
+    if (state != nullptr && header->idFrom == ID_IGNORE_DIALOG_LIST &&
+        header->code == LVN_ITEMCHANGED) {
+      update_ignore_dialog_action_state(*state);
+    }
+    return 0;
+  }
+
+  case WM_COMMAND: {
+    auto* state = get_ignore_dialog_state(hwnd);
+    if (state == nullptr) {
+      return 0;
+    }
+    switch (LOWORD(wParam)) {
+    case ID_IGNORE_DIALOG_ADD_PAIR:
+      add_selected_process_title_pair(*state);
+      return 0;
+    case ID_IGNORE_DIALOG_REMOVE_PAIR:
+      remove_selected_process_title_pair(*state);
+      return 0;
+    case ID_IGNORE_DIALOG_REFRESH:
+      refresh_ignore_dialog(*state);
+      return 0;
+    case ID_IGNORE_DIALOG_COPY:
+      copy_selected_ignore_dialog_details(*state);
+      return 0;
+    case ID_IGNORE_DIALOG_OPEN_CONFIG:
+      if (state->config_path.has_value()) {
+        shell_open_path(hwnd, *state->config_path, "config file");
+      }
+      return 0;
+    case ID_IGNORE_DIALOG_CLOSE:
+      DestroyWindow(hwnd);
+      return 0;
+    default:
+      return 0;
+    }
+  }
+
+  case WM_CLOSE:
+    DestroyWindow(hwnd);
+    return 0;
+
+  case WM_DESTROY: {
+    auto* state = get_ignore_dialog_state(hwnd);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    g_ignore_dialog_hwnd = nullptr;
+    delete state;
+    return 0;
+  }
+
+  default:
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+  }
+}
+
+bool register_ignore_dialog_class() {
+  WNDCLASSEXW wc = {};
+  wc.cbSize = sizeof(wc);
+  wc.lpfnWndProc = ignore_dialog_wnd_proc;
+  wc.hInstance = GetModuleHandleW(nullptr);
+  wc.hIcon = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+  wc.hIconSm = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+  wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+  wc.lpszClassName = IGNORE_DIALOG_WINDOW_CLASS;
+
+  if (RegisterClassExW(&wc) == 0) {
+    DWORD error = GetLastError();
+    if (error != ERROR_CLASS_ALREADY_EXISTS) {
+      spdlog::error("Failed to register ignore dialog class, error={}", error);
+      return false;
+    }
+  }
+  return true;
+}
+
+void show_ignore_configuration_dialog(HWND owner) {
+  if (g_ignore_dialog_hwnd != nullptr && IsWindow(g_ignore_dialog_hwnd) != 0) {
+    ShowWindow(g_ignore_dialog_hwnd, SW_SHOWNORMAL);
+    if (SetForegroundWindow(g_ignore_dialog_hwnd) == 0) {
+      spdlog::debug("Failed to foreground ignore dialog, error={}", GetLastError());
+    }
+    return;
+  }
+
+  INITCOMMONCONTROLSEX init = {};
+  init.dwSize = sizeof(init);
+  init.dwICC = ICC_LISTVIEW_CLASSES;
+  if (InitCommonControlsEx(&init) == 0) {
+    spdlog::error("Failed to initialize common controls for ignore dialog");
+    return;
+  }
+  if (!register_ignore_dialog_class()) {
+    return;
+  }
+
+  auto* state = new IgnoreDialogState();
+  state->config_path = g_notification_area_icon_options.config_path;
+  state->ignore_options = get_notification_area_ignore_options_copy();
+
+  HWND hwnd = CreateWindowExW(WS_EX_APPWINDOW, IGNORE_DIALOG_WINDOW_CLASS,
+                              L"win-tiler ignored windows",
+                              WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
+                              1120, 560, owner, nullptr, GetModuleHandleW(nullptr), state);
+  if (hwnd == nullptr) {
+    spdlog::error("Failed to create ignore configuration dialog, error={}", GetLastError());
+    delete state;
+    return;
+  }
+
+  g_ignore_dialog_hwnd = hwnd;
+  ShowWindow(hwnd, SW_SHOWNORMAL);
+  UpdateWindow(hwnd);
 }
 
 bool shell_open_url(HWND owner, std::wstring_view url, const char* label) {
@@ -1837,6 +2456,10 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     spdlog::info("Verbose logging toggle requested from notification area menu");
     return;
 
+  case ID_MANAGE_IGNORED_WINDOWS:
+    show_ignore_configuration_dialog(hwnd);
+    return;
+
   case ID_SAVE_LAYOUT_ALL:
     request_notification_area_save_layout({NotificationAreaSaveLayoutRequestKind::All, 0});
     spdlog::info("Save layout for all monitors requested from notification area menu");
@@ -1921,6 +2544,9 @@ void show_notification_area_menu(HWND hwnd) {
   menu_ok =
       append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Open log file") && menu_ok;
   menu_ok = append_save_layout_menu(menu, availability.can_save_layout) && menu_ok;
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_MANAGE_IGNORED_WINDOWS,
+                                          L"Manage ignored windows...") &&
+            menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_SEPARATOR, 0, nullptr) && menu_ok;
   const wchar_t* toggle_pause_text =
       get_notification_area_toggle_pause_menu_text(g_notification_area_manual_pause_active.load());
@@ -2257,6 +2883,11 @@ void set_notification_area_verbose_logging_active(bool is_enabled) {
   g_notification_area_verbose_logging_active = is_enabled;
 }
 
+void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_options) {
+  std::scoped_lock lock(g_notification_area_ignore_options_mutex);
+  g_notification_area_ignore_options = ignore_options;
+}
+
 void set_notification_area_save_layout_monitors(
     const std::vector<NotificationAreaSaveLayoutMonitor>& monitors) {
   std::scoped_lock lock(g_notification_area_save_layout_mutex);
@@ -2312,6 +2943,10 @@ std::optional<NotificationAreaSaveLayoutRequest> consume_notification_area_save_
   auto request = g_notification_area_save_layout_request;
   g_notification_area_save_layout_request.reset();
   return request;
+}
+
+bool consume_notification_area_ignore_config_changed_request() {
+  return g_notification_area_ignore_config_changed_requested.exchange(false);
 }
 
 std::optional<DWORD_T> find_notification_area_process_id() {

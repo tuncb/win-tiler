@@ -69,6 +69,29 @@ struct WindowMinMaxInfo {
   int max_track_height = 0;
 };
 
+enum class WindowManagementStatus {
+  Managed,
+  Ignored,
+  Rejected,
+};
+
+struct WindowManagementSnapshot {
+  HWND_T handle = nullptr;
+  std::string title;
+  std::string class_name;
+  std::optional<DWORD_T> pid;
+  std::string process_name;
+  std::optional<Rect> rect;
+  bool is_currently_managed = false;
+  bool is_ignored_by_user_configuration = false;
+  bool is_rejected_by_runtime_or_system_filter = false;
+  bool matches_ignored_process_title_pair = false;
+  std::optional<size_t> monitor_index;
+  WindowManagementStatus status = WindowManagementStatus::Rejected;
+  std::string ignore_reason;
+  std::string rule_source;
+};
+
 // Standard Win32 dialogs use the predefined "#32770" class and are commonly owned popups.
 bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name);
 [[nodiscard]] bool matches_ignored_process_name(std::string_view process_name,
@@ -81,6 +104,10 @@ void log_monitors(const std::vector<MonitorInfo>& monitors);
 bool monitors_equal(const std::vector<MonitorInfo>& a, const std::vector<MonitorInfo>& b);
 void log_windows_per_monitor(const wintiler::IgnoreOptions& ignore_options,
                              std::optional<size_t> monitor_index = std::nullopt);
+std::vector<WindowManagementSnapshot>
+gather_window_management_snapshots(const wintiler::IgnoreOptions& ignore_options);
+[[nodiscard]] bool
+should_show_window_management_snapshot_in_ignore_dialog(const WindowManagementSnapshot& snapshot);
 void dump_window_management_state(const wintiler::IgnoreOptions& ignore_options);
 void update_window_position(const TileInfo& tile_info);
 std::vector<HWND_T> get_hwnds_for_monitor(size_t monitor_index,
@@ -191,6 +218,7 @@ void register_notification_area_icon(const NotificationAreaIconOptions& options)
 void unregister_notification_area_icon();
 void set_notification_area_manual_pause_active(bool is_paused);
 void set_notification_area_verbose_logging_active(bool is_enabled);
+void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_options);
 void set_notification_area_save_layout_monitors(
     const std::vector<NotificationAreaSaveLayoutMonitor>& monitors);
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
@@ -198,6 +226,7 @@ void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();
 [[nodiscard]] std::optional<NotificationAreaSaveLayoutRequest>
 consume_notification_area_save_layout_request();
+[[nodiscard]] bool consume_notification_area_ignore_config_changed_request();
 [[nodiscard]] std::optional<DWORD_T> find_notification_area_process_id();
 [[nodiscard]] bool request_notification_area_exit_for_running_instance();
 
