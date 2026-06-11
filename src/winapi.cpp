@@ -43,15 +43,22 @@ static bool trace_logging_enabled() {
 }
 
 // Helper function for case-insensitive string comparison
-static bool iequals(const std::string& a, const std::string& b) {
+static bool iequals(std::string_view a, std::string_view b) {
   if (a.size() != b.size())
     return false;
   return std::equal(a.begin(), a.end(), b.begin(),
-                    [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+                    [](char a, char b) {
+                      return std::tolower(static_cast<unsigned char>(a)) ==
+                             std::tolower(static_cast<unsigned char>(b));
+                    });
 }
 
 bool should_ignore_owned_dialog_window(bool has_owner, const std::string& class_name) {
   return has_owner && class_name == "#32770";
+}
+
+bool matches_ignored_process_name(std::string_view process_name, std::string_view ignored_process) {
+  return iequals(process_name, ignored_process);
 }
 
 bool should_invalidate_monitor_cache_for_message(unsigned int message) {
@@ -587,7 +594,7 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   const auto& options = *ctx->ignore_options;
 
   for (const auto& proc : options.ignored_processes) {
-    if (process_name == proc) {
+    if (matches_ignored_process_name(process_name, proc)) {
       if (ctx->trace_enabled) {
         spdlog::trace("WinAPI window rejected: hwnd={}, reason=ignored process, title=\"{}\", "
                       "class=\"{}\", pid={}, process=\"{}\"",
@@ -827,7 +834,7 @@ inspect_window_management_state(HWND hwnd, const wintiler::IgnoreOptions& option
   state.is_owned_dialog = should_ignore_owned_dialog_window(state.has_owner, state.class_name);
 
   for (const auto& proc : options.ignored_processes) {
-    if (state.process_name == proc) {
+    if (matches_ignored_process_name(state.process_name, proc)) {
       state.matches_ignored_process = true;
       break;
     }

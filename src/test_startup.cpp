@@ -269,6 +269,13 @@ TEST_SUITE("winapi") {
     CHECK_FALSE(winapi::should_ignore_owned_dialog_window(true, "Chrome_WidgetWin_1"));
   }
 
+  TEST_CASE("process ignore matching is case-insensitive") {
+    CHECK(winapi::matches_ignored_process_name("APPLICATIONFRAMEHOST.EXE",
+                                               "ApplicationFrameHost.exe"));
+    CHECK(winapi::matches_ignored_process_name("notepad.exe", "NOTEPAD.EXE"));
+    CHECK_FALSE(winapi::matches_ignored_process_name("notepad.exe", "wordpad.exe"));
+  }
+
   TEST_CASE("hotkey messages stay queued for hotkey polling") {
     CHECK(winapi::should_defer_message_to_hotkey_poll(0x0312));
   }

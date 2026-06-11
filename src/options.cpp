@@ -476,7 +476,7 @@ std::string get_options_toml_documentation() {
 #
 # merge_*_with_defaults: true merges your list with built-in ignored windows;
 # false uses only the list in this file.
-# processes: executable names to ignore.
+# processes: executable names to ignore. Matching is case-insensitive.
 # window_titles: exact window titles to ignore.
 # process_title_pairs: ignore only when process and title both match.
 # ignore_children_of_processes: ignore child windows spawned by these processes.
