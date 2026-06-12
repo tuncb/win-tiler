@@ -3,8 +3,10 @@
 #include <bcrypt.h>
 #include <commctrl.h>
 #include <knownfolders.h>
+#include <objbase.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <spdlog/spdlog.h>
 #include <windows.h>
 #include <winhttp.h>
@@ -24,6 +26,7 @@
 #include <vector>
 
 #include "options.h"
+#include "resource.h"
 #include "startup.h"
 #include "version.h"
 #include "winapi.h"
@@ -44,6 +47,9 @@ constexpr wchar_t kPublisher[] = L"tuncb";
 constexpr int kInstallButtonId = 1001;
 constexpr int kUninstallButtonId = 1002;
 constexpr int kApplyButtonId = 1003;
+constexpr int kCloseButtonId = 1004;
+constexpr int kStartMenuShortcutCheckboxId = 2001;
+constexpr int kAutoStartCheckboxId = 2002;
 constexpr wchar_t kGitHubLatestReleaseUrl[] =
     L"https://api.github.com/repos/tuncb/win-tiler/releases/latest";
 constexpr size_t kMaxReleaseResponseBytes = 2 * 1024 * 1024;
@@ -55,8 +61,45 @@ constexpr DWORD kNetworkSendTimeoutMs = 10000;
 constexpr DWORD kNetworkReceiveTimeoutMs = 10000;
 constexpr DWORD kUpdateProcessWaitTimeoutMs = 60000;
 
-struct InstallerDialogCallbackState {
+struct InstallerDialogState {
   bool installed = false;
+  InstallerOptions options;
+  InstallerOptions original_options;
+  std::wstring content;
+  int pressed_button = 0;
+  bool done = false;
+  HFONT font = nullptr;
+  HWND start_menu_checkbox = nullptr;
+  HWND auto_start_checkbox = nullptr;
+  HWND apply_button = nullptr;
+};
+
+template <typename T>
+struct ComObject {
+  T* ptr = nullptr;
+
+  ComObject() = default;
+  ComObject(const ComObject&) = delete;
+  ComObject& operator=(const ComObject&) = delete;
+
+  ~ComObject() {
+    reset();
+  }
+
+  void reset() {
+    if (ptr != nullptr) {
+      ptr->Release();
+      ptr = nullptr;
+    }
+  }
+
+  T** put() {
+    return &ptr;
+  }
+
+  T* operator->() const {
+    return ptr;
+  }
 };
 
 tl::expected<void, std::string> launch_process(const std::wstring& command_line);
@@ -1085,22 +1128,289 @@ std::filesystem::path normalize_for_compare(const std::filesystem::path& path) {
   return absolute_path.lexically_normal();
 }
 
-HRESULT CALLBACK installer_dialog_callback(HWND hwnd, UINT notification, WPARAM, LPARAM,
-                                           LONG_PTR callback_data) {
-  if (notification != TDN_CREATED) {
-    return S_OK;
+int scale_for_window(HWND hwnd, int value) {
+  UINT dpi = hwnd == nullptr ? GetDpiForSystem() : GetDpiForWindow(hwnd);
+  if (dpi == 0) {
+    dpi = 96;
+  }
+  return MulDiv(value, static_cast<int>(dpi), 96);
+}
+
+HWND create_installer_child(HWND parent, const wchar_t* class_name, const wchar_t* text,
+                            DWORD style, int id, int x, int y, int width, int height,
+                            HFONT font) {
+  HWND control =
+      CreateWindowExW(0, class_name, text, WS_CHILD | WS_VISIBLE | style, scale_for_window(parent, x),
+                      scale_for_window(parent, y), scale_for_window(parent, width),
+                      scale_for_window(parent, height), parent,
+                      reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr),
+                      nullptr);
+  if (control == nullptr) {
+    spdlog::error("Failed to create installer dialog control, error={}", GetLastError());
+    return nullptr;
+  }
+  SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+  return control;
+}
+
+bool installer_options_equal(const InstallerOptions& left, const InstallerOptions& right) {
+  return left.auto_start == right.auto_start &&
+         left.start_menu_shortcut == right.start_menu_shortcut;
+}
+
+void read_installer_dialog_options(InstallerDialogState& state) {
+  state.options.start_menu_shortcut =
+      SendMessageW(state.start_menu_checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+  state.options.auto_start =
+      SendMessageW(state.auto_start_checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+}
+
+void update_installer_apply_button_state(InstallerDialogState& state) {
+  if (state.apply_button == nullptr) {
+    return;
   }
 
-  const auto* state = reinterpret_cast<const InstallerDialogCallbackState*>(callback_data);
-  if (state == nullptr) {
-    return E_INVALIDARG;
+  BOOL enabled =
+      should_enable_installer_apply_button(state.installed, state.options, state.original_options)
+          ? TRUE
+          : FALSE;
+  EnableWindow(state.apply_button, enabled);
+}
+
+bool create_installer_dialog_controls(HWND hwnd, InstallerDialogState& state) {
+  state.font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+
+  HWND content = create_installer_child(hwnd, L"STATIC", state.content.c_str(),
+                                        SS_LEFT | SS_NOPREFIX, 0, 16, 18, 500, 42, state.font);
+  HWND options_group = create_installer_child(hwnd, L"BUTTON", L"Options", BS_GROUPBOX, 0, 16, 66,
+                                              500, 82, state.font);
+  state.start_menu_checkbox = create_installer_child(
+      hwnd, L"BUTTON", L"Add win-tiler to the Start Menu",
+      BS_AUTOCHECKBOX | WS_TABSTOP, kStartMenuShortcutCheckboxId, 28, 90, 360, 24, state.font);
+  state.auto_start_checkbox = create_installer_child(
+      hwnd, L"BUTTON", L"Start win-tiler when Windows starts",
+      BS_AUTOCHECKBOX | WS_TABSTOP, kAutoStartCheckboxId, 28, 116, 360, 24, state.font);
+
+  HWND install_button = create_installer_child(
+      hwnd, L"BUTTON", L"Install",
+      BS_DEFPUSHBUTTON | WS_TABSTOP | (state.installed ? WS_DISABLED : 0), kInstallButtonId, 190,
+      174, 76, 26, state.font);
+  HWND uninstall_button = create_installer_child(
+      hwnd, L"BUTTON", L"Uninstall",
+      BS_PUSHBUTTON | WS_TABSTOP | (state.installed ? 0 : WS_DISABLED), kUninstallButtonId, 272,
+      174, 76, 26, state.font);
+  state.apply_button =
+      create_installer_child(hwnd, L"BUTTON", L"Apply", BS_PUSHBUTTON | WS_TABSTOP | WS_DISABLED,
+                             kApplyButtonId, 354, 174, 76, 26, state.font);
+  HWND close_button = create_installer_child(hwnd, L"BUTTON", L"Close",
+                                             BS_PUSHBUTTON | WS_TABSTOP, kCloseButtonId, 436, 174,
+                                             76, 26, state.font);
+
+  if (content == nullptr || options_group == nullptr || state.start_menu_checkbox == nullptr ||
+      state.auto_start_checkbox == nullptr || install_button == nullptr ||
+      uninstall_button == nullptr || state.apply_button == nullptr || close_button == nullptr) {
+    return false;
   }
 
-  SendMessageW(hwnd, TDM_ENABLE_BUTTON, kInstallButtonId, state->installed ? FALSE : TRUE);
-  SendMessageW(hwnd, TDM_ENABLE_BUTTON, kUninstallButtonId, state->installed ? TRUE : FALSE);
-  SendMessageW(hwnd, TDM_ENABLE_BUTTON, kApplyButtonId, state->installed ? TRUE : FALSE);
+  SendMessageW(state.start_menu_checkbox, BM_SETCHECK,
+               state.options.start_menu_shortcut ? BST_CHECKED : BST_UNCHECKED, 0);
+  SendMessageW(state.auto_start_checkbox, BM_SETCHECK,
+               state.options.auto_start ? BST_CHECKED : BST_UNCHECKED, 0);
+  update_installer_apply_button_state(state);
+  return true;
+}
 
-  return S_OK;
+void finish_installer_dialog(HWND hwnd, InstallerDialogState& state, int pressed_button) {
+  read_installer_dialog_options(state);
+  state.pressed_button = pressed_button;
+  state.done = true;
+  DestroyWindow(hwnd);
+}
+
+LRESULT CALLBACK installer_dialog_window_proc(HWND hwnd, UINT message, WPARAM wparam,
+                                              LPARAM lparam) {
+  if (message == WM_NCCREATE) {
+    auto* create = reinterpret_cast<CREATESTRUCTW*>(lparam);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+    return TRUE;
+  }
+
+  auto* state = reinterpret_cast<InstallerDialogState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  switch (message) {
+  case WM_CREATE:
+    if (state == nullptr || !create_installer_dialog_controls(hwnd, *state)) {
+      return -1;
+    }
+    return 0;
+  case WM_COMMAND: {
+    if (state == nullptr) {
+      return 0;
+    }
+    int id = LOWORD(wparam);
+    int notification = HIWORD(wparam);
+    if ((id == kStartMenuShortcutCheckboxId || id == kAutoStartCheckboxId) &&
+        notification == BN_CLICKED) {
+      read_installer_dialog_options(*state);
+      update_installer_apply_button_state(*state);
+      return 0;
+    }
+    if (id == kInstallButtonId || id == kUninstallButtonId || id == kApplyButtonId ||
+        id == kCloseButtonId || id == IDCANCEL) {
+      finish_installer_dialog(hwnd, *state, id == kCloseButtonId || id == IDCANCEL ? 0 : id);
+      return 0;
+    }
+    return 0;
+  }
+  case WM_CTLCOLORSTATIC:
+  case WM_CTLCOLORBTN: {
+    HWND control = reinterpret_cast<HWND>(lparam);
+    LONG_PTR style = GetWindowLongPtrW(control, GWL_STYLE);
+    LONG_PTR button_type = style & BS_TYPEMASK;
+    if (message == WM_CTLCOLORBTN &&
+        (button_type == BS_PUSHBUTTON || button_type == BS_DEFPUSHBUTTON)) {
+      return DefWindowProcW(hwnd, message, wparam, lparam);
+    }
+    HDC device_context = reinterpret_cast<HDC>(wparam);
+    SetBkMode(device_context, TRANSPARENT);
+    SetTextColor(device_context, GetSysColor(COLOR_WINDOWTEXT));
+    return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+  }
+  case WM_CLOSE:
+    if (state != nullptr) {
+      finish_installer_dialog(hwnd, *state, 0);
+    } else {
+      DestroyWindow(hwnd);
+    }
+    return 0;
+  case WM_DESTROY:
+    if (state != nullptr) {
+      state->done = true;
+    }
+    return 0;
+  default:
+    return DefWindowProcW(hwnd, message, wparam, lparam);
+  }
+}
+
+void center_installer_dialog(HWND hwnd, HWND owner) {
+  RECT dialog_rect = {};
+  if (GetWindowRect(hwnd, &dialog_rect) == 0) {
+    spdlog::error("Failed to read installer dialog bounds, error={}", GetLastError());
+    return;
+  }
+
+  HMONITOR monitor = nullptr;
+  if (owner != nullptr) {
+    monitor = MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST);
+  } else {
+    POINT origin = {0, 0};
+    monitor = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+  }
+  if (monitor == nullptr) {
+    spdlog::error("Failed to resolve monitor for installer dialog");
+    return;
+  }
+
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(monitor_info);
+  if (GetMonitorInfoW(monitor, &monitor_info) == 0) {
+    spdlog::error("Failed to read monitor work area for installer dialog, error={}",
+                  GetLastError());
+    return;
+  }
+  const RECT& work_area = monitor_info.rcWork;
+  int x = work_area.left + ((work_area.right - work_area.left) -
+                            (dialog_rect.right - dialog_rect.left)) /
+                               2;
+  int y = work_area.top + ((work_area.bottom - work_area.top) -
+                           (dialog_rect.bottom - dialog_rect.top)) /
+                              2;
+  if (SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE) == 0) {
+    spdlog::error("Failed to center installer dialog, error={}", GetLastError());
+  }
+}
+
+tl::expected<int, std::string> show_installer_options_dialog(HWND owner,
+                                                             InstallerDialogState& state) {
+  constexpr wchar_t kInstallerDialogClassName[] = L"win-tiler-installer-dialog";
+  HINSTANCE instance = GetModuleHandleW(nullptr);
+
+  WNDCLASSEXW window_class = {};
+  window_class.cbSize = sizeof(window_class);
+  window_class.lpfnWndProc = installer_dialog_window_proc;
+  window_class.hInstance = instance;
+  window_class.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
+  window_class.hIconSm = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
+  window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  window_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  window_class.lpszClassName = kInstallerDialogClassName;
+
+  ATOM registered = RegisterClassExW(&window_class);
+  if (registered == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+    return tl::unexpected("Failed to register installer dialog window");
+  }
+
+  DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+  DWORD ex_style = WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE;
+  RECT window_rect = {0, 0, scale_for_window(owner, 532), scale_for_window(owner, 216)};
+  if (AdjustWindowRectEx(&window_rect, style, FALSE, ex_style) == 0) {
+    return tl::unexpected("Failed to size installer dialog window");
+  }
+
+  HWND hwnd = CreateWindowExW(ex_style, kInstallerDialogClassName,
+                              L"Install win-tiler for this user", style, CW_USEDEFAULT,
+                              CW_USEDEFAULT, window_rect.right - window_rect.left,
+                              window_rect.bottom - window_rect.top, owner, nullptr, instance,
+                              &state);
+  if (hwnd == nullptr) {
+    return tl::unexpected("Failed to show installer dialog");
+  }
+  if (SetWindowTextW(hwnd, L"Install win-tiler for this user") == 0) {
+    spdlog::error("Failed to set installer dialog title, error={}", GetLastError());
+  }
+
+  BOOL owner_was_enabled = FALSE;
+  if (owner != nullptr && IsWindowEnabled(owner) != 0) {
+    owner_was_enabled = TRUE;
+    EnableWindow(owner, FALSE);
+  }
+
+  center_installer_dialog(hwnd, owner);
+  ShowWindow(hwnd, SW_SHOWNORMAL);
+  if (UpdateWindow(hwnd) == 0) {
+    spdlog::error("Failed to update installer dialog, error={}", GetLastError());
+  }
+
+  MSG message = {};
+  while (!state.done) {
+    BOOL get_message_result = GetMessageW(&message, nullptr, 0, 0);
+    if (get_message_result == -1) {
+      if (owner != nullptr && owner_was_enabled == TRUE) {
+        EnableWindow(owner, TRUE);
+      }
+      return tl::unexpected("Failed while reading installer dialog messages");
+    }
+    if (get_message_result == 0) {
+      state.done = true;
+      break;
+    }
+    if (IsWindow(hwnd) == 0 || IsDialogMessageW(hwnd, &message) == 0) {
+      TranslateMessage(&message);
+      DispatchMessageW(&message);
+    }
+  }
+
+  if (IsWindow(hwnd) != 0) {
+    DestroyWindow(hwnd);
+  }
+  if (owner != nullptr && owner_was_enabled == TRUE) {
+    EnableWindow(owner, TRUE);
+    if (SetForegroundWindow(owner) == 0) {
+      spdlog::debug("Failed to foreground installer dialog owner, error={}", GetLastError());
+    }
+  }
+
+  return state.pressed_button;
 }
 
 } // namespace
@@ -1347,6 +1657,24 @@ std::filesystem::path get_installed_config_path(const std::filesystem::path& ins
   return install_dir / "win-tiler.toml";
 }
 
+std::filesystem::path
+get_start_menu_shortcut_path(const std::filesystem::path& programs_directory) {
+  return programs_directory / "win-tiler.lnk";
+}
+
+tl::expected<std::filesystem::path, std::string> get_default_start_menu_shortcut_path() {
+  PWSTR programs_directory = nullptr;
+  HRESULT result =
+      SHGetKnownFolderPath(FOLDERID_Programs, KF_FLAG_CREATE, nullptr, &programs_directory);
+  if (FAILED(result)) {
+    return tl::unexpected("Failed to resolve Start Menu programs folder");
+  }
+
+  std::filesystem::path shortcut_path = get_start_menu_shortcut_path(programs_directory);
+  CoTaskMemFree(programs_directory);
+  return shortcut_path;
+}
+
 bool is_installation_present(const std::filesystem::path& install_dir) {
   std::error_code ec;
   return std::filesystem::is_regular_file(get_installed_executable_path(install_dir), ec) && !ec;
@@ -1367,6 +1695,11 @@ bool can_update_installed_instance(const std::filesystem::path& current_executab
 bool startup_command_targets_executable(const std::string& command_line,
                                         const std::filesystem::path& executable_path) {
   return command_line == build_startup_command_line(executable_path, std::nullopt, std::nullopt);
+}
+
+bool should_enable_installer_apply_button(bool installed, const InstallerOptions& current_options,
+                                          const InstallerOptions& original_options) {
+  return installed && !installer_options_equal(current_options, original_options);
 }
 
 tl::expected<void, std::string>
@@ -1399,7 +1732,133 @@ apply_startup_option_for_installation(const std::filesystem::path& install_dir, 
 }
 
 tl::expected<void, std::string>
-install_current_executable(const std::filesystem::path& current_executable, bool auto_start) {
+apply_start_menu_shortcut_option(const std::filesystem::path& shortcut_path,
+                                 const std::filesystem::path& executable_path,
+                                 bool add_start_menu_shortcut) {
+  if (!add_start_menu_shortcut) {
+    std::error_code ec;
+    if (!std::filesystem::exists(shortcut_path, ec)) {
+      if (ec) {
+        return tl::unexpected("Failed to check Start Menu shortcut: " + ec.message());
+      }
+      return {};
+    }
+
+    std::filesystem::remove(shortcut_path, ec);
+    if (ec) {
+      return tl::unexpected("Failed to remove Start Menu shortcut: " + ec.message());
+    }
+    return {};
+  }
+
+  std::error_code ec;
+  auto shortcut_directory = shortcut_path.parent_path();
+  if (!shortcut_directory.empty()) {
+    std::filesystem::create_directories(shortcut_directory, ec);
+    if (ec) {
+      return tl::unexpected("Failed to create Start Menu shortcut directory: " + ec.message());
+    }
+  }
+
+  HRESULT initialize_result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  bool uninitialize_com = SUCCEEDED(initialize_result);
+  if (FAILED(initialize_result) && initialize_result != RPC_E_CHANGED_MODE) {
+    return tl::unexpected("Failed to initialize COM for Start Menu shortcut");
+  }
+
+  auto uninitialize = [&]() {
+    if (uninitialize_com) {
+      CoUninitialize();
+      uninitialize_com = false;
+    }
+  };
+
+  ComObject<IShellLinkW> shell_link;
+  HRESULT create_result =
+      CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                       reinterpret_cast<void**>(shell_link.put()));
+  if (FAILED(create_result)) {
+    uninitialize();
+    return tl::unexpected("Failed to create Start Menu shortcut object");
+  }
+
+  HRESULT path_result = shell_link->SetPath(executable_path.wstring().c_str());
+  if (FAILED(path_result)) {
+    shell_link.reset();
+    uninitialize();
+    return tl::unexpected("Failed to set Start Menu shortcut target");
+  }
+
+  auto working_directory = executable_path.parent_path();
+  if (!working_directory.empty()) {
+    HRESULT working_directory_result =
+        shell_link->SetWorkingDirectory(working_directory.wstring().c_str());
+    if (FAILED(working_directory_result)) {
+      shell_link.reset();
+      uninitialize();
+      return tl::unexpected("Failed to set Start Menu shortcut working directory");
+    }
+  }
+
+  HRESULT icon_result = shell_link->SetIconLocation(executable_path.wstring().c_str(), 0);
+  if (FAILED(icon_result)) {
+    shell_link.reset();
+    uninitialize();
+    return tl::unexpected("Failed to set Start Menu shortcut icon");
+  }
+
+  HRESULT description_result = shell_link->SetDescription(L"Start win-tiler");
+  if (FAILED(description_result)) {
+    shell_link.reset();
+    uninitialize();
+    return tl::unexpected("Failed to set Start Menu shortcut description");
+  }
+
+  ComObject<IPersistFile> persist_file;
+  HRESULT persist_result =
+      shell_link->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(persist_file.put()));
+  if (FAILED(persist_result)) {
+    shell_link.reset();
+    uninitialize();
+    return tl::unexpected("Failed to prepare Start Menu shortcut file");
+  }
+
+  HRESULT save_result = persist_file->Save(shortcut_path.wstring().c_str(), TRUE);
+  persist_file.reset();
+  shell_link.reset();
+  uninitialize();
+  if (FAILED(save_result)) {
+    return tl::unexpected("Failed to save Start Menu shortcut");
+  }
+
+  return {};
+}
+
+tl::expected<void, std::string>
+apply_installation_options_for_installation(const std::filesystem::path& install_dir,
+                                            const InstallerOptions& options) {
+  auto startup_result = apply_startup_option_for_installation(install_dir, options.auto_start);
+  if (!startup_result.has_value()) {
+    return tl::unexpected(startup_result.error());
+  }
+
+  auto shortcut_path = get_default_start_menu_shortcut_path();
+  if (!shortcut_path.has_value()) {
+    return tl::unexpected(shortcut_path.error());
+  }
+
+  auto shortcut_result = apply_start_menu_shortcut_option(
+      *shortcut_path, get_installed_executable_path(install_dir), options.start_menu_shortcut);
+  if (!shortcut_result.has_value()) {
+    return tl::unexpected(shortcut_result.error());
+  }
+
+  return {};
+}
+
+tl::expected<void, std::string>
+install_current_executable(const std::filesystem::path& current_executable,
+                           const InstallerOptions& options) {
   auto install_dir = get_default_install_directory();
   if (!install_dir.has_value()) {
     return tl::unexpected(install_dir.error());
@@ -1434,9 +1893,9 @@ install_current_executable(const std::filesystem::path& current_executable, bool
     return tl::unexpected(config_result.error());
   }
 
-  auto startup_result = apply_startup_option_for_installation(*install_dir, auto_start);
-  if (!startup_result.has_value()) {
-    return tl::unexpected(startup_result.error());
+  auto options_result = apply_installation_options_for_installation(*install_dir, options);
+  if (!options_result.has_value()) {
+    return tl::unexpected(options_result.error());
   }
 
   auto registry_result = register_uninstall_entry(*install_dir, installed_executable);
@@ -1445,6 +1904,11 @@ install_current_executable(const std::filesystem::path& current_executable, bool
   }
 
   return {};
+}
+
+tl::expected<void, std::string>
+install_current_executable(const std::filesystem::path& current_executable, bool auto_start) {
+  return install_current_executable(current_executable, InstallerOptions{auto_start, false});
 }
 
 tl::expected<void, std::string>
@@ -1601,6 +2065,17 @@ tl::expected<void, std::string> finish_uninstall(unsigned long original_pid,
     return tl::unexpected(startup_result.error());
   }
 
+  auto shortcut_path = get_default_start_menu_shortcut_path();
+  if (!shortcut_path.has_value()) {
+    return tl::unexpected(shortcut_path.error());
+  }
+  auto shortcut_result =
+      apply_start_menu_shortcut_option(*shortcut_path, get_installed_executable_path(install_dir),
+                                       false);
+  if (!shortcut_result.has_value()) {
+    return tl::unexpected(shortcut_result.error());
+  }
+
   auto unregister_result = unregister_uninstall_entry();
   if (!unregister_result.has_value()) {
     return tl::unexpected(unregister_result.error());
@@ -1647,48 +2122,37 @@ show_installer_dialog(void* owner_window, const std::filesystem::path& current_e
     content += widen_ascii(get_version_string());
   }
   auto startup_status = get_startup_registration_status();
-  BOOL auto_start_checked = FALSE;
+  InstallerOptions selected_options;
   if (installed && startup_status.has_value() && startup_status->enabled &&
       startup_status->command_line.has_value() &&
       startup_command_targets_executable(*startup_status->command_line, installed_executable)) {
-    auto_start_checked = TRUE;
+    selected_options.auto_start = true;
   }
-  InstallerDialogCallbackState callback_state{installed};
-
-  TASKDIALOG_BUTTON buttons[] = {
-      {kInstallButtonId, L"Install"},
-      {kUninstallButtonId, L"Uninstall"},
-      {kApplyButtonId, L"Apply"},
-  };
-
-  TASKDIALOGCONFIG config = {};
-  config.cbSize = sizeof(config);
-  config.hwndParent = static_cast<HWND>(owner_window);
-  config.dwFlags = TDF_SIZE_TO_CONTENT | TDF_ALLOW_DIALOG_CANCELLATION;
-  if (auto_start_checked == TRUE) {
-    config.dwFlags |= TDF_VERIFICATION_FLAG_CHECKED;
+  auto shortcut_path = get_default_start_menu_shortcut_path();
+  if (installed && shortcut_path.has_value()) {
+    std::error_code ec;
+    selected_options.start_menu_shortcut = std::filesystem::is_regular_file(*shortcut_path, ec);
+    if (ec) {
+      selected_options.start_menu_shortcut = false;
+    }
   }
-  config.dwCommonButtons = TDCBF_CLOSE_BUTTON;
-  config.pszWindowTitle = L"win-tiler installer";
-  config.pszMainInstruction = L"Install win-tiler for this user";
-  config.pszContent = content.c_str();
-  config.pszVerificationText = L"Start win-tiler when Windows starts";
-  config.cButtons = 3;
-  config.pButtons = buttons;
-  config.nDefaultButton = installed ? kUninstallButtonId : kInstallButtonId;
-  config.pfCallback = installer_dialog_callback;
-  config.lpCallbackData = reinterpret_cast<LONG_PTR>(&callback_state);
+  InstallerDialogState dialog_state;
+  dialog_state.installed = installed;
+  dialog_state.options = selected_options;
+  dialog_state.original_options = selected_options;
+  dialog_state.content = content;
 
-  int pressed_button = 0;
-  HRESULT result = TaskDialogIndirect(&config, &pressed_button, nullptr, &auto_start_checked);
-  if (FAILED(result)) {
-    return tl::unexpected("Failed to show installer dialog");
+  auto dialog_result =
+      show_installer_options_dialog(static_cast<HWND>(owner_window), dialog_state);
+  if (!dialog_result.has_value()) {
+    return tl::unexpected(dialog_result.error());
   }
+  int pressed_button = *dialog_result;
+  selected_options = dialog_state.options;
 
   HWND owner = static_cast<HWND>(owner_window);
   if (pressed_button == kInstallButtonId) {
-    auto install_result =
-        install_current_executable(current_executable, auto_start_checked == TRUE);
+    auto install_result = install_current_executable(current_executable, selected_options);
     if (!install_result.has_value()) {
       show_result_message(owner, L"win-tiler installer", widen_ascii(install_result.error()),
                           MB_ICONERROR);
@@ -1712,15 +2176,14 @@ show_installer_dialog(void* owner_window, const std::filesystem::path& current_e
   }
 
   if (pressed_button == kApplyButtonId) {
-    auto apply_result =
-        apply_startup_option_for_installation(*install_dir, auto_start_checked == TRUE);
+    auto apply_result = apply_installation_options_for_installation(*install_dir, selected_options);
     if (!apply_result.has_value()) {
       show_result_message(owner, L"win-tiler installer", widen_ascii(apply_result.error()),
                           MB_ICONERROR);
       return tl::unexpected(apply_result.error());
     }
 
-    show_result_message(owner, L"win-tiler installer", L"Startup option was updated.",
+    show_result_message(owner, L"win-tiler installer", L"Installation options were updated.",
                         MB_ICONINFORMATION);
     return InstallerDialogResult::Closed;
   }

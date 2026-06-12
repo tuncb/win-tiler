@@ -242,13 +242,15 @@ and installs to:
 %LOCALAPPDATA%\win-tiler
 ```
 
-The dialog includes an opt-in checkbox for starting `win-tiler` when Windows starts. The checkbox is
-checked only when the startup registration points at the installed executable. Install writes the app
-to the fixed install folder, optionally registers startup for the installed executable, and creates
-`win-tiler.toml` in the install folder when that file does not already exist. Install also adds a
-current-user uninstall entry so `win-tiler` appears in Windows Installed Apps. The Install button is
-disabled when an install is already present, and the Uninstall and Apply buttons are disabled when no
-install is present. Apply updates only the startup option without reinstalling or uninstalling.
+The dialog includes checkboxes for adding `win-tiler` to the Start Menu and starting `win-tiler`
+when Windows starts. The checkboxes reflect whether the Start Menu shortcut exists and whether
+startup registration points at the installed executable. Install writes the app to the fixed install
+folder, optionally creates the Start Menu shortcut, optionally registers startup for the installed
+executable, and creates `win-tiler.toml` in the install folder when that file does not already
+exist. Install also adds a current-user uninstall entry so `win-tiler` appears in Windows Installed
+Apps. The Install button is disabled when an install is already present, and the Uninstall and Apply
+buttons are disabled when no install is present. Apply updates only the optional integrations
+without reinstalling or uninstalling.
 When the dialog is opened from the installed executable, it shows the current app version and enables
 Check updates. Update checks query the latest GitHub release with bounded network timeouts, download
 the raw `win-tiler.exe` release asset and its `.sha256` file, verify the hash, and then start a
@@ -258,8 +260,8 @@ Uninstall can be started from the installer dialog, Windows Installed Apps, or t
 Installed Apps calls `win-tiler --uninstall`, which starts uninstall directly without reopening the
 installer dialog. Because Windows locks a running executable, uninstall copies `win-tiler.exe` to a
 temporary helper process, starts that helper, and closes the installed app. The helper waits for the
-original process to exit, then removes startup registration, the Installed Apps registry entry, and
-the install folder.
+original process to exit, then removes startup registration, the Start Menu shortcut, the Installed
+Apps registry entry, and the install folder.
 
 ### `startup` Actions
 

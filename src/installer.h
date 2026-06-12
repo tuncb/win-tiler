@@ -34,6 +34,11 @@ struct LatestReleaseInfo {
   std::vector<ReleaseAsset> assets;
 };
 
+struct InstallerOptions {
+  bool auto_start = false;
+  bool start_menu_shortcut = false;
+};
+
 [[nodiscard]] std::wstring quote_windows_argument_wide(const std::wstring& argument);
 
 [[nodiscard]] std::wstring
@@ -74,16 +79,39 @@ get_installed_executable_path(const std::filesystem::path& install_dir);
 [[nodiscard]] std::filesystem::path
 get_installed_config_path(const std::filesystem::path& install_dir);
 
+[[nodiscard]] std::filesystem::path
+get_start_menu_shortcut_path(const std::filesystem::path& programs_directory);
+
+[[nodiscard]] tl::expected<std::filesystem::path, std::string>
+get_default_start_menu_shortcut_path();
+
 [[nodiscard]] bool is_installation_present(const std::filesystem::path& install_dir);
 
 [[nodiscard]] bool startup_command_targets_executable(const std::string& command_line,
                                                       const std::filesystem::path& executable_path);
+
+[[nodiscard]] bool should_enable_installer_apply_button(bool installed,
+                                                        const InstallerOptions& current_options,
+                                                        const InstallerOptions& original_options);
 
 [[nodiscard]] tl::expected<void, std::string>
 ensure_installed_config_file(const std::filesystem::path& install_dir);
 
 [[nodiscard]] tl::expected<void, std::string>
 apply_startup_option_for_installation(const std::filesystem::path& install_dir, bool auto_start);
+
+[[nodiscard]] tl::expected<void, std::string>
+apply_start_menu_shortcut_option(const std::filesystem::path& shortcut_path,
+                                 const std::filesystem::path& executable_path,
+                                 bool add_start_menu_shortcut);
+
+[[nodiscard]] tl::expected<void, std::string>
+apply_installation_options_for_installation(const std::filesystem::path& install_dir,
+                                            const InstallerOptions& options);
+
+[[nodiscard]] tl::expected<void, std::string>
+install_current_executable(const std::filesystem::path& current_executable,
+                           const InstallerOptions& options);
 
 [[nodiscard]] tl::expected<void, std::string>
 install_current_executable(const std::filesystem::path& current_executable, bool auto_start);

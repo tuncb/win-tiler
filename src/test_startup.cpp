@@ -192,6 +192,18 @@ TEST_SUITE("installer") {
         executable));
   }
 
+  TEST_CASE("installer Apply button is enabled only for changed installed options") {
+    InstallerOptions original_options{true, false};
+
+    CHECK_FALSE(should_enable_installer_apply_button(false, InstallerOptions{false, true},
+                                                     original_options));
+    CHECK_FALSE(should_enable_installer_apply_button(true, original_options, original_options));
+    CHECK(should_enable_installer_apply_button(true, InstallerOptions{false, false},
+                                               original_options));
+    CHECK(should_enable_installer_apply_button(true, InstallerOptions{true, true},
+                                               original_options));
+  }
+
   TEST_CASE("installation is present only when installed executable exists") {
     auto install_dir = make_unique_temp_directory("win-tiler-install-state-test");
 
@@ -224,6 +236,36 @@ TEST_SUITE("installer") {
     CHECK_FALSE(can_update_installed_instance(other_executable, install_dir));
 
     std::filesystem::remove_all(install_dir);
+  }
+
+  TEST_CASE("start menu shortcut path uses programs directory") {
+    std::filesystem::path programs_directory =
+        R"(C:\Users\Test User\AppData\Roaming\Microsoft\Windows\Start Menu\Programs)";
+
+    CHECK(get_start_menu_shortcut_path(programs_directory) ==
+          programs_directory / "win-tiler.lnk");
+  }
+
+  TEST_CASE("start menu shortcut option creates and removes shortcut") {
+    auto test_dir = make_unique_temp_directory("win-tiler-start-menu-test");
+    auto executable_path = test_dir / "win-tiler.exe";
+    auto shortcut_path = get_start_menu_shortcut_path(test_dir);
+    {
+      std::ofstream executable(executable_path);
+      executable << "exe";
+    }
+
+    auto create_result = apply_start_menu_shortcut_option(shortcut_path, executable_path, true);
+
+    REQUIRE(create_result.has_value());
+    CHECK(std::filesystem::is_regular_file(shortcut_path));
+
+    auto remove_result = apply_start_menu_shortcut_option(shortcut_path, executable_path, false);
+
+    REQUIRE(remove_result.has_value());
+    CHECK_FALSE(std::filesystem::exists(shortcut_path));
+
+    std::filesystem::remove_all(test_dir);
   }
 
   TEST_CASE("ensure_installed_config_file creates default config when missing") {
