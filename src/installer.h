@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tl/expected.hpp>
 #include <vector>
 
@@ -38,6 +39,20 @@ struct InstallerOptions {
   bool auto_start = false;
   bool start_menu_shortcut = false;
 };
+
+#ifndef DOCTEST_CONFIG_DISABLE
+struct InstallerDialogLayoutForTest {
+  int client_height = 0;
+  int content_y = 0;
+  int content_height = 0;
+  int options_group_y = 0;
+  int start_menu_checkbox_y = 0;
+  int button_y = 0;
+};
+
+[[nodiscard]] InstallerDialogLayoutForTest
+get_installer_dialog_layout_for_test(std::wstring_view content);
+#endif // !DOCTEST_CONFIG_DISABLE
 
 [[nodiscard]] std::wstring quote_windows_argument_wide(const std::wstring& argument);
 

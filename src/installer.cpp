@@ -74,6 +74,31 @@ struct InstallerDialogState {
   HWND apply_button = nullptr;
 };
 
+struct InstallerDialogLayout {
+  int client_width = 532;
+  int client_height = 216;
+  int content_x = 16;
+  int content_y = 18;
+  int content_width = 500;
+  int content_height = 42;
+  int options_group_x = 16;
+  int options_group_y = 66;
+  int options_group_width = 500;
+  int options_group_height = 82;
+  int start_menu_checkbox_x = 28;
+  int start_menu_checkbox_y = 90;
+  int checkbox_width = 360;
+  int checkbox_height = 24;
+  int auto_start_checkbox_y = 116;
+  int install_button_x = 190;
+  int uninstall_button_x = 272;
+  int apply_button_x = 354;
+  int close_button_x = 436;
+  int button_y = 174;
+  int button_width = 76;
+  int button_height = 26;
+};
+
 template <typename T>
 struct ComObject {
   T* ptr = nullptr;
@@ -1158,6 +1183,34 @@ bool installer_options_equal(const InstallerOptions& left, const InstallerOption
          left.start_menu_shortcut == right.start_menu_shortcut;
 }
 
+InstallerDialogLayout calculate_installer_dialog_layout(std::wstring_view content) {
+  constexpr int kContentLineHeight = 16;
+  constexpr int kContentOptionsGap = 6;
+  constexpr int kBaseOptionsGroupY = 66;
+  constexpr int kBaseStartMenuCheckboxY = 90;
+  constexpr int kBaseAutoStartCheckboxY = 116;
+  constexpr int kBaseButtonY = 174;
+  constexpr int kBaseClientHeight = 216;
+
+  InstallerDialogLayout layout;
+  int line_count = 1;
+  for (wchar_t character : content) {
+    if (character == L'\n') {
+      ++line_count;
+    }
+  }
+
+  layout.content_height = std::max(layout.content_height, line_count * kContentLineHeight);
+  layout.options_group_y = layout.content_y + layout.content_height + kContentOptionsGap;
+
+  int y_offset = layout.options_group_y - kBaseOptionsGroupY;
+  layout.start_menu_checkbox_y = kBaseStartMenuCheckboxY + y_offset;
+  layout.auto_start_checkbox_y = kBaseAutoStartCheckboxY + y_offset;
+  layout.button_y = kBaseButtonY + y_offset;
+  layout.client_height = kBaseClientHeight + y_offset;
+  return layout;
+}
+
 void read_installer_dialog_options(InstallerDialogState& state) {
   state.options.start_menu_shortcut =
       SendMessageW(state.start_menu_checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -1179,32 +1232,44 @@ void update_installer_apply_button_state(InstallerDialogState& state) {
 
 bool create_installer_dialog_controls(HWND hwnd, InstallerDialogState& state) {
   state.font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+  InstallerDialogLayout layout = calculate_installer_dialog_layout(state.content);
 
   HWND content = create_installer_child(hwnd, L"STATIC", state.content.c_str(),
-                                        SS_LEFT | SS_NOPREFIX, 0, 16, 18, 500, 42, state.font);
-  HWND options_group = create_installer_child(hwnd, L"BUTTON", L"Options", BS_GROUPBOX, 0, 16, 66,
-                                              500, 82, state.font);
+                                        SS_LEFT | SS_NOPREFIX, 0, layout.content_x,
+                                        layout.content_y, layout.content_width,
+                                        layout.content_height, state.font);
+  HWND options_group =
+      create_installer_child(hwnd, L"BUTTON", L"Options", BS_GROUPBOX, 0,
+                             layout.options_group_x, layout.options_group_y,
+                             layout.options_group_width, layout.options_group_height, state.font);
   state.start_menu_checkbox = create_installer_child(
       hwnd, L"BUTTON", L"Add win-tiler to the Start Menu",
-      BS_AUTOCHECKBOX | WS_TABSTOP, kStartMenuShortcutCheckboxId, 28, 90, 360, 24, state.font);
+      BS_AUTOCHECKBOX | WS_TABSTOP, kStartMenuShortcutCheckboxId,
+      layout.start_menu_checkbox_x, layout.start_menu_checkbox_y, layout.checkbox_width,
+      layout.checkbox_height, state.font);
   state.auto_start_checkbox = create_installer_child(
       hwnd, L"BUTTON", L"Start win-tiler when Windows starts",
-      BS_AUTOCHECKBOX | WS_TABSTOP, kAutoStartCheckboxId, 28, 116, 360, 24, state.font);
+      BS_AUTOCHECKBOX | WS_TABSTOP, kAutoStartCheckboxId, layout.start_menu_checkbox_x,
+      layout.auto_start_checkbox_y, layout.checkbox_width, layout.checkbox_height, state.font);
 
   HWND install_button = create_installer_child(
       hwnd, L"BUTTON", L"Install",
-      BS_DEFPUSHBUTTON | WS_TABSTOP | (state.installed ? WS_DISABLED : 0), kInstallButtonId, 190,
-      174, 76, 26, state.font);
+      BS_DEFPUSHBUTTON | WS_TABSTOP | (state.installed ? WS_DISABLED : 0), kInstallButtonId,
+      layout.install_button_x, layout.button_y, layout.button_width, layout.button_height,
+      state.font);
   HWND uninstall_button = create_installer_child(
       hwnd, L"BUTTON", L"Uninstall",
-      BS_PUSHBUTTON | WS_TABSTOP | (state.installed ? 0 : WS_DISABLED), kUninstallButtonId, 272,
-      174, 76, 26, state.font);
+      BS_PUSHBUTTON | WS_TABSTOP | (state.installed ? 0 : WS_DISABLED), kUninstallButtonId,
+      layout.uninstall_button_x, layout.button_y, layout.button_width, layout.button_height,
+      state.font);
   state.apply_button =
       create_installer_child(hwnd, L"BUTTON", L"Apply", BS_PUSHBUTTON | WS_TABSTOP | WS_DISABLED,
-                             kApplyButtonId, 354, 174, 76, 26, state.font);
+                             kApplyButtonId, layout.apply_button_x, layout.button_y,
+                             layout.button_width, layout.button_height, state.font);
   HWND close_button = create_installer_child(hwnd, L"BUTTON", L"Close",
-                                             BS_PUSHBUTTON | WS_TABSTOP, kCloseButtonId, 436, 174,
-                                             76, 26, state.font);
+                                             BS_PUSHBUTTON | WS_TABSTOP, kCloseButtonId,
+                                             layout.close_button_x, layout.button_y,
+                                             layout.button_width, layout.button_height, state.font);
 
   if (content == nullptr || options_group == nullptr || state.start_menu_checkbox == nullptr ||
       state.auto_start_checkbox == nullptr || install_button == nullptr ||
@@ -1352,7 +1417,9 @@ tl::expected<int, std::string> show_installer_options_dialog(HWND owner,
 
   DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   DWORD ex_style = WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE;
-  RECT window_rect = {0, 0, scale_for_window(owner, 532), scale_for_window(owner, 216)};
+  InstallerDialogLayout layout = calculate_installer_dialog_layout(state.content);
+  RECT window_rect = {0, 0, scale_for_window(owner, layout.client_width),
+                      scale_for_window(owner, layout.client_height)};
   if (AdjustWindowRectEx(&window_rect, style, FALSE, ex_style) == 0) {
     return tl::unexpected("Failed to size installer dialog window");
   }
@@ -1414,6 +1481,15 @@ tl::expected<int, std::string> show_installer_options_dialog(HWND owner,
 }
 
 } // namespace
+
+#ifndef DOCTEST_CONFIG_DISABLE
+InstallerDialogLayoutForTest get_installer_dialog_layout_for_test(std::wstring_view content) {
+  InstallerDialogLayout layout = calculate_installer_dialog_layout(content);
+  return InstallerDialogLayoutForTest{layout.client_height, layout.content_y, layout.content_height,
+                                      layout.options_group_y, layout.start_menu_checkbox_y,
+                                      layout.button_y};
+}
+#endif // !DOCTEST_CONFIG_DISABLE
 
 std::wstring quote_windows_argument_wide(const std::wstring& argument) {
   if (argument.empty()) {

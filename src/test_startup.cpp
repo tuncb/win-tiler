@@ -204,6 +204,24 @@ TEST_SUITE("installer") {
                                                original_options));
   }
 
+  TEST_CASE("installer dialog grows when content includes installed version") {
+    auto base_layout = get_installer_dialog_layout_for_test(
+        L"Install folder:\nC:\\Users\\Test User\\AppData\\Local\\win-tiler");
+    auto installed_layout = get_installer_dialog_layout_for_test(
+        L"Install folder:\nC:\\Users\\Test User\\AppData\\Local\\win-tiler\n\nCurrent version: "
+        L"0.10.1");
+
+    CHECK(base_layout.content_height == 42);
+    CHECK(base_layout.options_group_y == 66);
+    CHECK(base_layout.client_height == 216);
+    CHECK(installed_layout.content_height > base_layout.content_height);
+    CHECK(installed_layout.options_group_y >=
+          installed_layout.content_y + installed_layout.content_height + 6);
+    CHECK(installed_layout.start_menu_checkbox_y > base_layout.start_menu_checkbox_y);
+    CHECK(installed_layout.button_y > base_layout.button_y);
+    CHECK(installed_layout.client_height > base_layout.client_height);
+  }
+
   TEST_CASE("installation is present only when installed executable exists") {
     auto install_dir = make_unique_temp_directory("win-tiler-install-state-test");
 
