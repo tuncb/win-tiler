@@ -209,7 +209,7 @@ TEST_SUITE("installer") {
         L"Install folder:\nC:\\Users\\Test User\\AppData\\Local\\win-tiler");
     auto installed_layout = get_installer_dialog_layout_for_test(
         L"Install folder:\nC:\\Users\\Test User\\AppData\\Local\\win-tiler\n\nCurrent version: "
-        L"0.10.1");
+        L"0.10.2");
 
     CHECK(base_layout.content_height == 42);
     CHECK(base_layout.options_group_y == 66);
