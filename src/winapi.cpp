@@ -1028,6 +1028,9 @@ gather_window_management_snapshots(const wintiler::IgnoreOptions& ignore_options
 
 bool should_show_window_management_snapshot_in_ignore_dialog(
     const WindowManagementSnapshot& snapshot) {
+  if (snapshot.status == WindowManagementStatus::Managed) {
+    return true;
+  }
   return snapshot.status == WindowManagementStatus::Ignored &&
          snapshot.is_ignored_by_user_configuration &&
          !snapshot.is_rejected_by_runtime_or_system_filter;
@@ -1805,12 +1808,14 @@ void request_ignore_config_changed() {
 
 void show_dialog_error(HWND owner, const std::string& message) {
   std::wstring wide = widen(message);
-  MessageBoxW(owner, wide.c_str(), L"win-tiler ignored windows", MB_OK | MB_ICONERROR);
+  MessageBoxW(owner, wide.c_str(), L"win-tiler managed and ignored windows",
+              MB_OK | MB_ICONERROR);
 }
 
 void show_dialog_info(HWND owner, const std::string& message) {
   std::wstring wide = widen(message);
-  MessageBoxW(owner, wide.c_str(), L"win-tiler ignored windows", MB_OK | MB_ICONINFORMATION);
+  MessageBoxW(owner, wide.c_str(), L"win-tiler managed and ignored windows",
+              MB_OK | MB_ICONINFORMATION);
 }
 
 IgnoreDialogState* get_ignore_dialog_state(HWND hwnd) {
@@ -1893,10 +1898,16 @@ std::optional<size_t> get_selected_ignore_dialog_row(const IgnoreDialogState& st
 }
 
 void update_ignore_dialog_action_state(IgnoreDialogState& state) {
-  bool has_selection = get_selected_ignore_dialog_row(state).has_value();
+  auto selected = get_selected_ignore_dialog_row(state);
+  bool has_selection = selected.has_value();
   bool has_config = state.config_path.has_value() && !state.config_path->empty();
-  EnableWindow(state.add_pair_button, has_selection && has_config);
-  EnableWindow(state.remove_pair_button, has_selection && has_config);
+  bool selected_is_managed =
+      selected.has_value() && state.rows[*selected].status == WindowManagementStatus::Managed;
+  bool selected_has_user_process_title_rule =
+      selected.has_value() && state.rows[*selected].matches_ignored_process_title_pair &&
+      state.rows[*selected].rule_source == "user config";
+  EnableWindow(state.add_pair_button, selected_is_managed && has_config);
+  EnableWindow(state.remove_pair_button, selected_has_user_process_title_rule && has_config);
   EnableWindow(state.copy_button, has_selection);
   EnableWindow(state.open_config_button, has_config);
 }
@@ -2226,7 +2237,7 @@ void show_ignore_configuration_dialog(HWND owner) {
   state->ignore_options = get_notification_area_ignore_options_copy();
 
   HWND hwnd = CreateWindowExW(WS_EX_APPWINDOW, IGNORE_DIALOG_WINDOW_CLASS,
-                              L"win-tiler ignored windows",
+                              L"win-tiler managed and ignored windows",
                               WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
                               1120, 560, owner, nullptr, GetModuleHandleW(nullptr), state);
   if (hwnd == nullptr) {

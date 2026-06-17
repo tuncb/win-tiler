@@ -1293,15 +1293,18 @@ TEST_SUITE("Ignore Dialog Window Filtering") {
     CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(snapshot));
   }
 
-  TEST_CASE("hides managed and runtime-only rejected windows") {
+  TEST_CASE("shows managed windows so users can add ignore rules") {
     winapi::WindowManagementSnapshot managed;
     managed.status = winapi::WindowManagementStatus::Managed;
 
+    CHECK(winapi::should_show_window_management_snapshot_in_ignore_dialog(managed));
+  }
+
+  TEST_CASE("hides runtime-only rejected windows") {
     winapi::WindowManagementSnapshot rejected;
     rejected.status = winapi::WindowManagementStatus::Rejected;
     rejected.is_rejected_by_runtime_or_system_filter = true;
 
-    CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(managed));
     CHECK_FALSE(winapi::should_show_window_management_snapshot_in_ignore_dialog(rejected));
   }
 }
