@@ -68,8 +68,8 @@ build_finish_uninstall_command_line_wide(const std::filesystem::path& helper_pat
 [[nodiscard]] std::wstring build_finish_update_command_line_wide(
     const std::filesystem::path& helper_path, unsigned long pid,
     const std::filesystem::path& install_dir, const std::filesystem::path& downloaded_executable,
-    const std::string& expected_sha256, std::optional<unsigned long> running_pid = std::nullopt,
-    bool restart = false);
+    const std::string& expected_sha256, const std::string& target_version,
+    std::optional<unsigned long> running_pid = std::nullopt, bool restart = false);
 
 [[nodiscard]] std::wstring
 format_install_date_for_registry(unsigned short year, unsigned short month, unsigned short day);
@@ -142,7 +142,8 @@ check_for_updates_from_installed_instance(void* owner_window,
 [[nodiscard]] tl::expected<void, std::string>
 finish_update(unsigned long original_pid, const std::filesystem::path& install_dir,
               const std::filesystem::path& downloaded_executable,
-              const std::string& expected_sha256, const std::filesystem::path& helper_executable,
+              const std::string& expected_sha256, const std::string& target_version,
+              const std::filesystem::path& helper_executable,
               std::optional<unsigned long> running_pid, bool restart);
 
 [[nodiscard]] tl::expected<void, std::string>

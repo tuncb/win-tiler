@@ -154,6 +154,15 @@ ParseResult parse_finish_update_command(int argc, char* argv[], int& i, ParsedAr
       continue;
     }
 
+    if (arg == "--target-version") {
+      if (i >= argc) {
+        return make_error("--target-version requires a value");
+      }
+      command.target_version = argv[i];
+      ++i;
+      continue;
+    }
+
     if (arg == "--running-pid") {
       if (i >= argc) {
         return make_error("--running-pid requires a value");
@@ -186,6 +195,9 @@ ParseResult parse_finish_update_command(int argc, char* argv[], int& i, ParsedAr
   }
   if (command.expected_sha256.empty()) {
     return make_error("--finish-update requires --expected-sha256");
+  }
+  if (command.target_version.empty()) {
+    return make_error("--finish-update requires --target-version");
   }
 
   args.command = command;

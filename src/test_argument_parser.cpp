@@ -174,8 +174,8 @@ TEST_SUITE("argument_parser") {
     auto result =
         parse({"win-tiler", "--finish-update", "--pid", "1234", "--dir", R"(C:\Install Dir)",
                "--downloaded-exe", R"(C:\Temp\win-tiler-update.exe)", "--expected-sha256",
-               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--running-pid",
-               "5678", "--restart"});
+               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--target-version",
+               "1.2.3", "--running-pid", "5678", "--restart"});
 
     CHECK(result.success);
     REQUIRE(result.args.command.has_value());
@@ -188,6 +188,7 @@ TEST_SUITE("argument_parser") {
     CHECK(command.downloaded_executable == R"(C:\Temp\win-tiler-update.exe)");
     CHECK(command.expected_sha256 ==
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    CHECK(command.target_version == "1.2.3");
     CHECK(command.restart);
   }
 
@@ -225,6 +226,16 @@ TEST_SUITE("argument_parser") {
 
     CHECK_FALSE(result.success);
     CHECK(result.error == "--finish-update requires --downloaded-exe");
+  }
+
+  TEST_CASE("finish update requires target version") {
+    auto result =
+        parse({"win-tiler", "--finish-update", "--pid", "1234", "--dir", R"(C:\Install Dir)",
+               "--downloaded-exe", R"(C:\Temp\win-tiler-update.exe)", "--expected-sha256",
+               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"});
+
+    CHECK_FALSE(result.success);
+    CHECK(result.error == "--finish-update requires --target-version");
   }
 
   TEST_CASE("ui-test-monitor command is no longer supported") {

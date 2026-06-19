@@ -44,6 +44,7 @@ struct FinishUpdateCommand {
   std::string install_dir;
   std::string downloaded_executable;
   std::string expected_sha256;
+  std::string target_version;
   bool restart = false;
 };
 

@@ -764,6 +764,11 @@ VersionNumber current_version_number() {
   return VersionNumber{VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH};
 }
 
+std::string format_version_number(const VersionNumber& version) {
+  return std::to_string(version.major) + "." + std::to_string(version.minor) + "." +
+         std::to_string(version.patch);
+}
+
 std::optional<ReleaseAsset> find_release_asset(const LatestReleaseInfo& release,
                                                const std::string& suffix) {
   std::string expected_name = "win-tiler-" + release.tag_name + suffix;
@@ -837,7 +842,8 @@ tl::expected<void, std::string>
 start_update_helper(const std::filesystem::path& current_executable,
                     const std::filesystem::path& install_dir,
                     const std::filesystem::path& downloaded_executable,
-                    const std::string& expected_sha256, const std::filesystem::path& helper_dir,
+                    const std::string& expected_sha256, const std::string& target_version,
+                    const std::filesystem::path& helper_dir,
                     std::optional<unsigned long> running_pid, bool restart) {
   auto helper_path = create_temp_update_helper(current_executable, helper_dir);
   if (!helper_path.has_value()) {
@@ -846,7 +852,7 @@ start_update_helper(const std::filesystem::path& current_executable,
 
   std::wstring command_line = build_finish_update_command_line_wide(
       *helper_path, GetCurrentProcessId(), install_dir, downloaded_executable, expected_sha256,
-      running_pid, restart);
+      target_version, running_pid, restart);
   return launch_process(command_line);
 }
 
@@ -931,8 +937,10 @@ check_download_and_start_update(HWND owner, const std::filesystem::path& current
 
   auto running_pid = winapi::find_notification_area_process_id();
   bool restart = running_pid.has_value();
+  std::string target_version = format_version_number(release->version);
   auto helper_result = start_update_helper(current_executable, install_dir, downloaded_executable,
-                                           *expected_sha256, *update_dir, running_pid, restart);
+                                           *expected_sha256, target_version, *update_dir,
+                                           running_pid, restart);
   if (!helper_result.has_value()) {
     return tl::unexpected(helper_result.error());
   }
@@ -963,7 +971,8 @@ tl::expected<void, std::string> set_registry_dword(HKEY key, const wchar_t* name
 }
 
 tl::expected<void, std::string> register_uninstall_entry(const std::filesystem::path& install_dir,
-                                                         const std::filesystem::path& executable) {
+                                                         const std::filesystem::path& executable,
+                                                         const std::string& display_version) {
   HKEY key = nullptr;
   LSTATUS create_status =
       RegCreateKeyExW(HKEY_CURRENT_USER, kUninstallKeyPath, 0, nullptr, REG_OPTION_NON_VOLATILE,
@@ -973,8 +982,7 @@ tl::expected<void, std::string> register_uninstall_entry(const std::filesystem::
                           format_win32_error(static_cast<DWORD>(create_status)));
   }
 
-  std::string version = get_version_string();
-  std::wstring version_wide(version.begin(), version.end());
+  std::wstring version_wide(display_version.begin(), display_version.end());
 
   SYSTEMTIME local_time = {};
   GetLocalTime(&local_time);
@@ -1022,6 +1030,11 @@ tl::expected<void, std::string> register_uninstall_entry(const std::filesystem::
     return tl::unexpected(*error);
   }
   return {};
+}
+
+tl::expected<void, std::string> register_uninstall_entry(const std::filesystem::path& install_dir,
+                                                         const std::filesystem::path& executable) {
+  return register_uninstall_entry(install_dir, executable, get_version_string());
 }
 
 tl::expected<bool, std::string> unregister_uninstall_entry() {
@@ -1562,7 +1575,8 @@ std::wstring build_finish_uninstall_command_line_wide(const std::filesystem::pat
 std::wstring build_finish_update_command_line_wide(
     const std::filesystem::path& helper_path, unsigned long pid,
     const std::filesystem::path& install_dir, const std::filesystem::path& downloaded_executable,
-    const std::string& expected_sha256, std::optional<unsigned long> running_pid, bool restart) {
+    const std::string& expected_sha256, const std::string& target_version,
+    std::optional<unsigned long> running_pid, bool restart) {
   std::wstring command = quote_windows_argument_wide(helper_path.wstring());
   command += L" --finish-update --pid ";
   command += std::to_wstring(pid);
@@ -1572,6 +1586,8 @@ std::wstring build_finish_update_command_line_wide(
   command += quote_windows_argument_wide(downloaded_executable.wstring());
   command += L" --expected-sha256 ";
   command += quote_windows_argument_wide(widen_ascii(expected_sha256));
+  command += L" --target-version ";
+  command += quote_windows_argument_wide(widen_ascii(target_version));
   if (running_pid.has_value()) {
     command += L" --running-pid ";
     command += std::to_wstring(*running_pid);
@@ -2022,7 +2038,8 @@ tl::expected<InstallerDialogResult, std::string> check_for_updates_from_installe
 tl::expected<void, std::string>
 finish_update(unsigned long original_pid, const std::filesystem::path& install_dir,
               const std::filesystem::path& downloaded_executable,
-              const std::string& expected_sha256, const std::filesystem::path& helper_executable,
+              const std::string& expected_sha256, const std::string& target_version,
+              const std::filesystem::path& helper_executable,
               std::optional<unsigned long> running_pid, bool restart) {
   auto default_install_dir = get_default_install_directory();
   if (!default_install_dir.has_value()) {
@@ -2030,6 +2047,14 @@ finish_update(unsigned long original_pid, const std::filesystem::path& install_d
   }
   if (normalize_for_compare(install_dir) != normalize_for_compare(*default_install_dir)) {
     return tl::unexpected("Refusing to update an unexpected directory");
+  }
+
+  auto parsed_target_version = parse_version_tag(target_version);
+  bool target_version_is_canonical =
+      parsed_target_version.has_value() &&
+      format_version_number(*parsed_target_version) == target_version;
+  if (!target_version_is_canonical) {
+    return tl::unexpected("Refusing to write an invalid update target version");
   }
 
   auto verify_result = verify_downloaded_executable(downloaded_executable, expected_sha256);
@@ -2063,7 +2088,8 @@ finish_update(unsigned long original_pid, const std::filesystem::path& install_d
     return tl::unexpected(replace_result.error());
   }
 
-  auto registry_result = register_uninstall_entry(install_dir, installed_executable);
+  auto registry_result =
+      register_uninstall_entry(install_dir, installed_executable, target_version);
   if (!registry_result.has_value()) {
     return tl::unexpected(registry_result.error());
   }

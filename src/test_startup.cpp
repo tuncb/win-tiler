@@ -113,13 +113,15 @@ TEST_SUITE("installer") {
 
     CHECK(build_finish_update_command_line_wide(
               helper, 4321, install_dir, downloaded_executable,
-              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 5678, true) ==
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.2.3", 5678,
+              true) ==
           L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\helper.exe\" --finish-update "
           L"--pid 4321 --dir \"C:\\Users\\Test User\\AppData\\Local\\win-tiler\" "
           L"--downloaded-exe "
           L"\"C:\\Users\\Test User\\AppData\\Local\\Temp\\win-tiler-update.exe\" "
           L"--expected-sha256 "
           L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+          L"--target-version 1.2.3 "
           L"--running-pid 5678 --restart");
   }
 

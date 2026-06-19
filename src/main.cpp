@@ -412,7 +412,7 @@ int run_app(int argc, char* argv[]) {
             auto update_result =
                 finish_update(cmd.pid, std::filesystem::path(cmd.install_dir),
                               std::filesystem::path(cmd.downloaded_executable), cmd.expected_sha256,
-                              helper_path, cmd.running_pid, cmd.restart);
+                              cmd.target_version, helper_path, cmd.running_pid, cmd.restart);
             if (!update_result.has_value()) {
               spdlog::error("{}", update_result.error());
               exitCode = 1;
