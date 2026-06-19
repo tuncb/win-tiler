@@ -85,7 +85,15 @@ struct WindowManagementSnapshot {
   bool is_currently_managed = false;
   bool is_ignored_by_user_configuration = false;
   bool is_rejected_by_runtime_or_system_filter = false;
+  bool matches_ignored_process = false;
+  bool matches_ignored_title = false;
   bool matches_ignored_process_title_pair = false;
+  bool is_ignored_child_of_process = false;
+  bool is_below_small_window_barrier = false;
+  bool matches_user_ignored_process = false;
+  bool matches_user_ignored_title = false;
+  bool matches_user_ignored_process_title_pair = false;
+  bool is_user_ignored_child_of_process = false;
   std::optional<size_t> monitor_index;
   WindowManagementStatus status = WindowManagementStatus::Rejected;
   std::string ignore_reason;

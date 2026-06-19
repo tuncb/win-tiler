@@ -951,40 +951,107 @@ static bool is_rejected_by_runtime_or_system_filter(const WindowManagementState&
          state.process_name_missing || state.is_owned_dialog || !state.monitor_index.has_value();
 }
 
+static bool matches_default_process_rule(const WindowManagementState& state,
+                                         const wintiler::IgnoreOptions& options,
+                                         const wintiler::IgnoreOptions& defaults) {
+  if (!state.matches_ignored_process || !options.merge_processes) {
+    return false;
+  }
+  for (const auto& process : defaults.ignored_processes) {
+    if (matches_ignored_process_name(state.process_name, process)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool matches_default_title_rule(const WindowManagementState& state,
+                                       const wintiler::IgnoreOptions& options,
+                                       const wintiler::IgnoreOptions& defaults) {
+  if (!state.matches_ignored_title || !options.merge_window_titles) {
+    return false;
+  }
+  for (const auto& title : defaults.ignored_window_titles) {
+    if (state.title == title) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool matches_default_process_title_pair_rule(
+    const WindowManagementState& state, const wintiler::IgnoreOptions& options,
+    const wintiler::IgnoreOptions& defaults) {
+  if (!state.matches_ignored_process_title_pair || !options.merge_process_title_pairs) {
+    return false;
+  }
+  for (const auto& pair : defaults.ignored_process_title_pairs) {
+    if (iequals(state.process_name, pair.first) && iequals(state.title, pair.second)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool matches_default_child_process_rule(const WindowManagementState& state,
+                                               const wintiler::IgnoreOptions& options,
+                                               const wintiler::IgnoreOptions& defaults) {
+  if (!state.is_ignored_child_of_process || !options.merge_ignore_children_of_processes) {
+    return false;
+  }
+  for (const auto& process : defaults.ignore_children_of_processes) {
+    if (iequals(state.process_name, process)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool matches_user_process_rule(const WindowManagementState& state,
+                                      const wintiler::IgnoreOptions& options,
+                                      const wintiler::IgnoreOptions& defaults) {
+  return state.matches_ignored_process &&
+         !matches_default_process_rule(state, options, defaults);
+}
+
+static bool matches_user_title_rule(const WindowManagementState& state,
+                                    const wintiler::IgnoreOptions& options,
+                                    const wintiler::IgnoreOptions& defaults) {
+  return state.matches_ignored_title && !matches_default_title_rule(state, options, defaults);
+}
+
+static bool matches_user_process_title_pair_rule(const WindowManagementState& state,
+                                                 const wintiler::IgnoreOptions& options,
+                                                 const wintiler::IgnoreOptions& defaults) {
+  return state.matches_ignored_process_title_pair &&
+         !matches_default_process_title_pair_rule(state, options, defaults);
+}
+
+static bool matches_user_child_process_rule(const WindowManagementState& state,
+                                            const wintiler::IgnoreOptions& options,
+                                            const wintiler::IgnoreOptions& defaults) {
+  return state.is_ignored_child_of_process &&
+         !matches_default_child_process_rule(state, options, defaults);
+}
+
 static std::string classify_rule_source_for_state(const WindowManagementState& state,
                                                   const wintiler::IgnoreOptions& options) {
   const auto defaults = wintiler::get_default_ignore_options();
-  if (state.matches_ignored_process_title_pair && options.merge_process_title_pairs) {
-    for (const auto& pair : defaults.ignored_process_title_pairs) {
-      if (iequals(state.process_name, pair.first) && iequals(state.title, pair.second)) {
-        return "built-in default";
-      }
-    }
-  }
-  if (state.matches_ignored_process && options.merge_processes) {
-    for (const auto& process : defaults.ignored_processes) {
-      if (matches_ignored_process_name(state.process_name, process)) {
-        return "built-in default";
-      }
-    }
-  }
-  if (state.matches_ignored_title && options.merge_window_titles) {
-    for (const auto& title : defaults.ignored_window_titles) {
-      if (state.title == title) {
-        return "built-in default";
-      }
-    }
-  }
-  if (state.is_ignored_child_of_process && options.merge_ignore_children_of_processes) {
-    for (const auto& process : defaults.ignore_children_of_processes) {
-      if (iequals(state.process_name, process)) {
-        return "built-in default";
-      }
-    }
-  }
-  if (state.is_below_small_window_barrier) {
+  if (state.is_below_small_window_barrier ||
+      matches_user_process_rule(state, options, defaults) ||
+      matches_user_title_rule(state, options, defaults) ||
+      matches_user_process_title_pair_rule(state, options, defaults) ||
+      matches_user_child_process_rule(state, options, defaults)) {
     return "user config";
   }
+
+  if (matches_default_process_title_pair_rule(state, options, defaults) ||
+      matches_default_process_rule(state, options, defaults) ||
+      matches_default_title_rule(state, options, defaults) ||
+      matches_default_child_process_rule(state, options, defaults)) {
+    return "built-in default";
+  }
+
   if (is_ignored_by_user_configuration(state)) {
     return "user config";
   }
@@ -996,6 +1063,7 @@ static std::string classify_rule_source_for_state(const WindowManagementState& s
 
 static WindowManagementSnapshot make_window_management_snapshot(
     const WindowManagementState& state, const wintiler::IgnoreOptions& options) {
+  const auto defaults = wintiler::get_default_ignore_options();
   WindowManagementSnapshot snapshot;
   snapshot.handle = state.handle;
   snapshot.title = state.title;
@@ -1006,7 +1074,17 @@ static WindowManagementSnapshot make_window_management_snapshot(
   snapshot.is_currently_managed = state.is_currently_managed;
   snapshot.is_ignored_by_user_configuration = is_ignored_by_user_configuration(state);
   snapshot.is_rejected_by_runtime_or_system_filter = is_rejected_by_runtime_or_system_filter(state);
+  snapshot.matches_ignored_process = state.matches_ignored_process;
+  snapshot.matches_ignored_title = state.matches_ignored_title;
   snapshot.matches_ignored_process_title_pair = state.matches_ignored_process_title_pair;
+  snapshot.is_ignored_child_of_process = state.is_ignored_child_of_process;
+  snapshot.is_below_small_window_barrier = state.is_below_small_window_barrier;
+  snapshot.matches_user_ignored_process = matches_user_process_rule(state, options, defaults);
+  snapshot.matches_user_ignored_title = matches_user_title_rule(state, options, defaults);
+  snapshot.matches_user_ignored_process_title_pair =
+      matches_user_process_title_pair_rule(state, options, defaults);
+  snapshot.is_user_ignored_child_of_process =
+      matches_user_child_process_rule(state, options, defaults);
   snapshot.monitor_index = state.monitor_index;
   snapshot.ignore_reason = join_reasons(state.reasons);
   snapshot.rule_source = classify_rule_source_for_state(state, options);
@@ -1805,18 +1883,33 @@ std::string format_snapshot_monitor(const WindowManagementSnapshot& snapshot) {
 
 constexpr const wchar_t* IGNORE_DIALOG_WINDOW_CLASS = L"WinTilerIgnoreDialog";
 constexpr UINT_PTR ID_IGNORE_DIALOG_LIST = 2100;
-constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_PAIR = 2101;
-constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_PAIR = 2102;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_RULE = 2101;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_RULE = 2102;
 constexpr UINT_PTR ID_IGNORE_DIALOG_REFRESH = 2103;
 constexpr UINT_PTR ID_IGNORE_DIALOG_COPY = 2104;
 constexpr UINT_PTR ID_IGNORE_DIALOG_OPEN_CONFIG = 2105;
 constexpr UINT_PTR ID_IGNORE_DIALOG_CLOSE = 2106;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_PROCESS = 2110;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_TITLE = 2111;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_PAIR = 2112;
+constexpr UINT_PTR ID_IGNORE_DIALOG_ADD_CHILD_PROCESS = 2113;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_PROCESS = 2120;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_TITLE = 2121;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_PAIR = 2122;
+constexpr UINT_PTR ID_IGNORE_DIALOG_REMOVE_CHILD_PROCESS = 2123;
+
+enum class IgnoreDialogRuleKind {
+  Process,
+  Title,
+  ProcessTitlePair,
+  ChildProcess,
+};
 
 struct IgnoreDialogState {
   HWND hwnd = nullptr;
   HWND list = nullptr;
-  HWND add_pair_button = nullptr;
-  HWND remove_pair_button = nullptr;
+  HWND add_rule_button = nullptr;
+  HWND remove_rule_button = nullptr;
   HWND refresh_button = nullptr;
   HWND copy_button = nullptr;
   HWND open_config_button = nullptr;
@@ -1932,13 +2025,18 @@ void update_ignore_dialog_action_state(IgnoreDialogState& state) {
   auto selected = get_selected_ignore_dialog_row(state);
   bool has_selection = selected.has_value();
   bool has_config = state.config_path.has_value() && !state.config_path->empty();
-  bool selected_is_managed =
-      selected.has_value() && state.rows[*selected].status == WindowManagementStatus::Managed;
-  bool selected_has_user_process_title_rule =
-      selected.has_value() && state.rows[*selected].matches_ignored_process_title_pair &&
-      state.rows[*selected].rule_source == "user config";
-  EnableWindow(state.add_pair_button, selected_is_managed && has_config);
-  EnableWindow(state.remove_pair_button, selected_has_user_process_title_rule && has_config);
+  bool selected_has_rule_data = false;
+  bool selected_has_user_list_rule = false;
+  if (selected.has_value()) {
+    const auto& snapshot = state.rows[*selected];
+    selected_has_rule_data = !snapshot.process_name.empty() || !snapshot.title.empty();
+    selected_has_user_list_rule = snapshot.matches_user_ignored_process ||
+                                  snapshot.matches_user_ignored_title ||
+                                  snapshot.matches_user_ignored_process_title_pair ||
+                                  snapshot.is_user_ignored_child_of_process;
+  }
+  EnableWindow(state.add_rule_button, has_selection && has_config && selected_has_rule_data);
+  EnableWindow(state.remove_rule_button, has_selection && has_config && selected_has_user_list_rule);
   EnableWindow(state.copy_button, has_selection);
   EnableWindow(state.open_config_button, has_config);
 }
@@ -2030,44 +2128,180 @@ void reload_ignore_options_after_dialog_config_update(IgnoreDialogState& state) 
   refresh_ignore_dialog(state);
 }
 
-void add_selected_process_title_pair(IgnoreDialogState& state) {
+std::string rule_kind_display_name(IgnoreDialogRuleKind kind) {
+  switch (kind) {
+  case IgnoreDialogRuleKind::Process:
+    return "process";
+  case IgnoreDialogRuleKind::Title:
+    return "title";
+  case IgnoreDialogRuleKind::ProcessTitlePair:
+    return "process/title";
+  case IgnoreDialogRuleKind::ChildProcess:
+    return "child/owned process";
+  }
+  return "ignore";
+}
+
+bool selected_snapshot_has_rule_value(const WindowManagementSnapshot& snapshot,
+                                      IgnoreDialogRuleKind kind) {
+  switch (kind) {
+  case IgnoreDialogRuleKind::Process:
+  case IgnoreDialogRuleKind::ChildProcess:
+    return !snapshot.process_name.empty();
+  case IgnoreDialogRuleKind::Title:
+    return !snapshot.title.empty();
+  case IgnoreDialogRuleKind::ProcessTitlePair:
+    return !snapshot.process_name.empty() && !snapshot.title.empty();
+  }
+  return false;
+}
+
+bool selected_snapshot_matches_rule(const WindowManagementSnapshot& snapshot,
+                                    IgnoreDialogRuleKind kind) {
+  switch (kind) {
+  case IgnoreDialogRuleKind::Process:
+    return snapshot.matches_user_ignored_process;
+  case IgnoreDialogRuleKind::Title:
+    return snapshot.matches_user_ignored_title;
+  case IgnoreDialogRuleKind::ProcessTitlePair:
+    return snapshot.matches_user_ignored_process_title_pair;
+  case IgnoreDialogRuleKind::ChildProcess:
+    return snapshot.is_user_ignored_child_of_process;
+  }
+  return false;
+}
+
+void add_selected_ignore_rule(IgnoreDialogState& state, IgnoreDialogRuleKind kind) {
   auto selected = get_selected_ignore_dialog_row(state);
   if (!selected.has_value() || !state.config_path.has_value()) {
     return;
   }
 
   const auto& snapshot = state.rows[*selected];
-  auto result = wintiler::add_ignore_process_title_pair_to_config(
-      *state.config_path, snapshot.process_name, snapshot.title);
-  if (!result.has_value()) {
-    show_dialog_error(state.hwnd, result.error());
-    spdlog::error("Failed to add process/title ignore rule: {}", result.error());
-    return;
-  }
-  if (!result->changed) {
-    show_dialog_info(state.hwnd, "That process/title ignore rule already exists.");
+  if (!selected_snapshot_has_rule_value(snapshot, kind)) {
+    show_dialog_info(state.hwnd, "The selected window does not have the data needed for that rule.");
     return;
   }
 
+  bool changed = false;
+  std::string error;
+  switch (kind) {
+  case IgnoreDialogRuleKind::Process: {
+    auto result = wintiler::add_ignore_process_to_config(*state.config_path, snapshot.process_name);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::Title: {
+    auto result = wintiler::add_ignore_window_title_to_config(*state.config_path, snapshot.title);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::ProcessTitlePair: {
+    auto result = wintiler::add_ignore_process_title_pair_to_config(
+        *state.config_path, snapshot.process_name, snapshot.title);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::ChildProcess: {
+    auto result =
+        wintiler::add_ignore_child_process_to_config(*state.config_path, snapshot.process_name);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  }
+
+  if (!error.empty()) {
+    show_dialog_error(state.hwnd, error);
+    spdlog::error("Failed to add {} ignore rule: {}", rule_kind_display_name(kind), error);
+    return;
+  }
+  if (!changed) {
+    show_dialog_info(state.hwnd, "That ignore rule already exists.");
+    return;
+  }
   reload_ignore_options_after_dialog_config_update(state);
 }
 
-void remove_selected_process_title_pair(IgnoreDialogState& state) {
+void remove_selected_ignore_rule(IgnoreDialogState& state, IgnoreDialogRuleKind kind) {
   auto selected = get_selected_ignore_dialog_row(state);
   if (!selected.has_value() || !state.config_path.has_value()) {
     return;
   }
 
   const auto& snapshot = state.rows[*selected];
-  auto result = wintiler::remove_ignore_process_title_pair_from_config(
-      *state.config_path, snapshot.process_name, snapshot.title);
-  if (!result.has_value()) {
-    show_dialog_error(state.hwnd, result.error());
-    spdlog::error("Failed to remove process/title ignore rule: {}", result.error());
+  if (!selected_snapshot_has_rule_value(snapshot, kind)) {
+    show_dialog_info(state.hwnd, "The selected window does not have the data needed for that rule.");
     return;
   }
-  if (!result->changed) {
-    show_dialog_info(state.hwnd, "No matching user process/title ignore rule was found.");
+
+  bool changed = false;
+  std::string error;
+  switch (kind) {
+  case IgnoreDialogRuleKind::Process: {
+    auto result =
+        wintiler::remove_ignore_process_from_config(*state.config_path, snapshot.process_name);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::Title: {
+    auto result =
+        wintiler::remove_ignore_window_title_from_config(*state.config_path, snapshot.title);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::ProcessTitlePair: {
+    auto result = wintiler::remove_ignore_process_title_pair_from_config(
+        *state.config_path, snapshot.process_name, snapshot.title);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  case IgnoreDialogRuleKind::ChildProcess: {
+    auto result =
+        wintiler::remove_ignore_child_process_from_config(*state.config_path, snapshot.process_name);
+    if (result.has_value()) {
+      changed = result->changed;
+    } else {
+      error = result.error();
+    }
+    break;
+  }
+  }
+
+  if (!error.empty()) {
+    show_dialog_error(state.hwnd, error);
+    spdlog::error("Failed to remove {} ignore rule: {}", rule_kind_display_name(kind), error);
+    return;
+  }
+  if (!changed) {
+    show_dialog_info(state.hwnd, "No matching user ignore rule was found.");
     return;
   }
 
@@ -2086,6 +2320,145 @@ void copy_selected_ignore_dialog_details(IgnoreDialogState& state) {
   }
 }
 
+void append_ignore_dialog_menu_item(HMENU menu, UINT_PTR id, const wchar_t* text, bool enabled) {
+  UINT flags = MF_STRING | (enabled ? MF_ENABLED : MF_GRAYED);
+  if (AppendMenuW(menu, flags, id, text) == 0) {
+    spdlog::error("Failed to append ignore dialog menu item {}, error={}", id, GetLastError());
+  }
+}
+
+POINT get_popup_menu_anchor(HWND hwnd, HWND button) {
+  RECT rect = {};
+  if (GetWindowRect(button, &rect) != 0) {
+    return POINT{rect.left, rect.bottom};
+  }
+
+  POINT point{0, 0};
+  if (ClientToScreen(hwnd, &point) == 0) {
+    spdlog::debug("Failed to convert ignore dialog popup anchor, error={}", GetLastError());
+  }
+  return point;
+}
+
+void show_add_ignore_rule_menu(IgnoreDialogState& state) {
+  auto selected = get_selected_ignore_dialog_row(state);
+  if (!selected.has_value()) {
+    return;
+  }
+  const auto& snapshot = state.rows[*selected];
+
+  HMENU menu = CreatePopupMenu();
+  if (menu == nullptr) {
+    spdlog::error("Failed to create add ignore rule menu, error={}", GetLastError());
+    return;
+  }
+
+  append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_ADD_PROCESS, L"Ignore this process",
+                                 selected_snapshot_has_rule_value(snapshot,
+                                                                  IgnoreDialogRuleKind::Process));
+  append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_ADD_TITLE, L"Ignore this exact title",
+                                 selected_snapshot_has_rule_value(snapshot,
+                                                                  IgnoreDialogRuleKind::Title));
+  append_ignore_dialog_menu_item(
+      menu, ID_IGNORE_DIALOG_ADD_PAIR, L"Ignore this process + title",
+      selected_snapshot_has_rule_value(snapshot, IgnoreDialogRuleKind::ProcessTitlePair));
+  append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_ADD_CHILD_PROCESS,
+                                 L"Ignore child/owned windows from this process",
+                                 selected_snapshot_has_rule_value(snapshot,
+                                                                  IgnoreDialogRuleKind::ChildProcess));
+
+  POINT anchor = get_popup_menu_anchor(state.hwnd, state.add_rule_button);
+  int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, anchor.x, anchor.y, 0,
+                               state.hwnd, nullptr);
+  if (DestroyMenu(menu) == 0) {
+    spdlog::error("Failed to destroy add ignore rule menu, error={}", GetLastError());
+  }
+
+  switch (command) {
+  case ID_IGNORE_DIALOG_ADD_PROCESS:
+    add_selected_ignore_rule(state, IgnoreDialogRuleKind::Process);
+    return;
+  case ID_IGNORE_DIALOG_ADD_TITLE:
+    add_selected_ignore_rule(state, IgnoreDialogRuleKind::Title);
+    return;
+  case ID_IGNORE_DIALOG_ADD_PAIR:
+    add_selected_ignore_rule(state, IgnoreDialogRuleKind::ProcessTitlePair);
+    return;
+  case ID_IGNORE_DIALOG_ADD_CHILD_PROCESS:
+    add_selected_ignore_rule(state, IgnoreDialogRuleKind::ChildProcess);
+    return;
+  default:
+    return;
+  }
+}
+
+void show_remove_ignore_rule_menu(IgnoreDialogState& state) {
+  auto selected = get_selected_ignore_dialog_row(state);
+  if (!selected.has_value()) {
+    return;
+  }
+  const auto& snapshot = state.rows[*selected];
+
+  HMENU menu = CreatePopupMenu();
+  if (menu == nullptr) {
+    spdlog::error("Failed to create remove ignore rule menu, error={}", GetLastError());
+    return;
+  }
+
+  bool has_item = false;
+  if (selected_snapshot_matches_rule(snapshot, IgnoreDialogRuleKind::Process)) {
+    append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_REMOVE_PROCESS,
+                                   L"Remove user process rule", true);
+    has_item = true;
+  }
+  if (selected_snapshot_matches_rule(snapshot, IgnoreDialogRuleKind::Title)) {
+    append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_REMOVE_TITLE,
+                                   L"Remove user title rule", true);
+    has_item = true;
+  }
+  if (selected_snapshot_matches_rule(snapshot, IgnoreDialogRuleKind::ProcessTitlePair)) {
+    append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_REMOVE_PAIR,
+                                   L"Remove user process + title rule", true);
+    has_item = true;
+  }
+  if (selected_snapshot_matches_rule(snapshot, IgnoreDialogRuleKind::ChildProcess)) {
+    append_ignore_dialog_menu_item(menu, ID_IGNORE_DIALOG_REMOVE_CHILD_PROCESS,
+                                   L"Remove user child/owned process rule", true);
+    has_item = true;
+  }
+
+  if (!has_item) {
+    if (DestroyMenu(menu) == 0) {
+      spdlog::error("Failed to destroy empty remove ignore rule menu, error={}", GetLastError());
+    }
+    return;
+  }
+
+  POINT anchor = get_popup_menu_anchor(state.hwnd, state.remove_rule_button);
+  int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, anchor.x, anchor.y, 0,
+                               state.hwnd, nullptr);
+  if (DestroyMenu(menu) == 0) {
+    spdlog::error("Failed to destroy remove ignore rule menu, error={}", GetLastError());
+  }
+
+  switch (command) {
+  case ID_IGNORE_DIALOG_REMOVE_PROCESS:
+    remove_selected_ignore_rule(state, IgnoreDialogRuleKind::Process);
+    return;
+  case ID_IGNORE_DIALOG_REMOVE_TITLE:
+    remove_selected_ignore_rule(state, IgnoreDialogRuleKind::Title);
+    return;
+  case ID_IGNORE_DIALOG_REMOVE_PAIR:
+    remove_selected_ignore_rule(state, IgnoreDialogRuleKind::ProcessTitlePair);
+    return;
+  case ID_IGNORE_DIALOG_REMOVE_CHILD_PROCESS:
+    remove_selected_ignore_rule(state, IgnoreDialogRuleKind::ChildProcess);
+    return;
+  default:
+    return;
+  }
+}
+
 void layout_ignore_dialog_controls(IgnoreDialogState& state, int width, int height) {
   constexpr int margin = 10;
   constexpr int button_height = 28;
@@ -2099,8 +2472,8 @@ void layout_ignore_dialog_controls(IgnoreDialogState& state, int width, int heig
 
   int y = height - margin - button_height;
   int x = margin;
-  const int widths[] = {180, 150, 88, 105, 112};
-  HWND buttons[] = {state.add_pair_button, state.remove_pair_button, state.refresh_button,
+  const int widths[] = {96, 112, 88, 105, 112};
+  HWND buttons[] = {state.add_rule_button, state.remove_rule_button, state.refresh_button,
                     state.copy_button, state.open_config_button};
   for (size_t i = 0; i < std::size(buttons); ++i) {
     if (MoveWindow(buttons[i], x, y, widths[i], button_height, TRUE) == 0) {
@@ -2142,10 +2515,10 @@ LRESULT CALLBACK ignore_dialog_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
       return -1;
     }
     initialize_ignore_dialog_list(state->list);
-    state->add_pair_button =
-        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_ADD_PAIR, L"Ignore process + title");
-    state->remove_pair_button =
-        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_REMOVE_PAIR, L"Remove user rule");
+    state->add_rule_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_ADD_RULE, L"Add rule...");
+    state->remove_rule_button =
+        create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_REMOVE_RULE, L"Remove rule...");
     state->refresh_button =
         create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_REFRESH, L"Refresh");
     state->copy_button = create_ignore_dialog_button(hwnd, ID_IGNORE_DIALOG_COPY, L"Copy details");
@@ -2180,11 +2553,11 @@ LRESULT CALLBACK ignore_dialog_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
       return 0;
     }
     switch (LOWORD(wParam)) {
-    case ID_IGNORE_DIALOG_ADD_PAIR:
-      add_selected_process_title_pair(*state);
+    case ID_IGNORE_DIALOG_ADD_RULE:
+      show_add_ignore_rule_menu(*state);
       return 0;
-    case ID_IGNORE_DIALOG_REMOVE_PAIR:
-      remove_selected_process_title_pair(*state);
+    case ID_IGNORE_DIALOG_REMOVE_RULE:
+      show_remove_ignore_rule_menu(*state);
       return 0;
     case ID_IGNORE_DIALOG_REFRESH:
       refresh_ignore_dialog(*state);
