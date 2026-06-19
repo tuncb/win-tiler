@@ -282,10 +282,14 @@ struct LoopInputState {
 
   // Virtual desktop ID (GUID as string, from first managed window)
   std::optional<std::string> desktop_id;
+
+  // True when a visible top-level window from a configured overlay-suppression process exists.
+  bool suppress_overlay_rectangles = false;
 };
 
 // Gather all input state for the main loop in a single call
 void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
+                                  const wintiler::renderer::RenderOptions& render_options,
                                   LoopInputState& state, std::vector<HWND_T>& all_handles);
 
 #ifndef DOCTEST_CONFIG_DISABLE

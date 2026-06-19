@@ -90,10 +90,14 @@ bool trace_logging_enabled() {
 OverlayRenderSnapshot make_overlay_render_snapshot(
     const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
     const renderer::RenderOptions& config, std::optional<StoredCell> stored_cell,
-    const std::optional<std::string>& message) {
+    const std::optional<std::string>& message, bool suppress_rectangles) {
   OverlayRenderSnapshot snapshot;
   snapshot.message = message;
   snapshot.toast_font_size = message.has_value() ? config.toast_font_size : 0.0f;
+
+  if (suppress_rectangles) {
+    return snapshot;
+  }
 
   size_t rect_capacity = 0;
   for (const auto& cluster : system.clusters) {
@@ -1046,7 +1050,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Gather all Windows API input state in a single call
     auto gather_start = std::chrono::steady_clock::now();
-    winapi::gather_loop_input_state_into(options.ignoreOptions, input_state, input_handles);
+    winapi::gather_loop_input_state_into(options.ignoreOptions,
+                                         options.visualizationOptions.renderOptions, input_state,
+                                         input_handles);
     filter_session_floating_windows_from_input_state(floating_state, input_state);
     winapi::set_notification_area_save_layout_monitors(
         make_notification_area_save_layout_monitors(input_state));
@@ -1163,11 +1169,12 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       auto visible_message = toast.get_visible_message();
       auto render_snapshot = make_overlay_render_snapshot(
           engine.system, geometries, options.visualizationOptions.renderOptions, engine.stored_cell,
-          visible_message);
+          visible_message, input_state.suppress_overlay_rectangles);
       if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
         auto render_start = std::chrono::steady_clock::now();
         renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
-                         engine.stored_cell, visible_message);
+                         engine.stored_cell, visible_message,
+                         input_state.suppress_overlay_rectangles);
         perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
       }
       perf.note_active_frame();
@@ -1294,12 +1301,12 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto visible_message = toast.get_visible_message();
     auto render_snapshot = make_overlay_render_snapshot(
         engine.system, geometries, provider.options.visualizationOptions.renderOptions,
-        engine.stored_cell, visible_message);
+        engine.stored_cell, visible_message, input_state.suppress_overlay_rectangles);
     if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
       auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries,
                        provider.options.visualizationOptions.renderOptions, engine.stored_cell,
-                       visible_message);
+                       visible_message, input_state.suppress_overlay_rectangles);
       perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
     }
 

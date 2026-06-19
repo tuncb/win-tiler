@@ -473,9 +473,20 @@ bool should_ignore_topmost_window(bool is_topmost, bool is_fullscreen) {
 struct WindowEnumContext {
   std::vector<HWND_T>* handles;
   const wintiler::IgnoreOptions* ignore_options;
+  const wintiler::renderer::RenderOptions* render_options;
+  bool* suppress_overlay_rectangles;
   size_t generation;
   bool trace_enabled = false;
 };
+
+bool matches_overlay_suppression_process(const std::string& process_name,
+                                         const wintiler::renderer::RenderOptions& render_options) {
+  return std::any_of(render_options.hide_rectangles_when_processes_open.begin(),
+                     render_options.hide_rectangles_when_processes_open.end(),
+                     [&](const std::string& configured_process) {
+                       return matches_ignored_process_name(process_name, configured_process);
+                     });
+}
 
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
   auto* ctx = reinterpret_cast<WindowEnumContext*>(lParam);
@@ -492,6 +503,22 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
+  auto pid = get_window_pid(reinterpret_cast<HWND_T>(hwnd));
+  std::string process_name;
+  if (pid.has_value()) {
+    process_name = get_process_name_from_pid(*pid, ctx->generation);
+    if (!process_name.empty() && ctx->render_options != nullptr &&
+        ctx->suppress_overlay_rectangles != nullptr &&
+        matches_overlay_suppression_process(process_name, *ctx->render_options)) {
+      *ctx->suppress_overlay_rectangles = true;
+      if (ctx->trace_enabled) {
+        spdlog::trace(
+            "WinAPI overlay rectangle suppression matched: hwnd={}, pid={}, process=\"{}\"",
+            static_cast<void*>(hwnd), format_optional_pid(pid), process_name);
+      }
+    }
+  }
+
   char title[256];
   if (GetWindowTextA(hwnd, title, sizeof(title)) == 0) {
     if (ctx->trace_enabled) {
@@ -501,7 +528,6 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  auto pid = get_window_pid(reinterpret_cast<HWND_T>(hwnd));
   std::string class_name = get_window_class_name_for_pid(hwnd, pid, ctx->generation);
 
   if (class_name == "SysDragImage") {
@@ -581,7 +607,6 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
   }
 
-  std::string process_name;
   if (pid.has_value()) {
     process_name = get_process_name_from_pid(*pid, ctx->generation);
   }
@@ -683,10 +708,13 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
 }
 
 static void fill_windows_list(const wintiler::IgnoreOptions& ignore_options,
-                              std::vector<HWND_T>& handles) {
+                              std::vector<HWND_T>& handles,
+                              const wintiler::renderer::RenderOptions* render_options = nullptr,
+                              bool* suppress_overlay_rectangles = nullptr) {
   handles.clear();
   size_t generation = ++g_metadata_cache_generation;
-  WindowEnumContext ctx{&handles, &ignore_options, generation, trace_logging_enabled()};
+  WindowEnumContext ctx{&handles, &ignore_options, render_options, suppress_overlay_rectangles,
+                        generation, trace_logging_enabled()};
   EnumWindows(WindowEnumProc, (LPARAM)&ctx);
   prune_metadata_caches_after_enumeration(generation);
   if (ctx.trace_enabled) {
@@ -695,8 +723,11 @@ static void fill_windows_list(const wintiler::IgnoreOptions& ignore_options,
 }
 
 static void gather_raw_window_data_into(const wintiler::IgnoreOptions& ignore_options,
-                                        std::vector<HWND_T>& handles) {
-  fill_windows_list(ignore_options, handles);
+                                        std::vector<HWND_T>& handles,
+                                        const wintiler::renderer::RenderOptions* render_options =
+                                            nullptr,
+                                        bool* suppress_overlay_rectangles = nullptr) {
+  fill_windows_list(ignore_options, handles, render_options, suppress_overlay_rectangles);
 
   std::sort(handles.begin(), handles.end(), [](HWND_T lhs, HWND_T rhs) {
     return reinterpret_cast<uintptr_t>(lhs) < reinterpret_cast<uintptr_t>(rhs);
@@ -3138,14 +3169,17 @@ static bool is_window_fullscreen(HWND_T hwnd) {
 }
 
 void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
+                                  const wintiler::renderer::RenderOptions& render_options,
                                   LoopInputState& state, std::vector<HWND_T>& all_handles) {
   bool trace_enabled = trace_logging_enabled();
 
   // Gather monitor and window data
   fill_monitors(state.monitors);
   state.windows_per_monitor.resize(state.monitors.size());
+  state.suppress_overlay_rectangles = false;
 
-  gather_raw_window_data_into(ignore_options, all_handles);
+  gather_raw_window_data_into(ignore_options, all_handles, &render_options,
+                              &state.suppress_overlay_rectangles);
 
   if (trace_enabled) {
     spdlog::trace("WinAPI input gather: monitors={}, tiling_candidates={}", state.monitors.size(),

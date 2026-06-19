@@ -51,7 +51,7 @@ void toggle_runtime_verbose_logging(RuntimeLoggingState& state);
 [[nodiscard]] OverlayRenderSnapshot make_overlay_render_snapshot(
     const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
     const renderer::RenderOptions& config, std::optional<StoredCell> stored_cell,
-    const std::optional<std::string>& message);
+    const std::optional<std::string>& message, bool suppress_rectangles);
 
 [[nodiscard]] bool should_render_overlay(OverlayRenderCache& cache, OverlayRenderSnapshot snapshot);
 [[nodiscard]] bool should_clear_overlay(OverlayRenderCache& cache);

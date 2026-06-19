@@ -547,6 +547,7 @@ std::string get_options_toml_documentation() {
 # border_width = 3.0
 # toast_font_size = 60.0
 # zen_percentage = 0.90
+# hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 #
 # toast_duration_ms: how long status toast messages stay visible.
 # normal_color: overlay rectangle color for normal cells.
@@ -555,6 +556,8 @@ std::string get_options_toml_documentation() {
 # border_width: overlay border width in pixels. Must be non-negative.
 # toast_font_size: toast text size. Must be at least 1.0.
 # zen_percentage: zen cell size from 0.1 to 1.0 of the monitor cluster.
+# hide_rectangles_when_processes_open: executable names that hide overlay rectangles while a
+# visible top-level window from that process exists. Matching is case-insensitive.
 # Color values are [red, green, blue, alpha], each in the 0-255 range.
 # Alpha controls opacity: 0 is transparent, 255 is opaque.
 #
@@ -857,6 +860,11 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     render.insert("border_width", ro.border_width);
     render.insert("toast_font_size", ro.toast_font_size);
     render.insert("zen_percentage", ro.zen_percentage);
+    toml::array hide_rectangles_when_processes_open;
+    for (const auto& process : ro.hide_rectangles_when_processes_open) {
+      hide_rectangles_when_processes_open.push_back(process);
+    }
+    render.insert("hide_rectangles_when_processes_open", hide_rectangles_when_processes_open);
     visualization.insert("render", render);
     visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
     root.insert("visualization", visualization);
@@ -1224,6 +1232,13 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
         }
         if (auto zenPercentage = get_number<float>((*render)["zen_percentage"])) {
           ro.zen_percentage = *zenPercentage;
+        }
+        if (auto processes = (*render)["hide_rectangles_when_processes_open"].as_array()) {
+          for (const auto& process : *processes) {
+            if (auto str = process.as_string()) {
+              ro.hide_rectangles_when_processes_open.push_back(str->get());
+            }
+          }
         }
       }
 

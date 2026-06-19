@@ -449,6 +449,7 @@ TEST_SUITE("Generated TOML") {
         "border_width",
         "toast_font_size",
         "zen_percentage",
+        "hide_rectangles_when_processes_open",
         "name",
         "primary",
         "index",
@@ -461,6 +462,43 @@ TEST_SUITE("Generated TOML") {
     auto read_result = read_options_toml(temp_path);
     REQUIRE(read_result.has_value());
     CHECK(read_result.value().gapOptions.horizontal == kDefaultGapHorizontal);
+  }
+
+  TEST_CASE("render process suppression list can be configured") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[visualization.render]\n";
+      file << "hide_rectangles_when_processes_open = [\"ShareApp.exe\", \"overlay.exe\"]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+
+    const auto& processes =
+        result.value().visualizationOptions.renderOptions.hide_rectangles_when_processes_open;
+    CHECK(processes == std::vector<std::string>{"ShareApp.exe", "overlay.exe"});
+  }
+
+  TEST_CASE("render process suppression list is written to TOML") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    GlobalOptions options = get_default_global_options();
+    options.visualizationOptions.renderOptions.hide_rectangles_when_processes_open = {
+        "ShareApp.exe", "overlay.exe"};
+
+    auto write_result = write_options_toml(options, temp_path);
+    REQUIRE(write_result.has_value());
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+
+    const auto& processes =
+        read_result.value().visualizationOptions.renderOptions.hide_rectangles_when_processes_open;
+    CHECK(processes == std::vector<std::string>{"ShareApp.exe", "overlay.exe"});
   }
 }
 

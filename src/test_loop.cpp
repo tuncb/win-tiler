@@ -342,8 +342,8 @@ TEST_SUITE("loop") {
     options.stored_color = {9, 10, 11, 12};
     options.border_width = 4.0f;
 
-    auto snapshot =
-        make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 20}, std::nullopt);
+    auto snapshot = make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 20},
+                                                 std::nullopt, false);
 
     REQUIRE(snapshot.rects.size() == 2);
     CHECK(snapshot.rects[0].x == doctest::Approx(10.0f));
@@ -354,6 +354,29 @@ TEST_SUITE("loop") {
     CHECK(snapshot.rects[1].color.r == 9);
     CHECK(snapshot.rects[1].color.g == 10);
     CHECK_FALSE(snapshot.message.has_value());
+  }
+
+  TEST_CASE("overlay render snapshot suppresses rectangles while preserving toast") {
+    ctrl::System system;
+    ctrl::Cluster cluster;
+
+    ctrl::CellData cell;
+    cell.leaf_id = 10;
+    cluster.tree.add_node(cell);
+    system.clusters.push_back(cluster);
+
+    std::vector<std::vector<ctrl::Rect>> geometries = {{{10.0f, 20.0f, 300.0f, 400.0f}}};
+
+    renderer::RenderOptions options;
+    options.toast_font_size = 32.0f;
+
+    auto snapshot = make_overlay_render_snapshot(system, geometries, options, std::nullopt,
+                                                 std::optional<std::string>("Paused"), true);
+
+    CHECK(snapshot.rects.empty());
+    REQUIRE(snapshot.message.has_value());
+    CHECK(*snapshot.message == "Paused");
+    CHECK(snapshot.toast_font_size == doctest::Approx(32.0f));
   }
 
   TEST_CASE("runtime verbose logging toggles between trace and configured level") {

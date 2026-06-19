@@ -154,6 +154,7 @@ struct RenderOptions {
   float border_width = kDefaultBorderWidth;
   float toast_font_size = kDefaultToastFontSize;
   float zen_percentage = kDefaultZenPercentage; // Zen cell size as percentage of cluster (0.0-1.0)
+  std::vector<std::string> hide_rectangles_when_processes_open;
 };
 } // namespace renderer
 

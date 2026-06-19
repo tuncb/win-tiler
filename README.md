@@ -33,7 +33,7 @@ Top-level sections:
 - `gap`: horizontal and vertical spacing between tiled windows.
 - `loop`: loop timing, automatic zen toggling on maximize, and mouse drag/drop behavior.
 - `layout`: optional declarative tiling rules selected by managed window count.
-- `visualization`: toast timing and overlay rendering settings, including zen mode sizing.
+- `visualization`: toast timing and overlay rendering settings, including zen mode sizing and process-based rectangle hiding.
 - `monitor_profiles`: optional per-monitor overrides for gap, layout, and zen mode sizing.
 
 Default config written by `win-tiler init-config`:
@@ -115,6 +115,7 @@ stored_color = [255, 180, 0, 200]
 border_width = 3.0
 toast_font_size = 60.0
 zen_percentage = 0.9
+hide_rectangles_when_processes_open = []
 ```
 
 Per-monitor tiling overrides can target a monitor by device name, monitor index, primary status, or
