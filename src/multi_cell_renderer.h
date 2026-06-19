@@ -20,7 +20,7 @@ namespace renderer {
 // Skips clusters with has_fullscreen_cell set
 void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
             const RenderOptions& config, std::optional<StoredCell> stored_cell,
-            const std::optional<std::string>& message);
+            const std::optional<std::string>& message, bool suppress_rectangles);
 
 } // namespace renderer
 } // namespace wintiler
