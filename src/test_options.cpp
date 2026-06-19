@@ -1149,6 +1149,124 @@ TEST_SUITE("Monitor Profile Options") {
 }
 
 TEST_SUITE("Ignore Config Updates") {
+  TEST_CASE("add and remove process ignore rule updates only the process list") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_processes_with_defaults = false\n";
+      file << "processes = [\"app.exe\"]\n";
+      file << "window_titles = [\"Tool Window\"]\n";
+    }
+
+    auto duplicate = add_ignore_process_to_config(temp_path, "APP.exe");
+    REQUIRE(duplicate.has_value());
+    CHECK_FALSE(duplicate->changed);
+    CHECK(duplicate->value_count == 1);
+
+    auto added = add_ignore_process_to_config(temp_path, "other.exe");
+    REQUIRE(added.has_value());
+    CHECK(added->changed);
+    CHECK(added->value_count == 2);
+
+    auto removed = remove_ignore_process_from_config(temp_path, "OTHER.exe");
+    REQUIRE(removed.has_value());
+    CHECK(removed->changed);
+    CHECK(removed->value_count == 1);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& processes = read_result->ignoreOptions.ignored_processes;
+    REQUIRE(processes.size() == 1);
+    CHECK(processes[0] == "app.exe");
+    CHECK(read_result->ignoreOptions.ignored_window_titles.size() == 1);
+    CHECK(read_result->ignoreOptions.ignored_window_titles[0] == "Tool Window");
+  }
+
+  TEST_CASE("add and remove exact window title ignore rule") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_window_titles_with_defaults = false\n";
+      file << "window_titles = [\"Tool Window\"]\n";
+    }
+
+    auto duplicate = add_ignore_window_title_to_config(temp_path, "Tool Window");
+    REQUIRE(duplicate.has_value());
+    CHECK_FALSE(duplicate->changed);
+    CHECK(duplicate->value_count == 1);
+
+    auto added = add_ignore_window_title_to_config(temp_path, "Settings");
+    REQUIRE(added.has_value());
+    CHECK(added->changed);
+    CHECK(added->value_count == 2);
+
+    auto removed = remove_ignore_window_title_from_config(temp_path, "Settings");
+    REQUIRE(removed.has_value());
+    CHECK(removed->changed);
+    CHECK(removed->value_count == 1);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& titles = read_result->ignoreOptions.ignored_window_titles;
+    REQUIRE(titles.size() == 1);
+    CHECK(titles[0] == "Tool Window");
+  }
+
+  TEST_CASE("add child process ignore rule creates missing ignore section") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[gap]\n";
+      file << "horizontal = 12\n";
+    }
+
+    auto result = add_ignore_child_process_to_config(temp_path, "launcher.exe");
+    REQUIRE(result.has_value());
+    CHECK(result->changed);
+    CHECK(result->value_count == 1);
+
+    std::string text = read_text_file(temp_path);
+    CHECK(text.find("[gap]") != std::string::npos);
+    CHECK(text.find("[ignore]") != std::string::npos);
+    CHECK(text.find("ignore_children_of_processes") != std::string::npos);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& children = read_result->ignoreOptions.ignore_children_of_processes;
+    CHECK(std::find(children.begin(), children.end(), "launcher.exe") != children.end());
+  }
+
+  TEST_CASE("remove child process ignore rule is case insensitive") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+
+    {
+      std::ofstream file(temp_path);
+      file << "[ignore]\n";
+      file << "merge_ignore_children_of_processes_with_defaults = false\n";
+      file << "ignore_children_of_processes = [\"launcher.exe\", \"host.exe\"]\n";
+    }
+
+    auto result = remove_ignore_child_process_from_config(temp_path, "LAUNCHER.exe");
+    REQUIRE(result.has_value());
+    CHECK(result->changed);
+    CHECK(result->value_count == 1);
+
+    auto read_result = read_options_toml(temp_path);
+    REQUIRE(read_result.has_value());
+    const auto& children = read_result->ignoreOptions.ignore_children_of_processes;
+    REQUIRE(children.size() == 1);
+    CHECK(children[0] == "host.exe");
+  }
+
   TEST_CASE("add process title pair creates missing ignore section and preserves other sections") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);

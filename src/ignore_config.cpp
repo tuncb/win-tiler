@@ -206,9 +206,8 @@ write_text_atomically(const std::filesystem::path& path, const std::string& text
   return delta;
 }
 
-[[nodiscard]] KeyRange find_process_title_pairs_key(const std::vector<TextLine>& lines,
-                                                    const TableRange& table) {
-  constexpr std::string_view key = "process_title_pairs";
+[[nodiscard]] KeyRange find_ignore_key(const std::vector<TextLine>& lines, const TableRange& table,
+                                       std::string_view key) {
   for (size_t i = table.begin + 1; i < table.end; ++i) {
     if (!line_starts_with_key(lines[i].text, key)) {
       continue;
@@ -225,6 +224,18 @@ write_text_atomically(const std::filesystem::path& path, const std::string& text
   return {};
 }
 
+[[nodiscard]] std::string make_string_array_line(
+    std::string_view key, const std::vector<std::string>& values) {
+  toml::array array;
+  for (const auto& value : values) {
+    array.push_back(value);
+  }
+
+  std::ostringstream stream;
+  stream << array;
+  return std::string(key) + " = " + stream.str();
+}
+
 [[nodiscard]] std::string make_process_title_pairs_line(
     const std::vector<std::pair<std::string, std::string>>& pairs) {
   toml::array array;
@@ -238,6 +249,28 @@ write_text_atomically(const std::filesystem::path& path, const std::string& text
   std::ostringstream stream;
   stream << array;
   return "process_title_pairs = " + stream.str();
+}
+
+[[nodiscard]] std::vector<std::string> read_user_string_list(const toml::table& parsed,
+                                                             std::string_view key) {
+  std::vector<std::string> values;
+  const auto* ignore = parsed["ignore"].as_table();
+  if (ignore == nullptr) {
+    return values;
+  }
+
+  const auto* array = (*ignore)[key].as_array();
+  if (array == nullptr) {
+    return values;
+  }
+
+  for (const auto& entry : *array) {
+    const auto* value = entry.as_string();
+    if (value != nullptr) {
+      values.push_back(value->get());
+    }
+  }
+  return values;
 }
 
 [[nodiscard]] std::vector<std::pair<std::string, std::string>>
@@ -294,11 +327,10 @@ validate_toml_text(std::string_view text, const char* error_prefix) {
   }
 }
 
-[[nodiscard]] std::vector<TextLine>
-apply_process_title_pairs_to_lines(std::vector<TextLine> lines,
-                                   const std::vector<std::pair<std::string, std::string>>& pairs) {
+[[nodiscard]] std::vector<TextLine> apply_ignore_key_line_to_lines(std::vector<TextLine> lines,
+                                                                   std::string_view key,
+                                                                   const std::string& line) {
   TableRange table = find_ignore_table(lines);
-  const std::string line = make_process_title_pairs_line(pairs);
 
   if (!table.found) {
     if (!lines.empty() && !lines.back().text.empty()) {
@@ -309,28 +341,107 @@ apply_process_title_pairs_to_lines(std::vector<TextLine> lines,
     return lines;
   }
 
-  KeyRange key = find_process_title_pairs_key(lines, table);
-  if (key.found) {
-    lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(key.begin),
-                lines.begin() + static_cast<std::ptrdiff_t>(key.end));
-    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(key.begin), {line});
+  KeyRange key_range = find_ignore_key(lines, table, key);
+  if (key_range.found) {
+    lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(key_range.begin),
+                lines.begin() + static_cast<std::ptrdiff_t>(key_range.end));
+    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(key_range.begin), {line});
     return lines;
   }
 
   size_t insert_line = table.end;
-  if (insert_line > table.begin + 1 && insert_line <= lines.size() &&
-      !lines[insert_line - 1].text.empty()) {
-    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_line), {line});
-  } else {
-    lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_line), {line});
-  }
+  lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_line), {line});
   return lines;
+}
+
+[[nodiscard]] std::vector<TextLine>
+apply_process_title_pairs_to_lines(std::vector<TextLine> lines,
+                                   const std::vector<std::pair<std::string, std::string>>& pairs) {
+  const std::string line = make_process_title_pairs_line(pairs);
+  return apply_ignore_key_line_to_lines(std::move(lines), "process_title_pairs", line);
 }
 
 enum class PairMutation {
   Add,
   Remove,
 };
+
+enum class ListMutation {
+  Add,
+  Remove,
+};
+
+[[nodiscard]] bool string_value_matches(std::string_view left, std::string_view right,
+                                        bool case_insensitive) {
+  if (case_insensitive) {
+    return iequals(left, right);
+  }
+  return left == right;
+}
+
+[[nodiscard]] tl::expected<IgnoreStringListUpdateResult, std::string>
+update_ignore_string_list_config(const std::filesystem::path& config_path, std::string_view key,
+                                 const std::string& value, bool case_insensitive,
+                                 ListMutation mutation) {
+  if (value.empty()) {
+    return tl::unexpected("Ignore value must be non-empty");
+  }
+
+  auto text = read_file_text(config_path);
+  if (!text.has_value()) {
+    return tl::unexpected(text.error());
+  }
+
+  auto parsed = parse_existing_config(*text);
+  if (!parsed.has_value()) {
+    return tl::unexpected(parsed.error());
+  }
+
+  auto values = read_user_string_list(*parsed, key);
+  bool changed = false;
+
+  switch (mutation) {
+  case ListMutation::Add:
+    if (std::none_of(values.begin(), values.end(), [&](const auto& existing) {
+          return string_value_matches(existing, value, case_insensitive);
+        })) {
+      values.push_back(value);
+      changed = true;
+    }
+    break;
+  case ListMutation::Remove: {
+    const size_t old_size = values.size();
+    values.erase(std::remove_if(values.begin(), values.end(),
+                                [&](const auto& existing) {
+                                  return string_value_matches(existing, value, case_insensitive);
+                                }),
+                 values.end());
+    changed = values.size() != old_size;
+    break;
+  }
+  }
+
+  if (!changed) {
+    return IgnoreStringListUpdateResult{false, values.size()};
+  }
+
+  std::vector<TextLine> lines = split_lines(*text);
+  const std::string line = make_string_array_line(key, values);
+  lines = apply_ignore_key_line_to_lines(std::move(lines), key, line);
+  std::string updated_text = join_lines(lines);
+
+  auto validation = validate_toml_text(updated_text, "Updated TOML");
+  if (!validation.has_value()) {
+    return tl::unexpected(validation.error());
+  }
+
+  auto write_result = write_text_atomically(config_path, updated_text);
+  if (!write_result.has_value()) {
+    return tl::unexpected(write_result.error());
+  }
+
+  return IgnoreStringListUpdateResult{true, values.size()};
+}
 
 [[nodiscard]] tl::expected<IgnoreProcessTitlePairUpdateResult, std::string>
 update_ignore_process_title_pair_config(const std::filesystem::path& config_path,
@@ -394,6 +505,48 @@ update_ignore_process_title_pair_config(const std::filesystem::path& config_path
 }
 
 } // namespace
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+add_ignore_process_to_config(const std::filesystem::path& config_path,
+                             const std::string& process) {
+  return update_ignore_string_list_config(config_path, "processes", process, true,
+                                          ListMutation::Add);
+}
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+remove_ignore_process_from_config(const std::filesystem::path& config_path,
+                                  const std::string& process) {
+  return update_ignore_string_list_config(config_path, "processes", process, true,
+                                          ListMutation::Remove);
+}
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+add_ignore_window_title_to_config(const std::filesystem::path& config_path,
+                                  const std::string& title) {
+  return update_ignore_string_list_config(config_path, "window_titles", title, false,
+                                          ListMutation::Add);
+}
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+remove_ignore_window_title_from_config(const std::filesystem::path& config_path,
+                                       const std::string& title) {
+  return update_ignore_string_list_config(config_path, "window_titles", title, false,
+                                          ListMutation::Remove);
+}
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+add_ignore_child_process_to_config(const std::filesystem::path& config_path,
+                                   const std::string& process) {
+  return update_ignore_string_list_config(config_path, "ignore_children_of_processes", process,
+                                          true, ListMutation::Add);
+}
+
+tl::expected<IgnoreStringListUpdateResult, std::string>
+remove_ignore_child_process_from_config(const std::filesystem::path& config_path,
+                                        const std::string& process) {
+  return update_ignore_string_list_config(config_path, "ignore_children_of_processes", process,
+                                          true, ListMutation::Remove);
+}
 
 tl::expected<IgnoreProcessTitlePairUpdateResult, std::string>
 add_ignore_process_title_pair_to_config(const std::filesystem::path& config_path,
