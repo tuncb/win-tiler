@@ -32,6 +32,18 @@ You will start using win-tiler directly. Check out the tray icon for more option
 
 You can do a per-user installation and by using the Install option. The app can be uninstalled from the add/remove programs system setting in Windows.
 
+## Configuration
+
+`win-tiler` reads TOML configuration from `--config <filepath>` or, for runtime commands such as
+`loop` and `track-windows`, from `win-tiler.toml` next to the executable when that file exists.
+
+Every configuration field is optional. Missing values fall back to built-in defaults. Keyboard
+bindings merge with defaults when an action is omitted. Ignore lists can merge with or replace the
+built-in defaults through the `merge_*_with_defaults` flags.
+
+See [docs/configuration.md](docs/configuration.md) for the full configuration reference, default
+generated config, layout rule examples, and monitor profile examples.
+
 ## How To
 
 Default shortcuts use `super` for the Windows key. Keyboard bindings can be changed in the
@@ -89,15 +101,3 @@ Right-click the `win-tiler` notification-area icon to open the tray menu.
 | Check updates | Tray menu `Check updates...`. | Checks the installed app for an available update. |
 | About | Tray menu `About...`. | Shows the app version and repository link. |
 | Exit | Tray menu `Exit`. | Exits `win-tiler`. |
-
-## Configuration
-
-`win-tiler` reads TOML configuration from `--config <filepath>` or, for runtime commands such as
-`loop` and `track-windows`, from `win-tiler.toml` next to the executable when that file exists.
-
-Every configuration field is optional. Missing values fall back to built-in defaults. Keyboard
-bindings merge with defaults when an action is omitted. Ignore lists can merge with or replace the
-built-in defaults through the `merge_*_with_defaults` flags.
-
-See [docs/configuration.md](docs/configuration.md) for the full configuration reference, default
-generated config, layout rule examples, and monitor profile examples.
