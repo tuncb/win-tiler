@@ -1,293 +1,103 @@
 # win-tiler
 
-## App Definition
+`win-tiler` is a hotkey-driven tiling window manager for Microsoft Windows OS. It is most similar to [dwindle](https://wiki.hypr.land/Configuring/Layouts/Dwindle-Layout/) layout from hyprland.
 
-`win-tiler` is a hotkey-driven tiling window manager for Windows. It watches the windows on your desktop, groups them by monitor, and arranges them with a binary space partitioning layout. The main runtime mode is designed for everyday use, and the repository also includes diagnostic commands for inspecting discovered windows, generating a config file, and managing startup registration.
 
-## Feature Summary
+<img src="assets/win-tiler.gif" alt="win-tiler" width="600">
 
-- Hotkey-driven tiling for existing Windows application windows.
+## Features
+
+- Supports both mouse and hot-key driven actions.
 - Binary space partitioning layout engine for splitting, navigating, moving, and exchanging tiles.
-- Multi-monitor support based on monitor work areas, with reinitialization when monitor layouts change.
-- Separate tiling state per virtual desktop.
-- TOML-based configuration for hotkeys, ignore rules, gaps, loop timing, and visualization settings.
-- Zen mode for focusing the selected tile by expanding it within the current monitor cluster.
+- Multi-monitor support based on monitor work areas.
+- Supports multiple desktops
+- TOML configuration for hotkeys, ignore rules, gaps, loop timing, layouts, and visualization.
 - Config hot-reload while supported runtime modes are active.
-- Ignore filters for processes, window titles, process/title pairs, child windows, and very small windows.
-- Overlay and visualization support for understanding the current layout and selection state.
-- Diagnostic support for logging discovered windows and inspecting runtime behavior.
-- Per-user startup registration through the Windows `Run` registry entry.
-- Lightweight per-user installer dialog with optional startup registration and Windows Installed
-  Apps uninstall integration.
+- Zen mode for focusing the selected tile within the current monitor cluster.
+- Ignore filters for processes, window titles, process/title pairs, child windows, and small windows.
+- Overlay rendering for the current layout and selection state.
+- Per-user installer, uninstall integration, and startup registration.
+
+## Quick Start
+
+Download the latest from releases page and then run the executable:
+
+```text
+win-tiler.exe
+```
+
+You will start using win-tiler directly. Check out the tray icon for more options:
+
+![Tray](assets/tray.png)
+
+You can do a per-user installation and by using the Install option. The app can be uninstalled from the add/remove programs system setting in Windows.
+
+## How To
+
+Default shortcuts use `super` for the Windows key. Keyboard bindings can be changed in the
+configuration file.
+
+### Core Tiling Actions
+
+| Action | Default input | What it does |
+| --- | --- | --- |
+| `NavigateLeft` | `super+shift+h` | Select the nearest tiled window to the left. |
+| `NavigateDown` | `super+shift+j` | Select the nearest tiled window below. |
+| `NavigateUp` | `super+shift+k` | Select the nearest tiled window above. |
+| `NavigateRight` | `super+shift+l` | Select the nearest tiled window to the right. |
+| `ToggleSplit` | `super+shift+y` | Toggle the selected tile's parent split between vertical and horizontal. |
+| `CycleSplitMode` | `super+shift+;` | Cycle the split mode used for new splits: dwindle, vertical, then horizontal. |
+| `StoreCell` | `super+shift+[` | Store the selected tile as the source for a later exchange or move. |
+| `ClearStored` | `super+shift+]` | Clear the stored tile. |
+| `Exchange` | `super+shift+,` | Swap the stored tile with the selected tile. |
+| `Move` | `super+shift+.` | Move the stored tile into the selected tile's position. |
+| `SplitIncrease` | `super+shift+pageup` | Give the selected tile more space in its parent split. |
+| `SplitDecrease` | `super+shift+pagedown` | Give the selected tile less space in its parent split. |
+| `ExchangeSiblings` | `super+shift+e` | Swap the selected tile with its sibling in the same parent split. |
+| `ToggleZen` | `super+shift+'` | Toggle zen mode for the selected tile. |
+| `ResetSplitRatio` | `super+shift+home` | Reset the selected tile's parent split to 50/50. |
+| `TogglePause` | `super+shift+\` or tray menu | Pause or resume automatic tiling. |
+| `DumpWindowManagement` | `super+shift+d` | Write the current window management state to the log. |
+| `RestartSystem` | `super+shift+r` or tray menu `Reset` | Rebuild tiling state from the current monitors and windows. |
+| `ToggleFloating` | `super+shift+f` | Temporarily remove the selected or foreground window from tiling for this session; run it again to tile that window again. |
+| `ToggleVerboseLogging` | `super+shift+v` or tray menu | Toggle verbose runtime logging. |
+| `Exit` | `super+shift+escape` or tray menu | Exit `win-tiler`. |
+
+### Mouse Actions
+
+| Action | Mouse input | What it does |
+| --- | --- | --- |
+| Select a tile | Move the cursor over a tiled window. | Makes that tile the selected tile for hotkey actions. |
+| Resize a split | Resize a tiled window with the normal Windows resize border and release the mouse. | Updates the matching split ratio to preserve the new size. |
+| Drag/drop a window | Drag a tiled window and drop it over another tile. | Uses `loop.mouse_drag_drop`: by default, plain drag/drop exchanges windows. Hold `Ctrl` or use right-button drag/drop to perform the other action, which inserts the dragged window as a split. |
+| Toggle zen by maximizing | Maximize a tiled window with the title-bar button or a Windows maximize shortcut. | When `toggle_zen_on_window_maximize` is enabled, toggles zen mode for that window. |
+
+### Tray And Dialog Actions
+
+Right-click the `win-tiler` notification-area icon to open the tray menu.
+
+| Action | Mouse input | What it does |
+| --- | --- | --- |
+| Open config file | Tray menu `Open config file`. | Opens the active TOML configuration file, when one is active. |
+| Open log file | Tray menu `Open log file`. | Opens the active log file. |
+| Save layout | Tray menu `Save layout`, then choose one monitor or `Save All`. | Writes the current monitor layout rules to the active config. A monitor needs at least two tiled windows. |
+| Manage ignored windows | Tray menu `Manage ignored windows...`. | Opens a dialog for adding or removing ignore rules. Select a row, then use `Add rule...` or `Remove rule...`; the dialog also has `Refresh`, `Copy details`, `Open config`, and `Close`. |
+| Pause or unpause | Tray menu `Pause` or `Unpause`. | Same as `TogglePause`. |
+| Reset | Tray menu `Reset`. | Same as `RestartSystem`. |
+| Verbose logging | Tray menu `Verbose logging`. | Same as `ToggleVerboseLogging`; the menu item is checked while verbose logging is active. |
+| Install or uninstall | Tray menu `Install...`. | Opens the installer dialog. From there you can install, uninstall, apply Start Menu or auto-start options, or close the dialog. |
+| Check updates | Tray menu `Check updates...`. | Checks the installed app for an available update. |
+| About | Tray menu `About...`. | Shows the app version and repository link. |
+| Exit | Tray menu `Exit`. | Exits `win-tiler`. |
 
 ## Configuration
 
-`win-tiler` reads configuration from a TOML file. Use `--config <filepath>` to load a specific file, or place `win-tiler.toml` next to the executable for runtime commands such as `loop` and `track-windows`. You can generate a starter file with `win-tiler init-config [filepath]`.
+`win-tiler` reads TOML configuration from `--config <filepath>` or, for runtime commands such as
+`loop` and `track-windows`, from `win-tiler.toml` next to the executable when that file exists.
 
-Every configuration field is optional. Missing values fall back to built-in defaults. Keyboard bindings are merged with the default bindings when an action is omitted, and the ignore lists can either merge with or replace the built-in defaults through the `merge_*_with_defaults` flags. Invalid numeric values fall back to defaults; `visualization.render.zen_percentage` is clamped to the `0.1` to `1.0` range.
+Every configuration field is optional. Missing values fall back to built-in defaults. Keyboard
+bindings merge with defaults when an action is omitted. Ignore lists can merge with or replace the
+built-in defaults through the `merge_*_with_defaults` flags.
 
-Top-level sections:
-
-- `ignore`: ignored processes, ignored window titles, ignored process/title pairs, ignored child windows, and the minimum small-window size barrier.
-- `keyboard`: maps actions to hotkeys.
-- `gap`: horizontal and vertical spacing between tiled windows.
-- `loop`: loop timing, automatic zen toggling on maximize, and mouse drag/drop behavior.
-- `layout`: optional declarative tiling rules selected by managed window count.
-- `visualization`: toast timing and overlay rendering settings, including zen mode sizing and process-based rectangle hiding.
-- `monitor_profiles`: optional per-monitor overrides for gap, layout, and zen mode sizing.
-
-Default config written by `win-tiler init-config`:
-
-```toml
-[ignore]
-merge_processes_with_defaults = true
-merge_window_titles_with_defaults = true
-merge_process_title_pairs_with_defaults = true
-merge_ignore_children_of_processes_with_defaults = true
-processes = [
-  "TextInputHost.exe",
-  "ApplicationFrameHost.exe",
-  "Microsoft.CmdPal.UI.exe",
-  "PowerToys.PowerLauncher.exe",
-  "win-tiler.exe",
-]
-window_titles = []
-process_title_pairs = [
-  { process = "SystemSettings.exe", title = "Settings" },
-  { process = "explorer.exe", title = "Program Manager" },
-  { process = "explorer.exe", title = "System tray overflow window." },
-  { process = "explorer.exe", title = "PopupHost" },
-  { process = "claude.exe", title = "Title: Claude" },
-  { process = "WidgetBoard.exe", title = "Windows Widgets" },
-  { process = "msedgewebview2.exe", title = "MSN" },
-]
-ignore_children_of_processes = []
-small_window_barrier = { width = 200, height = 150 }
-
-[keyboard]
-bindings = [
-  { action = "NavigateLeft", hotkey = "super+shift+h" },
-  { action = "NavigateDown", hotkey = "super+shift+j" },
-  { action = "NavigateUp", hotkey = "super+shift+k" },
-  { action = "NavigateRight", hotkey = "super+shift+l" },
-  { action = "ToggleSplit", hotkey = "super+shift+y" },
-  { action = "Exit", hotkey = "super+shift+escape" },
-  { action = "CycleSplitMode", hotkey = "super+shift+;" },
-  { action = "StoreCell", hotkey = "super+shift+[" },
-  { action = "ClearStored", hotkey = "super+shift+]" },
-  { action = "Exchange", hotkey = "super+shift+," },
-  { action = "Move", hotkey = "super+shift+." },
-  { action = "SplitIncrease", hotkey = "super+shift+pageup" },
-  { action = "SplitDecrease", hotkey = "super+shift+pagedown" },
-  { action = "ExchangeSiblings", hotkey = "super+shift+e" },
-  { action = "ToggleZen", hotkey = "super+shift+'" },
-  { action = "ResetSplitRatio", hotkey = "super+shift+home" },
-  { action = "TogglePause", hotkey = "super+shift+\\" },
-  { action = "DumpWindowManagement", hotkey = "super+shift+d" },
-  { action = "RestartSystem", hotkey = "super+shift+r" },
-  { action = "ToggleFloating", hotkey = "super+shift+f" },
-  { action = "ToggleVerboseLogging", hotkey = "super+shift+v" },
-]
-
-[gap]
-horizontal = 10.0
-vertical = 10.0
-
-[loop]
-interval_ms = 100
-config_refresh_interval_ms = 1000
-toggle_zen_on_window_maximize = true
-mouse_drag_drop = "exchange"
-
-[layout]
-enabled = true
-split_mode = "dwindle"
-split_width_multiplier = 1.0
-rules = []
-
-[visualization]
-toast_duration_ms = 2000
-
-[visualization.render]
-normal_color = [255, 255, 255, 100]
-selected_color = [0, 120, 255, 200]
-stored_color = [255, 180, 0, 200]
-border_width = 3.0
-toast_font_size = 60.0
-zen_percentage = 0.9
-hide_rectangles_when_processes_open = []
-```
-
-Per-monitor tiling overrides can target a monitor by device name, monitor index, primary status, or
-a combination of those fields. Later matching profiles override earlier ones. Any field omitted from
-a matching profile falls back to the global configuration.
-
-```toml
-[[monitor_profiles]]
-name = "Laptop"
-match = { device_name = "\\\\.\\DISPLAY1" }
-
-[monitor_profiles.gap]
-horizontal = 8
-vertical = 8
-
-[[monitor_profiles.layout.rules]]
-window_count = 2
-split = "vertical"
-ratio = 0.50
-
-[[monitor_profiles]]
-name = "External"
-match = { device_name = "\\\\.\\DISPLAY2" }
-
-[monitor_profiles.gap]
-horizontal = 16
-vertical = 12
-
-[monitor_profiles.visualization.render]
-zen_percentage = 0.82
-
-[[monitor_profiles.layout.rules]]
-window_count = 3
-split = "vertical"
-ratio = 0.30
-```
-
-`layout.split_mode` controls how new or moved windows choose the split direction when no declarative
-layout rule is applied. Supported values are `dwindle`, `vertical`, and `horizontal`.
-`dwindle` splits wide target cells left/right and tall target cells top/bottom. The
-`split_width_multiplier` value defaults to `1.0` and is applied to the target cell width before
-dwindle compares width and height.
-
-Declarative layout rules describe only the tiling structure, not specific apps. Rules are selected
-by the number of managed windows on a monitor. A missing `first` or `second` child means that side is
-a window leaf.
-
-```toml
-[[layout.rules]]
-window_count = 2
-split = "vertical"
-ratio = 0.30
-
-[[layout.rules]]
-window_count = 3
-
-[layout.rules.tree]
-split = "vertical"
-ratio = 0.30
-
-[layout.rules.tree.second]
-split = "horizontal"
-ratio = 0.50
-```
-
-`vertical` splits left/right and `horizontal` splits top/bottom. The ratio belongs to the first
-side of the split, so `ratio = 0.30` gives the first side 30% and the second side 70%. Rules whose
-tree leaf count does not match `window_count` are ignored.
-
-Mouse-based window drag/drop uses `loop.mouse_drag_drop` for the plain drag action. Set it to
-`"exchange"` or `"split"`; Ctrl+drag/drop or right-button drag/drop performs the other action.
-
-## Command Line Arguments
-
-### Syntax
-
-```text
-win-tiler [options] [command] [command-args]
-```
-
-Global options are parsed before the command, so place `--logmode`, `--log-file`, and `--config` before commands such as `loop` or `startup`.
-
-If no command is supplied, `win-tiler` defaults to `loop`.
-
-The application build uses the Windows subsystem so `loop` can be launched from
-Explorer or startup registration without opening a console window. Commands that
-produce terminal output attach to the parent console when one exists. For
-long-running detached `loop` diagnostics, logs default to
-`%TEMP%\win-tiler.log`; use `--log-file` to choose a different path.
-`--perf-stats` writes performance summaries through the logger.
-
-### Global Options
-
-| Option | Meaning |
-| --- | --- |
-| `--help`, `-h` | Print help text and exit immediately. |
-| `--version`, `-v` | Print version information and exit immediately. |
-| `--monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. |
-| `--install` | Show the native installer dialog. |
-| `--uninstall` | Start uninstall directly. |
-| `--logmode <level>` | Set the log level. Valid values are `trace`, `debug`, `info`, `warn`, `err`, and `off`. |
-| `--log-file <filepath>` | Write logs to a file instead of stdout. Detached `loop` runs default to `%TEMP%\win-tiler.log` when this option is omitted. |
-| `--config <filepath>` | Load configuration from a TOML file. For runtime commands, `win-tiler` otherwise looks for `win-tiler.toml` next to the executable and uses it if the file exists. When used with `startup enable`, the resolved config path is included in the registered startup command line. |
-| `--perf-stats` | In `loop` mode, print periodic stage timing summaries for the active portion of the main loop so before/after optimization runs are easier to compare. |
-
-If `--config` is explicitly provided and the file cannot be loaded, the program exits with an error.
-
-### Commands
-
-| Command | Meaning |
-| --- | --- |
-| `loop` | Start the main tiling loop. This mode registers hotkeys, tracks monitor and window changes, applies tiling, and renders the overlay. This is the default command. |
-| `version` | Print version information. This is the command form of `--version`. |
-| `monitor-info` | Log monitor handle, device name, full rect, work area, and primary status, then exit immediately. This is the command form of `--monitor-info`. |
-| `track-windows` | Log the windows found on each monitor once per second until the configured exit hotkey is pressed. |
-| `init-config [filepath]` | Write a default TOML config file. If `filepath` is omitted, the file is written as `win-tiler.toml` next to the executable. |
-| `startup <action>` | Manage startup registration for the current user. Supported actions are `enable`, `disable`, and `status`. |
-
-### Installer
-
-`win-tiler --install` opens a native Windows installer dialog. The current installer is per-user
-and installs to:
-
-```text
-%LOCALAPPDATA%\win-tiler
-```
-
-The dialog includes checkboxes for adding `win-tiler` to the Start Menu and starting `win-tiler`
-when Windows starts. The checkboxes reflect whether the Start Menu shortcut exists and whether
-startup registration points at the installed executable. Install writes the app to the fixed install
-folder, optionally creates the Start Menu shortcut, optionally registers startup for the installed
-executable, and creates `win-tiler.toml` in the install folder when that file does not already
-exist. Install also adds a current-user uninstall entry so `win-tiler` appears in Windows Installed
-Apps. The Install button is disabled when an install is already present, and the Uninstall and Apply
-buttons are disabled when no install is present. Apply updates only the optional integrations
-without reinstalling or uninstalling.
-When the dialog is opened from the installed executable, it shows the current app version and enables
-Check updates. Update checks query the latest GitHub release with bounded network timeouts, download
-the raw `win-tiler.exe` release asset and its `.sha256` file, verify the hash, and then start a
-temporary helper to replace the installed executable after the running app exits.
-
-Uninstall can be started from the installer dialog, Windows Installed Apps, or the tray menu. Windows
-Installed Apps calls `win-tiler --uninstall`, which starts uninstall directly without reopening the
-installer dialog. Because Windows locks a running executable, uninstall copies `win-tiler.exe` to a
-temporary helper process, starts that helper, and closes the installed app. The helper waits for the
-original process to exit, then removes startup registration, the Start Menu shortcut, the Installed
-Apps registry entry, and the install folder.
-
-### `startup` Actions
-
-| Action | Meaning |
-| --- | --- |
-| `startup enable` | Create or update the current-user startup entry so Windows launches `win-tiler loop` on sign-in. If `--config` or `--log-file` is supplied before the command, the resolved path is added to the stored startup command line. |
-| `startup disable` | Remove the current-user startup entry. |
-| `startup status` | Print whether startup is enabled and, if available, the exact command line stored in the registry. |
-
-### Examples
-
-```text
-win-tiler
-win-tiler --logmode debug
-win-tiler --log-file C:\work\win-tiler\win-tiler.log
-win-tiler --config C:\work\win-tiler\win-tiler.toml loop
-win-tiler track-windows
-win-tiler init-config
-win-tiler init-config C:\work\win-tiler\custom-config.toml
-win-tiler --config C:\work\win-tiler\custom-config.toml startup enable
-win-tiler startup status
-win-tiler --install
-```
-
-## Notification Area Menu
-
-When running in loop mode, the notification area menu provides quick access to the config file, log
-file, pause/reset actions, a checked verbose-logging toggle, the installer dialog, About, and Exit.
+See [docs/configuration.md](docs/configuration.md) for the full configuration reference, default
+generated config, layout rule examples, and monitor profile examples.
