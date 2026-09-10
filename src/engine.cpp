@@ -246,10 +246,52 @@ void collect_leaf_ids_in_layout_order(const Cluster& cluster, int cell_index,
   }
 }
 
-int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids, SplitMode mode) {
+void find_largest_leaf(const Cluster& cluster, int index, double width, double height,
+                       int& best_index, double& best_area) {
+  if (!cluster.tree.is_valid_index(index)) {
+    return;
+  }
+  if (cluster.tree.is_leaf(index)) {
+    const double area = width * height;
+    if (cluster.tree[index].leaf_id.has_value() && area > best_area) {
+      best_area = area;
+      best_index = index;
+    }
+    return;
+  }
+  const auto first = cluster.tree.get_first_child(index);
+  const auto second = cluster.tree.get_second_child(index);
+  if (!first.has_value() || !second.has_value()) {
+    return;
+  }
+  const auto& data = cluster.tree[index];
+  const double ratio = data.split_ratio;
+  // Visit first children first so equal-area targets have a stable spatial order.
+  if (data.split_dir == SplitDir::Vertical) {
+    find_largest_leaf(cluster, *first, width * ratio, height, best_index, best_area);
+    find_largest_leaf(cluster, *second, width * (1.0 - ratio), height, best_index, best_area);
+  } else {
+    find_largest_leaf(cluster, *first, width, height * ratio, best_index, best_area);
+    find_largest_leaf(cluster, *second, width, height * (1.0 - ratio), best_index, best_area);
+  }
+}
+
+int find_largest_leaf(const Cluster& cluster) {
+  int best_index = -1;
+  double best_area = -1.0;
+  find_largest_leaf(cluster, 0, cluster.window_width, cluster.window_height,
+                    best_index, best_area);
+  return best_index;
+}
+
+int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids, SplitMode mode,
+                      LayoutSplitTarget target) {
   int current_selection = -1;
 
   for (size_t cell_id : cell_ids) {
+    if (target == LayoutSplitTarget::Largest) {
+      current_selection = find_largest_leaf(cluster);
+    }
     SplitDir split_dir = determine_split_dir(cluster, current_selection, mode);
 
     if (cluster.tree.empty()) {
@@ -295,10 +337,12 @@ System create_system(const std::vector<ClusterInitInfo>& infos, SplitMode split_
         if (layout_selection.has_value()) {
           selection_index = *layout_selection;
         } else {
-          selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode);
+          selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode,
+                                             info.split_target);
         }
       } else {
-        selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode);
+        selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode,
+                                            info.split_target);
       }
     }
 
@@ -1235,10 +1279,15 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
     }
 
     int split_from_index = -1;
-    if (system.selection.has_value() &&
-        system.selection->cluster_index == static_cast<int>(cluster_idx) &&
-        cluster.tree.is_valid_index(system.selection->cell_index) &&
-        cluster.tree.is_leaf(system.selection->cell_index)) {
+    const auto split_target = cluster_layout_options != nullptr
+                                  ? cluster_layout_options->split_target
+                                  : LayoutSplitTarget::Pointer;
+    if (split_target == LayoutSplitTarget::Focused && system.focused_leaf_id.has_value()) {
+      split_from_index = find_cell_by_leaf_id(cluster, *system.focused_leaf_id).value_or(-1);
+    } else if (split_target == LayoutSplitTarget::Pointer && system.selection.has_value() &&
+               system.selection->cluster_index == static_cast<int>(cluster_idx) &&
+               cluster.tree.is_valid_index(system.selection->cell_index) &&
+               cluster.tree.is_leaf(system.selection->cell_index)) {
       split_from_index = system.selection->cell_index;
     }
 
@@ -1247,6 +1296,8 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
 
       if (cluster.tree.empty()) {
         current_selection = -1;
+      } else if (split_target == LayoutSplitTarget::Largest) {
+        current_selection = find_largest_leaf(cluster);
       } else if (split_from_index >= 0 && cluster.tree.is_valid_index(split_from_index) &&
                  cluster.tree.is_leaf(split_from_index)) {
         current_selection = split_from_index;
@@ -2297,6 +2348,18 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
   apply_split_width_multipliers(system, cluster_options);
 
+  auto remember_tiled_focus = [&]() {
+    if (system.focused_leaf_id.has_value() && !find_leaf(*system.focused_leaf_id).has_value()) {
+      system.focused_leaf_id.reset();
+    }
+    if (input.foreground_leaf_id.has_value() && find_leaf(*input.foreground_leaf_id).has_value()) {
+      system.focused_leaf_id = input.foreground_leaf_id;
+    }
+  };
+  // A newly opened window may already have OS focus but is not in the tree yet.
+  // Preserve the preceding tiled focus until that window has been inserted.
+  remember_tiled_focus();
+
   if (!input.has_completed_initial_tile_pass) {
     output.apply_tiles = true;
     output.has_completed_initial_tile_pass = true;
@@ -2376,14 +2439,41 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   if (!skip_cluster_update) {
     std::optional<int> redirect_cluster_index;
-    if (input.cursor_pos.has_value()) {
+    std::optional<int> focused_cluster_index;
+    if (system.focused_leaf_id.has_value()) {
+      auto focused_cell = find_leaf(*system.focused_leaf_id);
+      if (focused_cell.has_value()) {
+        focused_cluster_index = focused_cell->cluster_index;
+      }
+    }
+    auto policy_cluster_index = focused_cluster_index;
+    if (!policy_cluster_index.has_value()) {
+      // With no known tiled focus, use the incoming monitor's policy and membership.
+      for (size_t i = 0; i < input.cluster_updates.size(); ++i) {
+        const auto& ids = input.cluster_updates[i].leaf_ids;
+        if (std::any_of(ids.begin(), ids.end(),
+                        [&](size_t id) { return !find_leaf(id).has_value(); })) {
+          policy_cluster_index = static_cast<int>(i);
+          break;
+        }
+      }
+    }
+    auto split_target = input.layout_options != nullptr ? input.layout_options->split_target
+                                                       : LayoutSplitTarget::Pointer;
+    if (policy_cluster_index.has_value()) {
+      split_target = cluster_options_or_default(cluster_options,
+                         static_cast<size_t>(*policy_cluster_index)).layoutOptions.split_target;
+    }
+    if (split_target == LayoutSplitTarget::Pointer && input.cursor_pos.has_value()) {
       auto hover_cluster_index = find_cluster_at_global_point(
           system, static_cast<float>(input.cursor_pos->x), static_cast<float>(input.cursor_pos->y));
       if (hover_cluster_index.has_value()) {
         redirect_cluster_index = static_cast<int>(*hover_cluster_index);
       }
     }
-    if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
+    if (split_target != LayoutSplitTarget::Pointer) {
+      redirect_cluster_index = focused_cluster_index;
+    } else if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
       redirect_cluster_index = system.selection->cluster_index;
     }
 
@@ -2441,6 +2531,10 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   }
 
   output.geometries = ensure_geometries();
+  remember_tiled_focus();
+  if (output.focus_leaf_id.has_value() && find_leaf(*output.focus_leaf_id).has_value()) {
+    system.focused_leaf_id = output.focus_leaf_id;
+  }
   if (output.apply_tiles) {
     placement_correction_failures.clear();
   } else {

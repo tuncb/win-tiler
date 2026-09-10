@@ -166,6 +166,33 @@ std::optional<LayoutSplitMode> string_to_layout_split_mode(std::string value) {
   return std::nullopt;
 }
 
+std::string layout_split_target_to_string(LayoutSplitTarget target) {
+  switch (target) {
+  case LayoutSplitTarget::Pointer:
+    return "pointer";
+  case LayoutSplitTarget::Focused:
+    return "focused";
+  case LayoutSplitTarget::Largest:
+    return "largest";
+  }
+  return "pointer";
+}
+
+std::optional<LayoutSplitTarget> string_to_layout_split_target(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  if (value == "pointer") {
+    return LayoutSplitTarget::Pointer;
+  }
+  if (value == "focused") {
+    return LayoutSplitTarget::Focused;
+  }
+  if (value == "largest") {
+    return LayoutSplitTarget::Largest;
+  }
+  return std::nullopt;
+}
+
 std::string mouse_drag_drop_action_to_string(MouseDragDropAction action) {
   switch (action) {
   case MouseDragDropAction::Exchange:
@@ -378,6 +405,17 @@ LayoutOptions parse_layout_options(toml::table& table) {
     }
   }
 
+  if (table.contains("split_target")) {
+    auto value = table["split_target"].value<std::string>();
+    auto target = value ? string_to_layout_split_target(*value) : std::nullopt;
+    if (target.has_value()) {
+      options.split_target = *target;
+    } else {
+      spdlog::error("Invalid layout.split_target: must be \"pointer\", \"focused\", or "
+                    "\"largest\". Using default.");
+    }
+  }
+
   if (auto split_width_multiplier = get_number<float>(table["split_width_multiplier"])) {
     if (*split_width_multiplier <= 0.0f) {
       spdlog::error("Invalid layout.split_width_multiplier value ({}): must be positive. "
@@ -423,6 +461,7 @@ toml::table layout_options_to_toml(const LayoutOptions& options) {
   toml::table layout;
   layout.insert("enabled", options.enabled);
   layout.insert("split_mode", layout_split_mode_to_string(options.split_mode));
+  layout.insert("split_target", layout_split_target_to_string(options.split_target));
   layout.insert("split_width_multiplier", options.split_width_multiplier);
 
   toml::array layout_rules;
@@ -506,14 +545,22 @@ std::string get_options_toml_documentation() {
 # [layout]
 # enabled = true
 # split_mode = "dwindle"
+# split_target = "pointer"
 # split_width_multiplier = 1.0
 # rules = []
 #
 # enabled: false disables layout rules while keeping normal tiling active.
 # split_mode:
-# - "dwindle": each new window splits the selected cell.
+# - "dwindle": split direction follows the target cell's aspect ratio.
 # - "vertical": prefer left/right splits.
 # - "horizontal": prefer top/bottom splits.
+# split_target: target for automatic insertion; explicit moves and layout rules take precedence.
+# - "pointer": use the monitor and cell under the pointer (default).
+# - "focused": split the last focused tiled window, independent of the pointer.
+# - "largest": split the largest cell by area on the last focused tiled window's monitor.
+# Focused/largest use the incoming monitor when no tiled focus is known; focused then uses
+# the first leaf. Equal largest areas use first-child tree order. Each insertion is 50/50.
+# Largest is recalculated for every new window, including startup and batches.
 # split_width_multiplier: positive multiplier for split width changes.
 # rules: optional fixed layouts selected by window_count.
 #
@@ -576,6 +623,7 @@ std::string get_options_toml_documentation() {
 # [monitor_profiles.layout]
 # enabled = true
 # split_mode = "vertical"
+# split_target = "largest"
 # split_width_multiplier = 0.8
 # [monitor_profiles.visualization.render]
 # zen_percentage = 0.80
@@ -585,6 +633,7 @@ std::string get_options_toml_documentation() {
 # match.index: zero-based monitor index from the Windows monitor list.
 # match.device_name: Windows monitor device name such as "\\\\.\\DISPLAY1".
 # At least one match field is required for a monitor profile.
+# The focused monitor's split_target policy controls whether insertion follows focus or pointer.
 # gap: optional per-monitor horizontal and/or vertical gap override.
 # layout: optional per-monitor layout override using the same layout fields above.
 # visualization.render.zen_percentage: optional per-monitor zen size override.

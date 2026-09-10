@@ -62,6 +62,7 @@ struct System {
   std::vector<Cluster> clusters;
   std::optional<CellIndicatorByIndex> selection;
   SplitMode split_mode = SplitMode::Dwindle;
+  std::optional<size_t> focused_leaf_id;
 };
 
 struct ClusterInitInfo {
@@ -76,6 +77,7 @@ struct ClusterInitInfo {
   std::vector<size_t> initial_cell_ids;
   std::optional<LayoutRule> initial_layout_rule;
   float split_width_multiplier = kDefaultSplitWidthMultiplier;
+  LayoutSplitTarget split_target = LayoutSplitTarget::Pointer;
 };
 
 struct ClusterCellUpdateInfo {
@@ -163,6 +165,7 @@ struct EngineFrameInput {
   std::vector<std::vector<ManagedWindowState>> managed_windows;
   std::optional<HotkeyAction> hotkey_action;
   std::optional<ctrl::Point> cursor_pos;
+  std::optional<size_t> foreground_leaf_id;
   std::optional<CompletedDragRequest> completed_drag;
   bool auto_zen_on_maximize = false;
   bool update_hover_selection = true;

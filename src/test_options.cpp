@@ -435,6 +435,7 @@ TEST_SUITE("Generated TOML") {
         "mouse_drag_drop",
         "enabled",
         "split_mode",
+        "split_target",
         "split_width_multiplier",
         "rules",
         "window_count",
@@ -802,6 +803,42 @@ TEST_SUITE("IgnoreOptions Merge") {
 // ============================================================================
 
 TEST_SUITE("Layout Options") {
+  TEST_CASE("split targets parse case insensitively and round trip") {
+    for (auto target : {LayoutSplitTarget::Pointer, LayoutSplitTarget::Focused,
+                         LayoutSplitTarget::Largest}) {
+      auto temp_path = create_temp_file_path();
+      TempFileGuard guard(temp_path);
+      const char* name = target == LayoutSplitTarget::Pointer ? "POINTER"
+                         : target == LayoutSplitTarget::Focused ? "Focused" : "largest";
+      {
+        std::ofstream file(temp_path);
+        file << "[layout]\nsplit_target = \"" << name << "\"\n";
+      }
+      auto result = read_options_toml(temp_path);
+      REQUIRE(result.has_value());
+      CHECK(result->layoutOptions.split_target == target);
+      REQUIRE(write_options_toml(*result, temp_path).has_value());
+      auto round_trip = read_options_toml(temp_path);
+      REQUIRE(round_trip.has_value());
+      CHECK(round_trip->layoutOptions.split_target == target);
+    }
+  }
+
+  TEST_CASE("missing invalid and non-string split targets default to pointer") {
+    for (const char* config : {"[layout]\n", "[layout]\nsplit_target = \"biggest\"\n",
+                              "[layout]\nsplit_target = 42\n"}) {
+      auto temp_path = create_temp_file_path();
+      TempFileGuard guard(temp_path);
+      {
+        std::ofstream file(temp_path);
+        file << config;
+      }
+      auto result = read_options_toml(temp_path);
+      REQUIRE(result.has_value());
+      CHECK(result->layoutOptions.split_target == LayoutSplitTarget::Pointer);
+    }
+  }
+
   TEST_CASE("parses split mode") {
     auto temp_path = create_temp_file_path();
     TempFileGuard guard(temp_path);
@@ -1076,6 +1113,7 @@ TEST_SUITE("Monitor Profile Options") {
     options.gapOptions.horizontal = 10.0f;
     options.gapOptions.vertical = 12.0f;
     options.visualizationOptions.renderOptions.zen_percentage = 0.90f;
+    options.layoutOptions.split_target = LayoutSplitTarget::Focused;
 
     MonitorProfileOptions profile;
     profile.match.device_name = "\\\\.\\DISPLAY2";
@@ -1089,6 +1127,7 @@ TEST_SUITE("Monitor Profile Options") {
     rule.tree.split_ratio = 0.30f;
     LayoutOptions layout;
     layout.split_width_multiplier = 0.60f;
+    layout.split_target = LayoutSplitTarget::Largest;
     layout.rules.push_back(rule);
     profile.layoutOptions = layout;
     options.monitorProfiles.push_back(profile);
@@ -1103,8 +1142,19 @@ TEST_SUITE("Monitor Profile Options") {
     CHECK(resolved.gapOptions.vertical == 12.0f);
     CHECK(resolved.zen_percentage == doctest::Approx(0.75f));
     CHECK(resolved.layoutOptions.split_width_multiplier == doctest::Approx(0.60f));
+    CHECK(resolved.layoutOptions.split_target == LayoutSplitTarget::Largest);
     REQUIRE(resolved.layoutOptions.rules.size() == 1);
     CHECK(resolved.layoutOptions.rules[0].tree.split_ratio == doctest::Approx(0.30f));
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+    REQUIRE(write_options_toml(options, temp_path).has_value());
+    auto round_trip = read_options_toml(temp_path);
+    REQUIRE(round_trip.has_value());
+    CHECK(resolve_monitor_tiling_options(*round_trip, monitor, 1).layoutOptions.split_target ==
+          LayoutSplitTarget::Largest);
+    monitor.deviceName = "unmatched";
+    CHECK(resolve_monitor_tiling_options(*round_trip, monitor, 0).layoutOptions.split_target ==
+          LayoutSplitTarget::Focused);
   }
 
   TEST_CASE("save layout replaces only matching monitor profile rule") {

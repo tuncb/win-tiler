@@ -116,6 +116,7 @@ mouse_drag_drop = "exchange"
 [layout]
 enabled = true
 split_mode = "dwindle"
+split_target = "pointer"
 split_width_multiplier = 1.0
 rules = []
 ```
@@ -126,6 +127,28 @@ declarative layout rule is applied. Supported values are `dwindle`, `vertical`, 
 `dwindle` splits wide target cells left/right and tall target cells top/bottom. The
 `split_width_multiplier` value defaults to `1.0` and is applied to the target cell width before
 `dwindle` compares width and height.
+
+`layout.split_target` chooses the cell for automatic new-window insertion:
+
+- `pointer` (default): use the monitor and cell under the pointer, preserving existing behavior.
+- `focused`: split the last focused tiled window, independently of the pointer.
+- `largest`: split the cell with the largest area on the last focused tiled window's monitor.
+
+For example, set `split_target = "largest"` with `split_mode = "dwindle"` for automatic
+placement into large cells with an aspect-based split direction. `vertical` and `horizontal`
+also work with any target policy.
+
+Focused and largest placement remember tiled focus when a new window or an untiled window
+takes OS focus. If no tiled focus is known, windows keep their incoming monitor; focused
+placement falls back to the first leaf there. Hovering does not affect either policy.
+With monitor profiles, the focused monitor's target policy determines whether placement follows
+focus or the pointer; without known focus, the incoming monitor's policy is used.
+
+Largest uses the allocated cell area before gaps or zen expansion, including manually adjusted
+split ratios. Equal areas use first-child tree traversal order. Each new split is 50/50, and
+the largest cell is recalculated after each insertion, including startup and batches.
+Other cells retain their geometry. Explicit moves and drag/drop keep their chosen target,
+and matching declarative layout rules take precedence over automatic target selection.
 
 Declarative layout rules describe tiling structure, not specific apps. Rules are selected by the
 number of managed windows on a monitor. A missing `first` or `second` child means that side is a
@@ -326,6 +349,7 @@ mouse_drag_drop = "exchange"
 [layout]
 enabled = true
 split_mode = "dwindle"
+split_target = "pointer"
 split_width_multiplier = 1.0
 rules = []
 

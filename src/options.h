@@ -114,6 +114,8 @@ struct LoopOptions {
 
 enum class LayoutSplitDir { Vertical, Horizontal };
 
+enum class LayoutSplitTarget { Pointer, Focused, Largest };
+
 enum class LayoutSplitMode {
   Dwindle,
   Vertical,
@@ -135,6 +137,7 @@ struct LayoutRule {
 struct LayoutOptions {
   bool enabled = true;
   LayoutSplitMode split_mode = LayoutSplitMode::Dwindle;
+  LayoutSplitTarget split_target = LayoutSplitTarget::Pointer;
   float split_width_multiplier = kDefaultSplitWidthMultiplier;
   std::vector<LayoutRule> rules;
 };

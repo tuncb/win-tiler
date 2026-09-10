@@ -128,6 +128,10 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   extract_managed_window_states_from_input_into(input_state, frame_input.managed_windows);
   frame_input.hotkey_action = hotkey_action;
   frame_input.cursor_pos.reset();
+  frame_input.foreground_leaf_id.reset();
+  if (input_state.foreground_window != nullptr) {
+    frame_input.foreground_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
+  }
   frame_input.completed_drag.reset();
   frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
   frame_input.update_hover_selection = true;

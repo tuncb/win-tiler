@@ -2446,4 +2446,231 @@ TEST_SUITE("Engine - Edge Cases") {
   }
 }
 
+
+TEST_SUITE("Automatic split targets") {
+
+  TEST_CASE("largest retains the dwindle width multiplier") {
+    Engine engine = create_single_cluster_engine();
+    EngineFrameInput input;
+    input.cluster_options.resize(1);
+    input.cluster_options[0].layoutOptions.split_target = LayoutSplitTarget::Largest;
+    input.cluster_options[0].layoutOptions.split_width_multiplier = 0.5f;
+    input.cluster_updates = {{{1, 2}, false}};
+    auto output = engine.process_frame(input);
+    CHECK(output.topology_changed);
+    // 800x600 would normally split left/right; scaled width 400 selects top/bottom.
+    CHECK(engine.system.clusters[0].tree[0].split_dir == SplitDir::Horizontal);
+  }
+
+
+  TEST_CASE("largest splits the half-sized cell regardless of hovered quarter") {
+    Engine engine;
+    engine.init({{0, 0, 800, 1000, 0, 0, 800, 1000, {1, 2, 3}}});
+    LayoutOptions options;
+    options.split_target = LayoutSplitTarget::Largest;
+    EngineFrameInput input;
+    input.layout_options = &options;
+    input.cluster_updates = {{{1, 2, 3, 4}, false}};
+    input.cursor_pos = Point{700, 900};
+    input.foreground_leaf_id = 3;
+    auto output = engine.process_frame(input);
+    CHECK(output.topology_changed);
+    for (size_t id : {1u, 2u, 3u, 4u}) {
+      auto cell = engine.find_leaf(id);
+      REQUIRE(cell.has_value());
+      const auto& rect = output.geometries[0][cell->cell_index];
+      CHECK(rect.width * rect.height == doctest::Approx(200000.0f));
+    }
+    auto old_cell = engine.find_leaf(1);
+    auto new_cell = engine.find_leaf(4);
+    REQUIRE(old_cell.has_value());
+    REQUIRE(new_cell.has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(old_cell->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(new_cell->cell_index));
+  }
+
+  TEST_CASE("largest uses resized area rather than shortest branch") {
+    Engine engine;
+    engine.init({{0, 0, 800, 1000, 0, 0, 800, 1000, {1, 2, 3}}});
+    engine.system.clusters[0].tree[0].split_ratio = 0.1f;
+    LayoutOptions options;
+    options.split_target = LayoutSplitTarget::Largest;
+    auto result = engine.update({{{1, 2, 3, 4}, false}}, std::nullopt, &options);
+    CHECK(result.topology_changed);
+    auto second = engine.find_leaf(2);
+    auto added = engine.find_leaf(4);
+    REQUIRE(second.has_value());
+    REQUIRE(added.has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(second->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(added->cell_index));
+    auto geoms = engine.compute_geometries(0, 0, 0);
+    auto first = engine.find_leaf(1);
+    REQUIRE(first.has_value());
+    CHECK(geoms[0][first->cell_index].height == doctest::Approx(100.0f));
+  }
+
+  TEST_CASE("largest recalculates for batches and supports every split direction") {
+    for (auto mode : {SplitMode::Dwindle, SplitMode::Vertical, SplitMode::Horizontal}) {
+      Engine engine;
+      engine.init({{0, 0, 800, 800, 0, 0, 800, 800, {1}}}, mode);
+      LayoutOptions options;
+      options.split_target = LayoutSplitTarget::Largest;
+      auto result = engine.update({{{1, 2, 3, 4}, false}}, std::nullopt, &options);
+      CHECK(result.topology_changed);
+      auto geoms = engine.compute_geometries(0, 0, 0);
+      for (size_t id : {1u, 2u, 3u, 4u}) {
+        auto cell = engine.find_leaf(id);
+        REQUIRE(cell.has_value());
+        const auto& rect = geoms[0][cell->cell_index];
+        CHECK(rect.width * rect.height == doctest::Approx(160000.0f));
+        if (mode == SplitMode::Vertical) {
+          CHECK(rect.width == doctest::Approx(200.0f));
+        } else if (mode == SplitMode::Horizontal) {
+          CHECK(rect.height == doctest::Approx(200.0f));
+        }
+      }
+      // Equal halves choose the first subtree, independent of insertion selection.
+      auto first = engine.find_leaf(1);
+      auto third = engine.find_leaf(3);
+      REQUIRE(first.has_value());
+      REQUIRE(third.has_value());
+      CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
+            engine.system.clusters[0].tree.get_parent(third->cell_index));
+    }
+  }
+
+  TEST_CASE("largest startup and insertion into an empty cluster produce equal quarters") {
+    for (bool startup : {false, true}) {
+      ClusterInitInfo info{0, 0, 800, 800, 0, 0, 800, 800, {}};
+      info.split_target = LayoutSplitTarget::Largest;
+      if (startup) {
+        info.initial_cell_ids = {1, 2, 3, 4};
+      }
+      Engine engine;
+      engine.init({info});
+      LayoutOptions options;
+      options.split_target = LayoutSplitTarget::Largest;
+      if (!startup) {
+        CHECK(engine.update({{{1, 2, 3, 4}, false}}, std::nullopt, &options).topology_changed);
+      }
+      auto geoms = engine.compute_geometries(0, 0, 0);
+      for (size_t id : {1u, 2u, 3u, 4u}) {
+        auto cell = engine.find_leaf(id);
+        REQUIRE(cell.has_value());
+        CHECK(geoms[0][cell->cell_index].width == doctest::Approx(400.0f));
+        CHECK(geoms[0][cell->cell_index].height == doctest::Approx(400.0f));
+      }
+    }
+  }
+
+  TEST_CASE("non-pointer targets remember tiled focus when a new window takes OS focus") {
+    for (auto target : {LayoutSplitTarget::Focused, LayoutSplitTarget::Largest}) {
+      Engine engine = create_test_engine();
+      LayoutOptions options;
+      options.split_target = target;
+      EngineFrameInput input;
+      input.layout_options = &options;
+      input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+      input.cursor_pos = Point{1200, 300};
+      input.foreground_leaf_id = 1;
+      auto initial = engine.process_frame(input);
+      CHECK_FALSE(initial.topology_changed);
+      CHECK(engine.system.focused_leaf_id == 1);
+      input.foreground_leaf_id = 4;
+      input.cluster_updates[1].leaf_ids.push_back(4);
+      auto output = engine.process_frame(input);
+      CHECK(output.topology_changed);
+      auto added = engine.find_leaf(4);
+      auto first = engine.find_leaf(1);
+      REQUIRE(added.has_value());
+      REQUIRE(first.has_value());
+      CHECK(added->cluster_index == 0);
+      CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
+            engine.system.clusters[0].tree.get_parent(added->cell_index));
+      CHECK(engine.system.focused_leaf_id == 4);
+    }
+  }
+
+  TEST_CASE("focused targets a small active cell even after hovering a large cell") {
+    Engine engine;
+    engine.init({{0, 0, 800, 1000, 0, 0, 800, 1000, {1, 2, 3}}});
+    LayoutOptions options;
+    options.split_target = LayoutSplitTarget::Focused;
+    EngineFrameInput input;
+    input.layout_options = &options;
+    input.cluster_updates = {{{1, 2, 3, 4}, false}};
+    input.cursor_pos = Point{10, 10};
+    input.foreground_leaf_id = 3;
+    auto output = engine.process_frame(input);
+    auto third = engine.find_leaf(3);
+    auto added = engine.find_leaf(4);
+    REQUIRE(third.has_value());
+    REQUIRE(added.has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(third->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(added->cell_index));
+    const auto& rect = output.geometries[0][added->cell_index];
+    CHECK(rect.width * rect.height == doctest::Approx(100000.0f));
+  }
+
+  TEST_CASE("without known focus non-pointer targets retain incoming monitor") {
+    for (auto target : {LayoutSplitTarget::Focused, LayoutSplitTarget::Largest}) {
+      Engine engine = create_test_engine();
+      LayoutOptions options;
+      options.split_target = target;
+      EngineFrameInput input;
+      input.layout_options = &options;
+      input.cluster_updates = {{{1, 2}, false}, {{3, 4}, false}};
+      input.cursor_pos = Point{10, 10};
+      input.foreground_leaf_id = 4;
+      auto output = engine.process_frame(input);
+      CHECK(output.topology_changed);
+      auto added = engine.find_leaf(4);
+      REQUIRE(added.has_value());
+      CHECK(added->cluster_index == 1);
+    }
+  }
+
+  TEST_CASE("closed remembered focus is cleared and monitor profiles select target policy") {
+    Engine engine = create_test_engine();
+    EngineFrameInput input;
+    input.cluster_options.resize(2);
+    input.cluster_options[1].layoutOptions.split_target = LayoutSplitTarget::Largest;
+    input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+    input.foreground_leaf_id = 3;
+    input.cursor_pos = Point{10, 10};
+    auto initial = engine.process_frame(input);
+    CHECK_FALSE(initial.topology_changed);
+    input.foreground_leaf_id = 99; // Untiled dialog: retain the preceding tiled focus.
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    auto added_output = engine.process_frame(input);
+    CHECK(added_output.topology_changed);
+    auto added = engine.find_leaf(4);
+    REQUIRE(added.has_value());
+    CHECK(added->cluster_index == 1);
+    input.cluster_updates = {{{1, 2}, false}, {{4}, false}};
+    auto removed = engine.process_frame(input);
+    CHECK(removed.topology_changed);
+    CHECK_FALSE(engine.system.focused_leaf_id.has_value());
+  }
+
+  TEST_CASE("matching layout rules override largest and explicit moves retain their target") {
+    Engine engine = create_single_cluster_engine();
+    auto options = create_two_window_vertical_layout_options(0.3f);
+    options.split_target = LayoutSplitTarget::Largest;
+    CHECK(engine.update({{{1, 2}, false}}, std::nullopt, &options).topology_changed);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.3f));
+    options.rules.clear();
+    CHECK(engine.update({{{1, 2, 3}, false}}, std::nullopt, &options).topology_changed);
+    auto destination = engine.find_leaf(1);
+    REQUIRE(destination.has_value());
+    CHECK(engine.move_leaf_to_cell(3, 0, destination->cell_index));
+    auto first = engine.find_leaf(1);
+    auto third = engine.find_leaf(3);
+    REQUIRE(first.has_value());
+    REQUIRE(third.has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(third->cell_index));
+  }
+}
+
 #endif // DOCTEST_CONFIG_DISABLE
