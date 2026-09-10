@@ -443,6 +443,7 @@ TEST_SUITE("Generated TOML") {
         "first",
         "second",
         "toast_duration_ms",
+        "show_rectangles",
         "normal_color",
         "selected_color",
         "stored_color",
@@ -462,6 +463,49 @@ TEST_SUITE("Generated TOML") {
     auto read_result = read_options_toml(temp_path);
     REQUIRE(read_result.has_value());
     CHECK(read_result.value().gapOptions.horizontal == kDefaultGapHorizontal);
+  }
+
+  TEST_CASE("rectangle visibility defaults to enabled when omitted") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+    {
+      std::ofstream file(temp_path);
+      file << "[visualization.render]\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+    CHECK(result->visualizationOptions.renderOptions.show_rectangles);
+    CHECK(result->visualizationOptions.renderOptions.border_width > 0.0f);
+  }
+
+  TEST_CASE("rectangle visibility and zero border width round trip through TOML") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+    bool show_rectangles = false;
+    SUBCASE("disabled") {}
+    SUBCASE("enabled") { show_rectangles = true; }
+    {
+      std::ofstream file(temp_path);
+      file << "[visualization.render]\n";
+      file << "show_rectangles = " << (show_rectangles ? "true" : "false") << "\n";
+      file << "border_width = 0\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+    CHECK(result->visualizationOptions.renderOptions.show_rectangles == show_rectangles);
+    CHECK(result->visualizationOptions.renderOptions.border_width == 0.0f);
+
+    auto write_result = write_options_toml(*result, temp_path);
+    REQUIRE(write_result.has_value());
+    CHECK(read_text_file(temp_path).find(
+              std::string("show_rectangles = ") + (show_rectangles ? "true" : "false")) !=
+          std::string::npos);
+    auto reread = read_options_toml(temp_path);
+    REQUIRE(reread.has_value());
+    CHECK(reread->visualizationOptions.renderOptions.show_rectangles == show_rectangles);
+    CHECK(reread->visualizationOptions.renderOptions.border_width == 0.0f);
   }
 
   TEST_CASE("render process suppression list can be configured") {

@@ -148,6 +148,7 @@ struct MonitorMatchOptions {
 // Render-specific options used by the renderer
 namespace renderer {
 struct RenderOptions {
+  bool show_rectangles = true;
   overlay::Color normal_color{255, 255, 255, 100}; // Semi-transparent white
   overlay::Color selected_color{0, 120, 255, 200}; // Blue
   overlay::Color stored_color{255, 180, 0, 200};   // Orange

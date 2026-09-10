@@ -178,6 +178,7 @@ second = "window"
 toast_duration_ms = 2000
 
 [visualization.render]
+show_rectangles = true
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
 stored_color = [255, 180, 0, 200]
@@ -190,16 +191,23 @@ hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 | Option | Meaning |
 | --- | --- |
 | `toast_duration_ms` | How long status toast messages stay visible. Must be non-negative. |
+| `show_rectangles` | Whether overlay rectangles are visible. Defaults to `true`; toast messages are unaffected. |
 | `normal_color` | Overlay rectangle color for normal cells. |
 | `selected_color` | Overlay rectangle color for the selected cell. |
 | `stored_color` | Overlay rectangle color for the stored cell. |
-| `border_width` | Overlay border width in pixels. Must be non-negative. |
+| `border_width` | Overlay border width in pixels. Must be non-negative; `0` hides rectangles even when `show_rectangles = true`. |
 | `toast_font_size` | Toast text size. Must be at least `1.0`. |
 | `zen_percentage` | Zen cell size from `0.1` to `1.0` of the monitor cluster. |
 | `hide_rectangles_when_processes_open` | Executable names that hide overlay rectangles while a visible top-level window from that process exists. Matching is case-insensitive. |
 
 Color values are `[red, green, blue, alpha]`, each in the `0` to `255` range. Alpha controls
 opacity: `0` is transparent and `255` is opaque.
+
+To hide all overlay rectangles, set `show_rectangles = false` in `[visualization.render]`.
+Setting `border_width = 0` also hides them. To show rectangles again, use
+`show_rectangles = true` with a positive `border_width`. These settings apply to normal,
+selected, stored, and zen cells and preserve toast messages. Process-based suppression
+still hides rectangles when a matching window is open.
 
 ## Monitor Profiles
 
@@ -325,6 +333,7 @@ rules = []
 toast_duration_ms = 2000
 
 [visualization.render]
+show_rectangles = true
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
 stored_color = [255, 180, 0, 200]

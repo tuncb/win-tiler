@@ -379,6 +379,54 @@ TEST_SUITE("loop") {
     CHECK(snapshot.toast_font_size == doctest::Approx(32.0f));
   }
 
+  TEST_CASE("rectangle configuration changes clear and restore overlays while preserving toast") {
+    ctrl::System system;
+    ctrl::Cluster cluster;
+    ctrl::CellData cell;
+    cell.leaf_id = 10;
+    int cell_index = cluster.tree.add_node(cell);
+    system.clusters.push_back(cluster);
+    system.selection = ctrl::CellIndicatorByIndex{0, cell_index};
+
+    SUBCASE("normal cells") {}
+    SUBCASE("zen cells") { system.clusters[0].zen_cell_index = cell_index; }
+
+    std::vector<std::vector<ctrl::Rect>> geometries = {{{10.0f, 20.0f, 300.0f, 400.0f}}};
+    renderer::RenderOptions options;
+    options.toast_font_size = 32.0f;
+    OverlayRenderCache cache;
+    auto snapshot = [&]() {
+      return make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 10},
+                                          std::optional<std::string>("Paused"), false);
+    };
+
+    REQUIRE(snapshot().rects.size() == 1);
+    CHECK(should_render_overlay(cache, snapshot()));
+
+    options.show_rectangles = false;
+    CHECK(snapshot().rects.empty());
+    CHECK(snapshot().message == std::optional<std::string>("Paused"));
+    CHECK(snapshot().toast_font_size == doctest::Approx(32.0f));
+    CHECK(should_render_overlay(cache, snapshot()));
+    CHECK_FALSE(should_render_overlay(cache, snapshot()));
+
+    options.show_rectangles = true;
+    REQUIRE(snapshot().rects.size() == 1);
+    CHECK(should_render_overlay(cache, snapshot()));
+
+    options.border_width = 0.0f;
+    CHECK(snapshot().rects.empty());
+    CHECK(snapshot().message == std::optional<std::string>("Paused"));
+    CHECK(snapshot().toast_font_size == doctest::Approx(32.0f));
+    CHECK(should_render_overlay(cache, snapshot()));
+
+    options.border_width = 3.0f;
+    REQUIRE(snapshot().rects.size() == 1);
+    CHECK(should_render_overlay(cache, snapshot()));
+    CHECK(make_overlay_render_snapshot(system, geometries, options, std::nullopt,
+                                       std::nullopt, true).rects.empty());
+  }
+
   TEST_CASE("runtime verbose logging toggles between trace and configured level") {
     auto original_level = spdlog::get_level();
     spdlog::set_level(spdlog::level::warn);

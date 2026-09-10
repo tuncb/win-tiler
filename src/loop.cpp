@@ -95,7 +95,7 @@ OverlayRenderSnapshot make_overlay_render_snapshot(
   snapshot.message = message;
   snapshot.toast_font_size = message.has_value() ? config.toast_font_size : 0.0f;
 
-  if (suppress_rectangles) {
+  if (suppress_rectangles || !config.show_rectangles || config.border_width <= 0.0f) {
     return snapshot;
   }
 

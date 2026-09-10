@@ -11,7 +11,7 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
   // Begin frame
   overlay::begin_frame();
 
-  if (!suppress_rectangles) {
+  if (!suppress_rectangles && config.show_rectangles && config.border_width > 0.0f) {
     // Draw all leaf cells (skip clusters with zen cells or fullscreen apps)
     for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
       const auto& cluster = system.clusters[cluster_idx];

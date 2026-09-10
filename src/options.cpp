@@ -541,6 +541,7 @@ std::string get_options_toml_documentation() {
 # [visualization]
 # toast_duration_ms = 2000
 # [visualization.render]
+# show_rectangles = true
 # normal_color = [255, 255, 255, 100]
 # selected_color = [0, 120, 255, 200]
 # stored_color = [255, 180, 0, 200]
@@ -550,10 +551,11 @@ std::string get_options_toml_documentation() {
 # hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 #
 # toast_duration_ms: how long status toast messages stay visible.
+# show_rectangles: whether overlay rectangles are visible. Toast messages are unaffected.
 # normal_color: overlay rectangle color for normal cells.
 # selected_color: overlay rectangle color for the selected cell.
 # stored_color: overlay rectangle color for the stored cell.
-# border_width: overlay border width in pixels. Must be non-negative.
+# border_width: overlay border width in pixels. Must be non-negative; 0 hides rectangles.
 # toast_font_size: toast text size. Must be at least 1.0.
 # zen_percentage: zen cell size from 0.1 to 1.0 of the monitor cluster.
 # hide_rectangles_when_processes_open: executable names that hide overlay rectangles while a
@@ -854,6 +856,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
       return arr;
     };
     const auto& ro = options.visualizationOptions.renderOptions;
+    render.insert("show_rectangles", ro.show_rectangles);
     render.insert("normal_color", colorToArray(ro.normal_color));
     render.insert("selected_color", colorToArray(ro.selected_color));
     render.insert("stored_color", colorToArray(ro.stored_color));
@@ -1209,6 +1212,9 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
       // Parse nested render section
       if (auto render = (*visualization)["render"].as_table()) {
         auto& ro = options.visualizationOptions.renderOptions;
+        if (auto show_rectangles = (*render)["show_rectangles"].as_boolean()) {
+          ro.show_rectangles = show_rectangles->get();
+        }
         if (auto color = parseColor((*render)["normal_color"].as_array())) {
           ro.normal_color = *color;
         } else if ((*render)["normal_color"]) {
