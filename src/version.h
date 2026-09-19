@@ -5,7 +5,7 @@
 namespace wintiler {
 
 constexpr int VERSION_MAJOR = 0;
-constexpr int VERSION_MINOR = 11;
+constexpr int VERSION_MINOR = 12;
 constexpr int VERSION_PATCH = 0;
 
 // Build version string from constants (single source of truth)
