@@ -387,6 +387,111 @@ TEST_SUITE("loop") {
     CHECK_FALSE(snapshot.message.has_value());
   }
 
+  TEST_CASE("active window rectangle follows foreground across monitors independently of selection") {
+    ctrl::System system;
+    ctrl::Cluster cluster;
+    ctrl::CellData first;
+    first.leaf_id = 10;
+    ctrl::CellData second;
+    second.leaf_id = 20;
+    int parent = cluster.tree.add_node({});
+    int first_index = cluster.tree.add_node(first);
+    int second_index = cluster.tree.add_node(second);
+    cluster.tree.set_children(parent, first_index, second_index);
+    system.clusters.push_back(cluster);
+    ctrl::Cluster other_monitor;
+    ctrl::CellData third;
+    third.leaf_id = 30;
+    other_monitor.tree.add_node(third);
+    system.clusters.push_back(other_monitor);
+    system.selection = ctrl::CellIndicatorByIndex{0, first_index};
+    system.focused_leaf_id = 10; // Last tiled focus must not override current foreground input.
+
+    std::vector<std::vector<ctrl::Rect>> geometries = {
+        {{0.0f, 0.0f, 800.0f, 600.0f}, {10.0f, 20.0f, 300.0f, 400.0f},
+         {320.0f, 20.0f, 300.0f, 400.0f}},
+        {{810.0f, 20.0f, 300.0f, 400.0f}}};
+    renderer::RenderOptions options;
+    options.show_only_active_window = true;
+    options.selected_color = {5, 6, 7, 8};
+    OverlayRenderCache cache;
+    auto snapshot = [&](std::optional<size_t> active) {
+      return make_overlay_render_snapshot(system, geometries, options, "Toast", false, active);
+    };
+
+    auto first_snapshot = snapshot(10);
+    REQUIRE(first_snapshot.rects.size() == 1);
+    CHECK(first_snapshot.rects[0].x == doctest::Approx(10.0f));
+    CHECK(should_render_overlay(cache, first_snapshot));
+    CHECK_FALSE(should_render_overlay(cache, first_snapshot));
+
+    auto second_snapshot = snapshot(20);
+    REQUIRE(second_snapshot.rects.size() == 1);
+    CHECK(second_snapshot.rects[0].x == doctest::Approx(320.0f));
+    CHECK(second_snapshot.rects[0].color.r == 5);
+    CHECK(second_snapshot.rects[0].color.g == 6);
+    CHECK(should_render_overlay(cache, second_snapshot));
+
+    auto other_snapshot = snapshot(30);
+    REQUIRE(other_snapshot.rects.size() == 1);
+    CHECK(other_snapshot.rects[0].x == doctest::Approx(810.0f));
+    CHECK(should_render_overlay(cache, other_snapshot));
+    CHECK(snapshot(999).rects.empty());
+    CHECK(snapshot(std::nullopt).rects.empty());
+    CHECK(snapshot(std::nullopt).message == std::optional<std::string>("Toast"));
+    CHECK(should_render_overlay(cache, snapshot(std::nullopt)));
+
+    options.show_only_active_window = false;
+    CHECK(snapshot(10).rects.size() == 3);
+    CHECK(should_render_overlay(cache, snapshot(10)));
+  }
+
+  TEST_CASE("active window rectangles respect zen visibility and suppression") {
+    ctrl::System system;
+    ctrl::Cluster cluster;
+    ctrl::CellData first;
+    first.leaf_id = 10;
+    ctrl::CellData second;
+    second.leaf_id = 20;
+    int parent = cluster.tree.add_node({});
+    int first_index = cluster.tree.add_node(first);
+    int second_index = cluster.tree.add_node(second);
+    cluster.tree.set_children(parent, first_index, second_index);
+    system.clusters.push_back(cluster);
+    // A second zen monitor must not receive an inactive outline.
+    ctrl::Cluster other_monitor;
+    ctrl::CellData other;
+    other.leaf_id = 30;
+    other_monitor.zen_cell_index = other_monitor.tree.add_node(other);
+    system.clusters.push_back(other_monitor);
+    std::vector<std::vector<ctrl::Rect>> geometries = {
+        {{}, {10.0f, 20.0f, 300.0f, 400.0f}, {320.0f, 20.0f, 300.0f, 400.0f}},
+        {{810.0f, 20.0f, 300.0f, 400.0f}}};
+    renderer::RenderOptions options;
+    options.show_only_active_window = true;
+    SUBCASE("normal") {}
+    SUBCASE("zen") {
+      system.clusters[0].zen_cell_index = first_index;
+      CHECK(make_overlay_render_snapshot(system, geometries, options, std::nullopt, false, 20)
+                .rects.empty());
+    }
+    auto snapshot = [&](bool suppressed = false) {
+      return make_overlay_render_snapshot(system, geometries, options, "Toast", suppressed, 10);
+    };
+    REQUIRE(snapshot().rects.size() == 1);
+    CHECK(snapshot().rects[0].x == doctest::Approx(10.0f));
+    CHECK(snapshot(true).rects.empty());
+    CHECK(snapshot(true).message == std::optional<std::string>("Toast"));
+    options.show_rectangles = false;
+    CHECK(snapshot().rects.empty());
+    options.show_rectangles = true;
+    options.border_width = 0.0f;
+    CHECK(snapshot().rects.empty());
+    options.border_width = 3.0f;
+    system.clusters[0].has_fullscreen_cell = true;
+    CHECK(snapshot().rects.empty());
+  }
+
   TEST_CASE("overlay render snapshot suppresses rectangles while preserving toast") {
     ctrl::System system;
     ctrl::Cluster cluster;

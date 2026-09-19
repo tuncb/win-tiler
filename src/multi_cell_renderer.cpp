@@ -5,9 +5,29 @@
 namespace wintiler {
 namespace renderer {
 
+std::optional<overlay::Color>
+cell_outline_color(const ctrl::System& system, size_t cluster_index, int cell_index,
+                   const RenderOptions& config, std::optional<size_t> active_leaf_id) {
+  if (config.show_only_active_window) {
+    const auto& tree = system.clusters[cluster_index].tree;
+    if (!active_leaf_id.has_value() || !tree.is_leaf(cell_index) ||
+        tree[cell_index].leaf_id != active_leaf_id) {
+      return std::nullopt;
+    }
+    return config.selected_color;
+  }
+
+  if (system.selection.has_value() &&
+      static_cast<size_t>(system.selection->cluster_index) == cluster_index &&
+      system.selection->cell_index == cell_index) {
+    return config.selected_color;
+  }
+  return config.normal_color;
+}
+
 void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
             const RenderOptions& config, const std::optional<std::string>& message,
-            bool suppress_rectangles) {
+            bool suppress_rectangles, std::optional<size_t> active_leaf_id) {
   // Begin frame
   overlay::begin_frame();
 
@@ -39,14 +59,9 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
         }
         const auto& rect = rects[static_cast<size_t>(i)];
 
-        // Determine color based on selection state
-        overlay::Color color = config.normal_color;
-
-        // Check if this is the selected cell
-        if (system.selection.has_value() &&
-            static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
-            system.selection->cell_index == i) {
-          color = config.selected_color;
+        auto color = cell_outline_color(system, cluster_idx, i, config, active_leaf_id);
+        if (!color.has_value()) {
+          continue;
         }
 
         // Draw rectangle immediately
@@ -55,7 +70,7 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
             rect.y,
             rect.width,
             rect.height,
-            color,
+            *color,
             config.border_width,
         });
       }
@@ -82,12 +97,9 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
       // Get precomputed zen rect (already computed with zen_percentage in compute_cluster_geometry)
       const auto& zen_rect = rects[static_cast<size_t>(zen_cell_index)];
 
-      // Determine color based on selection state
-      overlay::Color color = config.normal_color;
-      if (system.selection.has_value() &&
-          static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
-          system.selection->cell_index == zen_cell_index) {
-        color = config.selected_color;
+      auto color = cell_outline_color(system, cluster_idx, zen_cell_index, config, active_leaf_id);
+      if (!color.has_value()) {
+        continue;
       }
 
       // Draw zen rectangle
@@ -96,7 +108,7 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
           zen_rect.y,
           zen_rect.width,
           zen_rect.height,
-          color,
+          *color,
           config.border_width,
       });
     }

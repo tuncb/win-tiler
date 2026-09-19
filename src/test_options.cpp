@@ -446,6 +446,7 @@ TEST_SUITE("Generated TOML") {
         "second",
         "toast_duration_ms",
         "show_rectangles",
+        "show_only_active_window",
         "normal_color",
         "selected_color",
         "border_width",
@@ -477,7 +478,29 @@ TEST_SUITE("Generated TOML") {
     auto result = read_options_toml(temp_path);
     REQUIRE(result.has_value());
     CHECK(result->visualizationOptions.renderOptions.show_rectangles);
+    CHECK_FALSE(result->visualizationOptions.renderOptions.show_only_active_window);
     CHECK(result->visualizationOptions.renderOptions.border_width > 0.0f);
+  }
+
+  TEST_CASE("active window rectangle option round trips through TOML") {
+    auto temp_path = create_temp_file_path();
+    TempFileGuard guard(temp_path);
+    bool active_only = true;
+    SUBCASE("active window only") {}
+    SUBCASE("all windows") { active_only = false; }
+    {
+      std::ofstream file(temp_path);
+      file << "[visualization.render]\n";
+      file << "show_only_active_window = " << (active_only ? "true" : "false") << "\n";
+    }
+
+    auto result = read_options_toml(temp_path);
+    REQUIRE(result.has_value());
+    CHECK(result->visualizationOptions.renderOptions.show_only_active_window == active_only);
+    REQUIRE(write_options_toml(*result, temp_path).has_value());
+    auto reread = read_options_toml(temp_path);
+    REQUIRE(reread.has_value());
+    CHECK(reread->visualizationOptions.renderOptions.show_only_active_window == active_only);
   }
 
   TEST_CASE("rectangle visibility and zero border width round trip through TOML") {

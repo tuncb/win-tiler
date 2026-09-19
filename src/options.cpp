@@ -601,6 +601,7 @@ std::string get_options_toml_documentation() {
 # toast_duration_ms = 2000
 # [visualization.render]
 # show_rectangles = true
+# show_only_active_window = false
 # normal_color = [255, 255, 255, 100]
 # selected_color = [0, 120, 255, 200]
 # border_width = 3.0
@@ -610,6 +611,9 @@ std::string get_options_toml_documentation() {
 #
 # toast_duration_ms: how long status toast messages stay visible.
 # show_rectangles: whether overlay rectangles are visible. Toast messages are unaffected.
+# show_only_active_window: draw only the foreground tiled window using selected_color.
+# Defaults to false. No rectangle is drawn when the foreground window is not tiled.
+# Requires show_rectangles = true; fullscreen and process suppression still apply.
 # normal_color: overlay rectangle color for normal cells.
 # selected_color: overlay rectangle color for the selected cell.
 # border_width: overlay border width in pixels. Must be non-negative; 0 hides rectangles.
@@ -919,6 +923,7 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     };
     const auto& ro = options.visualizationOptions.renderOptions;
     render.insert("show_rectangles", ro.show_rectangles);
+    render.insert("show_only_active_window", ro.show_only_active_window);
     render.insert("normal_color", colorToArray(ro.normal_color));
     render.insert("selected_color", colorToArray(ro.selected_color));
     render.insert("border_width", ro.border_width);
@@ -1284,6 +1289,9 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
         auto& ro = options.visualizationOptions.renderOptions;
         if (auto show_rectangles = (*render)["show_rectangles"].as_boolean()) {
           ro.show_rectangles = show_rectangles->get();
+        }
+        if (auto active_only = (*render)["show_only_active_window"].as_boolean()) {
+          ro.show_only_active_window = active_only->get();
         }
         if (auto color = parseColor((*render)["normal_color"].as_array())) {
           ro.normal_color = *color;

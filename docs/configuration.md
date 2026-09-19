@@ -221,6 +221,7 @@ toast_duration_ms = 2000
 
 [visualization.render]
 show_rectangles = true
+show_only_active_window = false
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
 border_width = 3.0
@@ -233,6 +234,7 @@ hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 | --- | --- |
 | `toast_duration_ms` | How long status toast messages stay visible. Must be non-negative. |
 | `show_rectangles` | Whether overlay rectangles are visible. Defaults to `true`; toast messages are unaffected. |
+| `show_only_active_window` | Draw only the foreground tiled window using `selected_color`. Defaults to `false`. |
 | `normal_color` | Overlay rectangle color for normal cells. |
 | `selected_color` | Overlay rectangle color for the selected cell. |
 | `border_width` | Overlay border width in pixels. Must be non-negative; `0` hides rectangles even when `show_rectangles = true`. |
@@ -248,6 +250,12 @@ Setting `border_width = 0` also hides them. To show rectangles again, use
 `show_rectangles = true` with a positive `border_width`. These settings apply to normal,
 selected, stored, and zen cells and preserve toast messages. Process-based suppression
 still hides rectangles when a matching window is open.
+
+To draw a rectangle only around the active window, set `show_only_active_window = true`
+with `show_rectangles = true`. This follows Windows focus independently of the selected
+or hovered tile, including zen windows. No rectangle is drawn when the foreground window
+is floating, ignored, or otherwise outside the tiled layout. Fullscreen and process-based
+suppression still apply; toast messages remain visible.
 
 ## Monitor Profiles
 
@@ -377,6 +385,7 @@ toast_duration_ms = 2000
 
 [visualization.render]
 show_rectangles = true
+show_only_active_window = false
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
 border_width = 3.0

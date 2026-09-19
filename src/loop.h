@@ -52,7 +52,8 @@ void toggle_runtime_verbose_logging(RuntimeLoggingState& state);
 make_overlay_render_snapshot(const ctrl::System& system,
                              const std::vector<std::vector<ctrl::Rect>>& geometries,
                              const renderer::RenderOptions& config,
-                             const std::optional<std::string>& message, bool suppress_rectangles);
+                             const std::optional<std::string>& message, bool suppress_rectangles,
+                             std::optional<size_t> active_leaf_id = std::nullopt);
 
 [[nodiscard]] bool should_render_overlay(OverlayRenderCache& cache, OverlayRenderSnapshot snapshot);
 [[nodiscard]] bool should_clear_overlay(OverlayRenderCache& cache);

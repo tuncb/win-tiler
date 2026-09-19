@@ -90,7 +90,8 @@ OverlayRenderSnapshot
 make_overlay_render_snapshot(const ctrl::System& system,
                              const std::vector<std::vector<ctrl::Rect>>& geometries,
                              const renderer::RenderOptions& config,
-                             const std::optional<std::string>& message, bool suppress_rectangles) {
+                             const std::optional<std::string>& message, bool suppress_rectangles,
+                             std::optional<size_t> active_leaf_id) {
   OverlayRenderSnapshot snapshot;
   snapshot.message = message;
   snapshot.toast_font_size = message.has_value() ? config.toast_font_size : 0.0f;
@@ -126,16 +127,13 @@ make_overlay_render_snapshot(const ctrl::System& system,
       }
 
       const auto& rect = rects[static_cast<size_t>(i)];
-      overlay::Color color = config.normal_color;
-
-      if (system.selection.has_value() &&
-          static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
-          system.selection->cell_index == i) {
-        color = config.selected_color;
+      auto color = renderer::cell_outline_color(system, cluster_idx, i, config, active_leaf_id);
+      if (!color.has_value()) {
+        continue;
       }
 
       snapshot.rects.push_back(
-          {rect.x, rect.y, rect.width, rect.height, color, config.border_width});
+          {rect.x, rect.y, rect.width, rect.height, *color, config.border_width});
     }
   }
 
@@ -155,15 +153,14 @@ make_overlay_render_snapshot(const ctrl::System& system,
     }
 
     const auto& zen_rect = rects[static_cast<size_t>(zen_cell_index)];
-    overlay::Color color = config.normal_color;
-    if (system.selection.has_value() &&
-        static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
-        system.selection->cell_index == zen_cell_index) {
-      color = config.selected_color;
+    auto color = renderer::cell_outline_color(system, cluster_idx, zen_cell_index, config,
+                                              active_leaf_id);
+    if (!color.has_value()) {
+      continue;
     }
 
     snapshot.rects.push_back(
-        {zen_rect.x, zen_rect.y, zen_rect.width, zen_rect.height, color, config.border_width});
+        {zen_rect.x, zen_rect.y, zen_rect.width, zen_rect.height, *color, config.border_width});
   }
 
   return snapshot;
@@ -1159,11 +1156,13 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       auto visible_message = toast.get_visible_message();
       auto render_snapshot = make_overlay_render_snapshot(
           engine.system, geometries, options.visualizationOptions.renderOptions, visible_message,
-          input_state.suppress_overlay_rectangles);
+          input_state.suppress_overlay_rectangles,
+          reinterpret_cast<size_t>(input_state.foreground_window));
       if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
         auto render_start = std::chrono::steady_clock::now();
         renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
-                         visible_message, input_state.suppress_overlay_rectangles);
+                         visible_message, input_state.suppress_overlay_rectangles,
+                         reinterpret_cast<size_t>(input_state.foreground_window));
         perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
       }
       perf.note_active_frame();
@@ -1291,12 +1290,14 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto visible_message = toast.get_visible_message();
     auto render_snapshot = make_overlay_render_snapshot(
         engine.system, geometries, provider.options.visualizationOptions.renderOptions,
-        visible_message, input_state.suppress_overlay_rectangles);
+        visible_message, input_state.suppress_overlay_rectangles,
+        reinterpret_cast<size_t>(input_state.foreground_window));
     if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
       auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries,
                        provider.options.visualizationOptions.renderOptions, visible_message,
-                       input_state.suppress_overlay_rectangles);
+                       input_state.suppress_overlay_rectangles,
+                       reinterpret_cast<size_t>(input_state.foreground_window));
       perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
     }
 

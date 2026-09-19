@@ -156,6 +156,7 @@ struct MonitorMatchOptions {
 namespace renderer {
 struct RenderOptions {
   bool show_rectangles = true;
+  bool show_only_active_window = false;
   overlay::Color normal_color{255, 255, 255, 100}; // Semi-transparent white
   overlay::Color selected_color{0, 120, 255, 200}; // Blue
   float border_width = kDefaultBorderWidth;
