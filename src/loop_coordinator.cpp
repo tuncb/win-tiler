@@ -8,6 +8,22 @@
 
 namespace wintiler {
 
+std::optional<size_t> apply_focus_and_read_foreground(
+    std::optional<size_t> focus_leaf_id,
+    const std::function<bool(winapi::HWND_T)>& set_foreground,
+    const std::function<winapi::HWND_T()>& get_foreground) {
+  if (focus_leaf_id.has_value() &&
+      !set_foreground(reinterpret_cast<winapi::HWND_T>(*focus_leaf_id))) {
+    spdlog::error("Failed to set foreground window");
+  }
+  // Read back the OS state even if focus failed or another window took focus.
+  const auto foreground = get_foreground();
+  if (foreground == nullptr) {
+    return std::nullopt;
+  }
+  return reinterpret_cast<size_t>(foreground);
+}
+
 namespace {
 
 std::optional<ctrl::Rect> find_actual_window_rect(const winapi::LoopInputState& input_state,

@@ -1428,7 +1428,7 @@ std::optional<WindowPosition> get_window_rect(HWND_T hwnd) {
                         windowRect.bottom - windowRect.top};
 }
 
-static HWND_T get_foreground_window() {
+HWND_T get_foreground_window() {
   return reinterpret_cast<HWND_T>(GetForegroundWindow());
 }
 

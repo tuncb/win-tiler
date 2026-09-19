@@ -450,6 +450,77 @@ TEST_SUITE("loop") {
     CHECK(should_render_overlay(cache, snapshot(10)));
   }
 
+  TEST_CASE("pointer focus updates the active rectangle in the same frame") {
+    Engine engine;
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {10, 20}}});
+    EngineFrameInput input;
+    input.cluster_updates = {{{10, 20}, false}};
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 10;
+    input.pointer_window_id = 20;
+    input.cursor_pos = ctrl::Point{600, 300};
+    const auto output = engine.process_frame(input);
+    REQUIRE(output.focus_leaf_id == 20);
+
+    renderer::RenderOptions options;
+    options.show_only_active_window = true;
+    OverlayRenderCache cache;
+    CHECK(should_render_overlay(cache, make_overlay_render_snapshot(
+        engine.system, output.geometries, options, std::nullopt, false,
+        input.foreground_leaf_id)));
+
+    winapi::HWND_T foreground = reinterpret_cast<winapi::HWND_T>(10);
+    bool focus_applied = false;
+    bool focus_succeeds = true;
+    bool focus_disappears = false;
+    SUBCASE("successful focus redraws immediately") {}
+    SUBCASE("failed focus keeps the actual foreground border") { focus_succeeds = false; }
+    SUBCASE("no foreground clears the previous border") { focus_disappears = true; }
+
+    const auto active_leaf_id = apply_focus_and_read_foreground(
+        output.focus_leaf_id,
+        [&](winapi::HWND_T target) {
+          CHECK(target == reinterpret_cast<winapi::HWND_T>(20));
+          focus_applied = true;
+          if (focus_succeeds) {
+            foreground = focus_disappears ? nullptr : target;
+          }
+          return focus_succeeds;
+        },
+        [&]() {
+          CHECK(focus_applied); // The read must happen after the focus request.
+          return foreground;
+        });
+    const auto snapshot = make_overlay_render_snapshot(
+        engine.system, output.geometries, options, std::nullopt, false, active_leaf_id);
+    if (focus_disappears) {
+      CHECK_FALSE(active_leaf_id.has_value());
+      CHECK(snapshot.rects.empty());
+    } else {
+      REQUIRE(snapshot.rects.size() == 1);
+      const size_t expected_leaf = focus_succeeds ? 20 : 10;
+      CHECK(active_leaf_id == expected_leaf);
+      const auto cell = engine.find_leaf(expected_leaf);
+      REQUIRE(cell.has_value());
+      CHECK(snapshot.rects[0].x ==
+            doctest::Approx(output.geometries[0][cell->cell_index].x));
+    }
+    CHECK(should_render_overlay(cache, snapshot) == focus_succeeds);
+    CHECK_FALSE(should_render_overlay(cache, snapshot));
+    CHECK(input.foreground_leaf_id == 10); // No next input poll was needed.
+  }
+
+  TEST_CASE("frames without a focus request still read the current foreground") {
+    const auto active_leaf_id = apply_focus_and_read_foreground(
+        std::nullopt,
+        [](winapi::HWND_T) {
+          FAIL("Unexpected foreground change");
+          return false;
+        },
+        []() { return reinterpret_cast<winapi::HWND_T>(30); });
+    CHECK(active_leaf_id == 30);
+  }
+
   TEST_CASE("active window rectangles respect zen visibility and suppression") {
     ctrl::System system;
     ctrl::Cluster cluster;

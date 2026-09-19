@@ -803,7 +803,8 @@ void handle_save_layout_request(
                provider.configPath->string());
 }
 
-void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
+[[nodiscard]] std::optional<size_t>
+apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
                         const IgnoreOptions& ignore_options,
                         const winapi::LoopInputState& input_state,
                         SessionFloatingState& floating_state, ToastState& toast,
@@ -835,7 +836,7 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
   }
 
   if (output.control != LoopControl::Continue) {
-    return;
+    return std::nullopt;
   }
 
   if (output.apply_tiles) {
@@ -845,18 +846,14 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
                                       output.placement_correction_leaf_ids);
   }
 
-  if (output.focus_leaf_id.has_value()) {
-    winapi::HWND_T hwnd = reinterpret_cast<winapi::HWND_T>(*output.focus_leaf_id);
-    if (!winapi::set_foreground_window(hwnd)) {
-      spdlog::error("Failed to set foreground window");
-    }
-  }
+  const auto foreground_leaf_id = apply_focus_and_read_foreground(output.focus_leaf_id);
 
   if (output.cursor_pos.has_value()) {
     if (!winapi::set_cursor_pos(output.cursor_pos->x, output.cursor_pos->y)) {
       spdlog::error("Failed to set cursor position");
     }
   }
+  return foreground_leaf_id;
 }
 // Handle config file hot-reload
 bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
@@ -1249,8 +1246,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     trace_tiling_execution_result(engine.system, frame_output);
 
     auto apply_start = std::chrono::steady_clock::now();
-    apply_frame_output(frame_output, engine.system, provider.options.ignoreOptions, input_state,
-                       floating_state, toast, logging_state);
+    const auto foreground_leaf_id = apply_frame_output(
+        frame_output, engine.system, provider.options.ignoreOptions, input_state,
+        floating_state, toast, logging_state);
     perf.record_stage(LoopPerfStage::Apply, std::chrono::steady_clock::now() - apply_start);
     perf.note_active_frame();
     if (frame_output.apply_tiles) {
@@ -1286,18 +1284,18 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     current_desktop.data.reapply_layout_templates = false;
     geometries = std::move(frame_output.geometries);
 
-    // Render cell system overlay
+    // Render using foreground observed after applying effects, not the pre-focus input snapshot.
     auto visible_message = toast.get_visible_message();
     auto render_snapshot = make_overlay_render_snapshot(
         engine.system, geometries, provider.options.visualizationOptions.renderOptions,
         visible_message, input_state.suppress_overlay_rectangles,
-        reinterpret_cast<size_t>(input_state.foreground_window));
+        foreground_leaf_id);
     if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
       auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries,
                        provider.options.visualizationOptions.renderOptions, visible_message,
                        input_state.suppress_overlay_rectangles,
-                       reinterpret_cast<size_t>(input_state.foreground_window));
+                       foreground_leaf_id);
       perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
     }
 

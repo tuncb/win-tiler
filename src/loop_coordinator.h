@@ -67,4 +67,10 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
                              MouseDragDropAction mouse_drag_drop_action,
                              EngineFrameInput& frame_input);
 
+// Apply the requested focus and return the observed foreground for this frame's overlay.
+[[nodiscard]] std::optional<size_t> apply_focus_and_read_foreground(
+    std::optional<size_t> focus_leaf_id,
+    const std::function<bool(winapi::HWND_T)>& set_foreground = winapi::set_foreground_window,
+    const std::function<winapi::HWND_T()>& get_foreground = winapi::get_foreground_window);
+
 } // namespace wintiler

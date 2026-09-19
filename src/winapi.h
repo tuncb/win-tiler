@@ -138,6 +138,7 @@ struct Point {
 };
 
 bool set_cursor_pos(long x, long y);
+[[nodiscard]] HWND_T get_foreground_window();
 bool set_foreground_window(HWND_T hwnd);
 
 // Keyboard hotkey support
