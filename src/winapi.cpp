@@ -91,25 +91,35 @@ std::mutex g_monitor_cache_mutex;
 std::vector<MonitorInfo> g_monitor_cache;
 bool g_monitor_cache_dirty = true;
 std::mutex g_window_minmax_cache_mutex;
-std::unordered_map<HWND_T, WindowMinMaxInfo> g_window_minmax_cache;
+struct CachedWindowMinMaxInfo {
+  std::optional<WindowMinMaxInfo> info;
+  ULONGLONG queried_at = 0;
+  UINT dpi = 0;
+};
+std::unordered_map<HWND_T, CachedWindowMinMaxInfo> g_window_minmax_cache;
 
 void fill_monitors_uncached(std::vector<MonitorInfo>& monitors) {
   monitors.clear();
   EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)&monitors);
 }
 
-void cache_window_minmax_info(HWND_T hwnd, const WindowMinMaxInfo& info) {
+void cache_window_minmax_info(HWND_T hwnd, const std::optional<WindowMinMaxInfo>& info) {
   std::scoped_lock lock(g_window_minmax_cache_mutex);
-  g_window_minmax_cache[hwnd] = info;
+  g_window_minmax_cache[hwnd] = {info, GetTickCount64(), GetDpiForWindow(static_cast<HWND>(hwnd))};
 }
 
-std::optional<WindowMinMaxInfo> lookup_cached_window_minmax_info(HWND_T hwnd) {
-  std::scoped_lock lock(g_window_minmax_cache_mutex);
-  auto found = g_window_minmax_cache.find(hwnd);
-  if (found == g_window_minmax_cache.end()) {
-    return std::nullopt;
+std::optional<WindowMinMaxInfo> get_cached_window_minmax_info(HWND_T hwnd) {
+  {
+    std::scoped_lock lock(g_window_minmax_cache_mutex);
+    auto found = g_window_minmax_cache.find(hwnd);
+    if (found != g_window_minmax_cache.end() &&
+        GetTickCount64() - found->second.queried_at < 2000 &&
+        found->second.dpi == GetDpiForWindow(static_cast<HWND>(hwnd))) {
+      return found->second.info;
+    }
   }
-  return found->second;
+  // Cache failed queries too, so unresponsive windows cannot stall every frame.
+  return get_window_minmax_info(hwnd);
 }
 } // namespace
 
@@ -218,6 +228,7 @@ std::optional<WindowMinMaxInfo> get_window_minmax_info(HWND_T hwnd) {
   if (send_result == 0) {
     spdlog::debug("Failed to retrieve WM_GETMINMAXINFO for hwnd={}, error={}",
                   static_cast<void*>(win), GetLastError());
+    cache_window_minmax_info(hwnd, std::nullopt);
     return std::nullopt;
   }
 
@@ -3574,6 +3585,13 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   gather_raw_window_data_into(ignore_options, all_handles, &render_options,
                               &state.suppress_overlay_rectangles);
 
+  {
+    std::scoped_lock lock(g_window_minmax_cache_mutex);
+    std::erase_if(g_window_minmax_cache, [&all_handles](const auto& entry) {
+      return std::find(all_handles.begin(), all_handles.end(), entry.first) == all_handles.end();
+    });
+  }
+
   if (trace_enabled) {
     spdlog::trace("WinAPI input gather: monitors={}, tiling_candidates={}", state.monitors.size(),
                   all_handles.size());
@@ -3602,8 +3620,16 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
         managed_info.is_maximized = is_window_maximized(hwnd);
         managed_info.is_minimized = is_window_minimized(hwnd);
         managed_info.actual_rect = get_window_rect(hwnd);
-        if (!managed_info.is_minimized) {
-          managed_info.minmax_info = lookup_cached_window_minmax_info(hwnd);
+        managed_info.dpi = GetDpiForWindow(static_cast<HWND>(hwnd));
+        RECT outer_rect{};
+        if (GetWindowRect(static_cast<HWND>(hwnd), &outer_rect)) {
+          managed_info.outer_rect =
+              WindowPosition{outer_rect.left, outer_rect.top, outer_rect.right - outer_rect.left,
+                             outer_rect.bottom - outer_rect.top};
+        }
+        if (!managed_info.is_minimized && !managed_info.is_maximized &&
+            !managed_info.is_fullscreen) {
+          managed_info.minmax_info = get_cached_window_minmax_info(hwnd);
         }
         monitor_windows.push_back(managed_info);
         if (trace_enabled) {

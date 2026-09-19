@@ -113,10 +113,16 @@ void extract_managed_window_states_from_input_into(
       if (win.minmax_info.has_value()) {
         min_track_width = win.minmax_info->min_track_width;
         min_track_height = win.minmax_info->min_track_height;
+        if (win.outer_rect.has_value() && win.actual_rect.has_value()) {
+          const int border_width = std::max(0, win.outer_rect->width - win.actual_rect->width);
+          const int border_height = std::max(0, win.outer_rect->height - win.actual_rect->height);
+          min_track_width = std::max(0, min_track_width - border_width);
+          min_track_height = std::max(0, min_track_height - border_height);
+        }
       }
       monitor_state.push_back({reinterpret_cast<size_t>(win.handle), win.is_fullscreen,
                                win.is_maximized, win.is_minimized, actual_rect, min_track_width,
-                               min_track_height});
+                               min_track_height, win.dpi});
     }
   }
 }

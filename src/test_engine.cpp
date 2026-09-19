@@ -1464,7 +1464,7 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.placement_correction_leaf_ids.empty());
   }
 
-  TEST_CASE("steady placement correction skips target smaller than min track size") {
+  TEST_CASE("steady placement correction skips impossible minimum track size") {
     Engine engine = create_test_engine();
     auto expected_geometries = compute_default_geometries(engine);
     auto leaf_cell = engine.find_leaf(1);
@@ -1476,7 +1476,7 @@ TEST_SUITE("Engine::process_frame") {
     constrained_window.leaf_id = 1;
     constrained_window.actual_rect =
         Rect{target_rect.x, target_rect.y, target_rect.width + 40.0f, target_rect.height};
-    constrained_window.min_track_width = static_cast<int>(target_rect.width) + 1;
+    constrained_window.min_track_width = 801;
     constrained_window.min_track_height = static_cast<int>(target_rect.height);
 
     EngineFrameInput input;
@@ -2675,6 +2675,324 @@ TEST_SUITE("Directional movement") {
       CHECK_FALSE(result.apply_tiles);
       CHECK(engine.selected_leaf_id() == 1);
     }
+  }
+}
+
+TEST_SUITE("minimum size layout") {
+  TEST_CASE("reported limits move siblings on either axis without changing preferred ratios") {
+    for (bool horizontal : {false, true}) {
+      Engine engine = create_two_window_engine();
+      engine.system.clusters[0].tree[0].split_dir =
+          horizontal ? SplitDir::Horizontal : SplitDir::Vertical;
+      EngineFrameInput input;
+      input.cluster_updates = build_current_cluster_updates(engine);
+      input.has_completed_initial_tile_pass = true;
+      input.gap_h = 10;
+      input.gap_v = 10;
+      ManagedWindowState first;
+      first.leaf_id = 1;
+      first.min_track_width = horizontal ? 0 : 500;
+      first.min_track_height = horizontal ? 400 : 0;
+      ManagedWindowState second;
+      second.leaf_id = 2;
+      second.min_track_width = horizontal ? 0 : 200;
+      second.min_track_height = horizontal ? 150 : 0;
+      input.managed_windows = {{first, second}};
+      auto output = engine.process_frame(input);
+      REQUIRE(output.apply_tiles);
+      CHECK(output.layout_changed);
+      auto a_index = engine.find_leaf(1)->cell_index;
+      auto b_index = engine.find_leaf(2)->cell_index;
+      const auto& a = output.geometries[0][a_index];
+      const auto& b = output.geometries[0][b_index];
+      if (horizontal) {
+        CHECK(a.height == doctest::Approx(400));
+        CHECK(b.height == doctest::Approx(170));
+        CHECK(b.y == doctest::Approx(a.y + a.height + 10));
+      } else {
+        CHECK(a.width == doctest::Approx(500));
+        CHECK(b.width == doctest::Approx(270));
+        CHECK(b.x == doctest::Approx(a.x + a.width + 10));
+      }
+      CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.5f));
+      CHECK(geometries_equal(output.geometries, compute_default_geometries(engine)));
+      CHECK_FALSE(engine.process_frame(input).apply_tiles);
+
+      input.managed_windows[0][0].min_track_width = 0;
+      input.managed_windows[0][0].min_track_height = 0;
+      output = engine.process_frame(input);
+      CHECK(output.apply_tiles);
+      const auto& restored = output.geometries[0][a_index];
+      CHECK((horizontal ? restored.height : restored.width) ==
+            doctest::Approx(horizontal ? 285 : 385));
+    }
+  }
+
+  TEST_CASE("second sibling minimum bounds the first sibling and exact fits stay feasible") {
+    Engine engine = create_two_window_engine();
+    engine.system.clusters[0].tree[0].split_ratio = 0.9f;
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.min_track_width = 270;
+    ManagedWindowState b;
+    b.leaf_id = 2;
+    b.min_track_width = 500;
+    input.managed_windows = {{a, b}};
+    auto output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    CHECK(output.geometries[0][engine.find_leaf(1)->cell_index].width == doctest::Approx(270));
+    CHECK(output.geometries[0][engine.find_leaf(2)->cell_index].width == doctest::Approx(500));
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.9f));
+  }
+
+  TEST_CASE("nested subtree minimums propagate both axes including gaps") {
+    Engine engine;
+    ClusterInitInfo info{0, 0, 800, 600, 0, 0, 800, 600, {1, 2, 3}};
+    info.initial_layout_rule = create_three_window_vertical_right_horizontal_layout_rule();
+    engine.init({info});
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.min_track_width = 250;
+    ManagedWindowState b;
+    b.leaf_id = 2;
+    b.min_track_width = 500;
+    b.min_track_height = 400;
+    ManagedWindowState c;
+    c.leaf_id = 3;
+    c.min_track_width = 450;
+    c.min_track_height = 150;
+    input.managed_windows = {{a, b, c}};
+    auto output = engine.process_frame(input);
+    REQUIRE(output.apply_tiles);
+    auto ar = output.geometries[0][engine.find_leaf(1)->cell_index];
+    auto br = output.geometries[0][engine.find_leaf(2)->cell_index];
+    auto cr = output.geometries[0][engine.find_leaf(3)->cell_index];
+    CHECK(ar.width == doctest::Approx(270));
+    CHECK(br.width == doctest::Approx(500));
+    CHECK(cr.width == doctest::Approx(500));
+    CHECK(br.height == doctest::Approx(400));
+    CHECK(cr.height == doctest::Approx(170));
+    CHECK(br.x == doctest::Approx(ar.x + ar.width + 10));
+    CHECK(cr.y == doctest::Approx(br.y + br.height + 10));
+  }
+
+  TEST_CASE("impossible combined minimums keep preferred split without repeated retiling") {
+    Engine engine = create_two_window_engine();
+    auto before = compute_default_geometries(engine);
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.min_track_width = 500;
+    ManagedWindowState b = a;
+    b.leaf_id = 2;
+    input.managed_windows = {{a, b}};
+    auto output = engine.process_frame(input);
+    CHECK_FALSE(output.apply_tiles);
+    CHECK(geometries_equal(before, output.geometries));
+    CHECK_FALSE(engine.process_frame(input).apply_tiles);
+  }
+
+  TEST_CASE("same axis nested minimum sums constrain ancestors on both axes") {
+    for (bool horizontal : {false, true}) {
+      Engine engine;
+      const float width = horizontal ? 600.0f : 1200.0f;
+      const float height = horizontal ? 1200.0f : 600.0f;
+      ClusterInitInfo info{0, 0, width, height, 0, 0, width, height, {1, 2, 3}};
+      auto rule = create_three_window_vertical_right_horizontal_layout_rule();
+      rule.tree.split_dir = horizontal ? LayoutSplitDir::Horizontal : LayoutSplitDir::Vertical;
+      rule.tree.second->split_dir = rule.tree.split_dir;
+      info.initial_layout_rule = rule;
+      engine.init({info});
+      EngineFrameInput input;
+      input.cluster_updates = build_current_cluster_updates(engine);
+      input.has_completed_initial_tile_pass = true;
+      input.gap_h = 10;
+      input.gap_v = 10;
+      ManagedWindowState b;
+      b.leaf_id = 2;
+      b.min_track_width = horizontal ? 0 : 700;
+      b.min_track_height = horizontal ? 700 : 0;
+      ManagedWindowState c;
+      c.leaf_id = 3;
+      c.min_track_width = horizontal ? 0 : 200;
+      c.min_track_height = horizontal ? 200 : 0;
+      input.managed_windows = {{b, c}};
+      auto output = engine.process_frame(input);
+      REQUIRE(output.apply_tiles);
+      auto ar = output.geometries[0][engine.find_leaf(1)->cell_index];
+      auto br = output.geometries[0][engine.find_leaf(2)->cell_index];
+      auto cr = output.geometries[0][engine.find_leaf(3)->cell_index];
+      CHECK((horizontal ? ar.height : ar.width) == doctest::Approx(260));
+      CHECK((horizontal ? br.height : br.width) == doctest::Approx(700));
+      CHECK((horizontal ? cr.height : cr.width) == doctest::Approx(200));
+    }
+  }
+
+  TEST_CASE("monitor changes discard inferred minimums and their old failure evidence") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.actual_rect = compute_default_geometries(engine)[0][engine.find_leaf(1)->cell_index];
+    a.actual_rect->width = 500;
+    input.managed_windows = {{a}};
+    for (int i = 0; i < 3; ++i) {
+      CHECK_FALSE(engine.process_frame(input).apply_tiles);
+    }
+    REQUIRE(engine.process_frame(input).apply_tiles);
+    REQUIRE(engine.minimum_sizes.at(1).observed_width == 500);
+    SUBCASE("monitor work area changes") {
+      engine.system.clusters[0].window_width = 900;
+    }
+    SUBCASE("DPI changes without changing work area") {
+      input.managed_windows[0][0].dpi = 144;
+    }
+    auto output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    CHECK(engine.minimum_sizes.at(1).observed_width == 0);
+    CHECK(output.geometries[0][engine.find_leaf(1)->cell_index].width ==
+          doctest::Approx((engine.system.clusters[0].window_width - 30) / 2));
+    CHECK(engine.placement_correction_failures.empty());
+  }
+
+  TEST_CASE("three stable failed corrections learn only the oversized axis and move neighbors") {
+    for (bool horizontal : {false, true}) {
+      Engine engine = create_two_window_engine();
+      engine.system.clusters[0].tree[0].split_dir =
+          horizontal ? SplitDir::Horizontal : SplitDir::Vertical;
+      EngineFrameInput input;
+      input.cluster_updates = build_current_cluster_updates(engine);
+      input.has_completed_initial_tile_pass = true;
+      input.gap_h = 10;
+      input.gap_v = 10;
+      auto target = compute_default_geometries(engine)[0][engine.find_leaf(1)->cell_index];
+      ManagedWindowState a;
+      a.leaf_id = 1;
+      a.actual_rect = target;
+      if (horizontal) {
+        a.actual_rect->height = 400;
+      } else {
+        a.actual_rect->width = 500;
+      }
+      input.managed_windows = {{a}};
+      for (int attempt = 0; attempt < 3; ++attempt) {
+        auto output = engine.process_frame(input);
+        CHECK_FALSE(output.apply_tiles);
+        CHECK(output.placement_correction_leaf_ids == std::vector<size_t>{1});
+      }
+      auto output = engine.process_frame(input);
+      CHECK(output.apply_tiles);
+      CHECK(output.layout_changed);
+      const auto& constraint = engine.minimum_sizes.at(1);
+      CHECK(constraint.observed_width == doctest::Approx(horizontal ? 0 : 500));
+      CHECK(constraint.observed_height == doctest::Approx(horizontal ? 400 : 0));
+      CHECK(rects_equal(output.geometries[0][engine.find_leaf(1)->cell_index], *a.actual_rect));
+      CHECK_FALSE(engine.process_frame(input).apply_tiles);
+
+      // An app accepting a smaller size disproves the inferred minimum.
+      input.managed_windows[0][0].actual_rect = target;
+      output = engine.process_frame(input);
+      CHECK(output.apply_tiles);
+      CHECK(rects_equal(output.geometries[0][engine.find_leaf(1)->cell_index], target));
+    }
+  }
+
+  TEST_CASE("position drift and changing sizes do not establish minimum sizes") {
+    for (bool moving : {false, true}) {
+      Engine engine = create_two_window_engine();
+      EngineFrameInput input;
+      input.cluster_updates = build_current_cluster_updates(engine);
+      input.has_completed_initial_tile_pass = true;
+      input.gap_h = 10;
+      input.gap_v = 10;
+      ManagedWindowState a;
+      a.leaf_id = 1;
+      a.actual_rect = compute_default_geometries(engine)[0][engine.find_leaf(1)->cell_index];
+      a.actual_rect->width = 500;
+      if (moving) {
+        a.actual_rect->x += 30;
+      }
+      input.managed_windows = {{a}};
+      for (int i = 0; i < 6; ++i) {
+        if (!moving) {
+          input.managed_windows[0][0].actual_rect->width += 10;
+        }
+        CHECK_FALSE(engine.process_frame(input).apply_tiles);
+      }
+      CHECK(engine.minimum_sizes.at(1).observed_width == 0);
+    }
+  }
+
+  TEST_CASE("moving a window with an inferred minimum exchanges it without resizing its split") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.actual_rect = compute_default_geometries(engine)[0][engine.find_leaf(1)->cell_index];
+    a.actual_rect->width = 500;
+    input.managed_windows = {{a}};
+    for (int i = 0; i < 3; ++i) {
+      CHECK_FALSE(engine.process_frame(input).apply_tiles);
+    }
+    REQUIRE(engine.process_frame(input).apply_tiles);
+    input.completed_drag = CompletedDragRequest{1, Point{655, 300}, *a.actual_rect, true};
+    input.completed_drag->actual_window_rect->x = 520;
+    input.managed_windows[0][0].actual_rect = input.completed_drag->actual_window_rect;
+    auto output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.5f));
+    const auto& rect = output.geometries[0][engine.find_leaf(1)->cell_index];
+    CHECK(rect.width == doctest::Approx(500));
+    CHECK(rect.x == doctest::Approx(290));
+  }
+
+  TEST_CASE("constraints follow window identity through exchanges and clear when windows leave") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.gap_h = 10;
+    input.gap_v = 10;
+    ManagedWindowState a;
+    a.leaf_id = 1;
+    a.min_track_width = 500;
+    input.managed_windows = {{a}};
+    REQUIRE(engine.process_frame(input).apply_tiles);
+    REQUIRE(engine.select_leaf(1));
+    input.hotkey_action = HotkeyAction::ExchangeSiblings;
+    auto output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    const auto rect = output.geometries[0][engine.find_leaf(1)->cell_index];
+    CHECK(rect.width == doctest::Approx(500));
+    CHECK(rect.x == doctest::Approx(290));
+    input.hotkey_action.reset();
+    input.cluster_updates = {{{2}, false}};
+    input.managed_windows = {{}};
+    output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    CHECK(engine.minimum_sizes.empty());
   }
 }
 

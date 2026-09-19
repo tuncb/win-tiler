@@ -761,8 +761,46 @@ std::vector<size_t> build_layout_rule_leaf_order(const Cluster& cluster,
   return ordered_leaf_ids;
 }
 
+Rect compute_subtree_minimums(const Cluster& cluster, int node_index, std::vector<Rect>& minimums,
+                              const std::unordered_map<size_t, WindowSizeConstraint>& constraints,
+                              float gap_h, float gap_v) {
+  Rect minimum;
+  auto first = cluster.tree.get_first_child(node_index);
+  auto second = cluster.tree.get_second_child(node_index);
+  if (first.has_value() && second.has_value()) {
+    const auto a = compute_subtree_minimums(cluster, *first, minimums, constraints, gap_h, gap_v);
+    const auto b = compute_subtree_minimums(cluster, *second, minimums, constraints, gap_h, gap_v);
+    if (cluster.tree[node_index].split_dir == SplitDir::Vertical) {
+      minimum.width = a.width + b.width + gap_h;
+      minimum.height = std::max(a.height, b.height);
+    } else {
+      minimum.width = std::max(a.width, b.width);
+      minimum.height = a.height + b.height + gap_v;
+    }
+  } else if (cluster.tree[node_index].leaf_id.has_value()) {
+    auto found = constraints.find(*cluster.tree[node_index].leaf_id);
+    if (found != constraints.end()) {
+      minimum.width =
+          std::max(static_cast<float>(found->second.reported_width), found->second.observed_width);
+      minimum.height = std::max(static_cast<float>(found->second.reported_height),
+                                found->second.observed_height);
+    }
+  }
+  minimums[static_cast<size_t>(node_index)] = minimum;
+  return minimum;
+}
+
+float constrained_first_size(float available, float ratio, float first_min, float second_min) {
+  const float preferred = std::max(0.0f, available) * ratio;
+  // An impossible split keeps its preferred layout; overlap is allowed in this case.
+  if (first_min + second_min > available) {
+    return preferred;
+  }
+  return std::clamp(preferred, first_min, available - second_min);
+}
+
 void compute_children_rects(const Cluster& cluster, int node_index, std::vector<Rect>& rects,
-                            float gap_h, float gap_v) {
+                            const std::vector<Rect>& minimums, float gap_h, float gap_v) {
   auto first_opt = cluster.tree.get_first_child(node_index);
   auto second_opt = cluster.tree.get_second_child(node_index);
 
@@ -772,31 +810,36 @@ void compute_children_rects(const Cluster& cluster, int node_index, std::vector<
 
   const Rect& parent = rects[static_cast<size_t>(node_index)];
   const CellData& data = cluster.tree[node_index];
+  const auto& first_min = minimums[static_cast<size_t>(*first_opt)];
+  const auto& second_min = minimums[static_cast<size_t>(*second_opt)];
 
   if (data.split_dir == SplitDir::Vertical) {
     float available = parent.width - gap_h;
-    float first_w = available > 0.0f ? available * data.split_ratio : 0.0f;
-    float second_w = available > 0.0f ? available * (1.0f - data.split_ratio) : 0.0f;
+    float first_w =
+        constrained_first_size(available, data.split_ratio, first_min.width, second_min.width);
+    float second_w = std::max(0.0f, available - first_w);
 
     rects[static_cast<size_t>(*first_opt)] = {parent.x, parent.y, first_w, parent.height};
     rects[static_cast<size_t>(*second_opt)] = {parent.x + first_w + gap_h, parent.y, second_w,
                                                parent.height};
   } else {
     float available = parent.height - gap_v;
-    float first_h = available > 0.0f ? available * data.split_ratio : 0.0f;
-    float second_h = available > 0.0f ? available * (1.0f - data.split_ratio) : 0.0f;
+    float first_h =
+        constrained_first_size(available, data.split_ratio, first_min.height, second_min.height);
+    float second_h = std::max(0.0f, available - first_h);
 
     rects[static_cast<size_t>(*first_opt)] = {parent.x, parent.y, parent.width, first_h};
     rects[static_cast<size_t>(*second_opt)] = {parent.x, parent.y + first_h + gap_v, parent.width,
                                                second_h};
   }
 
-  compute_children_rects(cluster, *first_opt, rects, gap_h, gap_v);
-  compute_children_rects(cluster, *second_opt, rects, gap_h, gap_v);
+  compute_children_rects(cluster, *first_opt, rects, minimums, gap_h, gap_v);
+  compute_children_rects(cluster, *second_opt, rects, minimums, gap_h, gap_v);
 }
 
-std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, float gap_v,
-                                           float zen_percentage) {
+std::vector<Rect>
+compute_cluster_geometry(const Cluster& cluster, float gap_h, float gap_v, float zen_percentage,
+                         const std::unordered_map<size_t, WindowSizeConstraint>& constraints) {
   std::vector<Rect> rects(cluster.tree.size(), Rect{0.0f, 0.0f, 0.0f, 0.0f});
   if (cluster.tree.empty()) {
     return rects;
@@ -807,7 +850,9 @@ std::vector<Rect> compute_cluster_geometry(const Cluster& cluster, float gap_h, 
   rects[0] = Rect{cluster.global_x + gap_h, cluster.global_y + gap_v, root_w > 0.0f ? root_w : 0.0f,
                   root_h > 0.0f ? root_h : 0.0f};
 
-  compute_children_rects(cluster, 0, rects, gap_h, gap_v);
+  std::vector<Rect> minimums(cluster.tree.size());
+  compute_subtree_minimums(cluster, 0, minimums, constraints, gap_h, gap_v);
+  compute_children_rects(cluster, 0, rects, minimums, gap_h, gap_v);
 
   if (cluster.zen_cell_index.has_value()) {
     int zen_idx = *cluster.zen_cell_index;
@@ -2102,6 +2147,133 @@ bool placement_target_violates_min_track(const ManagedWindowState& window,
          (window.min_track_height > 0 && target.height < window.min_track_height);
 }
 
+bool same_rect(const ctrl::Rect& a, const ctrl::Rect& b) {
+  return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+}
+
+bool same_geometries(const std::vector<std::vector<ctrl::Rect>>& a,
+                     const std::vector<std::vector<ctrl::Rect>>& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i].size() != b[i].size() ||
+        !std::equal(a[i].begin(), a[i].end(), b[i].begin(), same_rect)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::unordered_map<size_t, WindowSizeConstraint>
+collect_minimum_sizes(Engine& engine, const EngineFrameInput& input) {
+  std::unordered_map<size_t, WindowSizeConstraint> result;
+  for (size_t ci = 0; ci < input.managed_windows.size() && ci < engine.system.clusters.size();
+       ++ci) {
+    const auto& cluster = engine.system.clusters[ci];
+    if (cluster.has_fullscreen_cell) {
+      continue;
+    }
+    const ctrl::Rect work_area{cluster.global_x, cluster.global_y, cluster.window_width,
+                               cluster.window_height};
+    for (const auto& window : input.managed_windows[ci]) {
+      if (window.leaf_id == 0 || window.is_minimized || window.is_maximized ||
+          window.is_fullscreen) {
+        continue;
+      }
+      WindowSizeConstraint constraint;
+      auto previous = engine.minimum_sizes.find(window.leaf_id);
+      bool same_context = previous != engine.minimum_sizes.end() &&
+                          previous->second.cluster_index == static_cast<int>(ci) &&
+                          same_rect(previous->second.work_area, work_area) &&
+                          previous->second.dpi == window.dpi &&
+                          previous->second.reported_width == window.min_track_width &&
+                          previous->second.reported_height == window.min_track_height;
+      const bool dragged =
+          input.completed_drag.has_value() && input.completed_drag->leaf_id == window.leaf_id;
+      if (!same_context || dragged) {
+        std::erase_if(engine.placement_correction_failures,
+                      [&window](const auto& failure) { return failure.leaf_id == window.leaf_id; });
+      }
+      if (same_context) {
+        constraint = previous->second;
+      }
+      constraint.cluster_index = static_cast<int>(ci);
+      constraint.work_area = work_area;
+      constraint.dpi = window.dpi;
+      constraint.reported_width = std::max(0, window.min_track_width);
+      constraint.reported_height = std::max(0, window.min_track_height);
+      if (window.actual_rect.has_value()) {
+        const auto& actual = *window.actual_rect;
+        // A successful smaller size disproves a previously inferred limit on that axis.
+        if (actual.width > 0 && actual.width < constraint.observed_width - 2.0f) {
+          constraint.observed_width = 0;
+        }
+        if (actual.height > 0 && actual.height < constraint.observed_height - 2.0f) {
+          constraint.observed_height = 0;
+        }
+        if (same_context && !dragged && !input.hotkey_action.has_value()) {
+          for (auto& failure : engine.placement_correction_failures) {
+            if (failure.leaf_id != window.leaf_id || failure.attempts <= failure.sampled_attempts) {
+              continue;
+            }
+            failure.sampled_attempts = failure.attempts;
+            // Only infer a shrink limit after three dispatched corrections have left the
+            // window at the requested position with a stable, oversized dimension.
+            const bool positioned = std::abs(actual.x - failure.target.x) <= 2.0f &&
+                                    std::abs(actual.y - failure.target.y) <= 2.0f;
+            auto sample_axis = [positioned](float actual_size, int target_size, float& last_size,
+                                            int& samples, float& observed) {
+              if (!positioned || actual_size <= target_size + 2.0f) {
+                samples = 0;
+              } else {
+                samples = std::abs(actual_size - last_size) <= 2.0f ? samples + 1 : 1;
+                if (samples >= 3) {
+                  observed = actual_size;
+                }
+              }
+              last_size = actual_size;
+            };
+            sample_axis(actual.width, failure.target.width, failure.last_width,
+                        failure.stable_width_samples, constraint.observed_width);
+            sample_axis(actual.height, failure.target.height, failure.last_height,
+                        failure.stable_height_samples, constraint.observed_height);
+          }
+        }
+      }
+      result.emplace(window.leaf_id, constraint);
+    }
+  }
+  std::erase_if(engine.placement_correction_failures,
+                [&result](const auto& failure) { return !result.contains(failure.leaf_id); });
+  return result;
+}
+
+bool same_effective_minimums(const std::unordered_map<size_t, WindowSizeConstraint>& a,
+                             const std::unordered_map<size_t, WindowSizeConstraint>& b) {
+  auto contains_same = [](const auto& first, const auto& second) {
+    for (const auto& [leaf_id, constraint] : first) {
+      auto found = second.find(leaf_id);
+      const float width =
+          std::max(static_cast<float>(constraint.reported_width), constraint.observed_width);
+      const float height =
+          std::max(static_cast<float>(constraint.reported_height), constraint.observed_height);
+      if (found == second.end()) {
+        if (width != 0 || height != 0) {
+          return false;
+        }
+      } else if (width != std::max(static_cast<float>(found->second.reported_width),
+                                   found->second.observed_width) ||
+                 height != std::max(static_cast<float>(found->second.reported_height),
+                                    found->second.observed_height)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return contains_same(a, b) && contains_same(b, a);
+}
+
 void clear_placement_correction_failures_for_leaf(std::vector<PlacementCorrectionFailure>& failures,
                                                   size_t leaf_id) {
   failures.erase(std::remove_if(failures.begin(), failures.end(),
@@ -2220,6 +2392,7 @@ void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMo
   system = ctrl::create_system(infos, split_mode);
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
   placement_correction_failures.clear();
+  minimum_sizes.clear();
 }
 
 std::vector<std::vector<ctrl::Rect>> Engine::compute_geometries(float gap_h, float gap_v,
@@ -2238,7 +2411,7 @@ Engine::compute_geometries(const std::vector<ClusterTilingOptions>& cluster_opti
     const auto& options = cluster_options_or_default(cluster_options, cluster_index);
     geometries.push_back(ctrl::compute_cluster_geometry(cluster, options.gapOptions.horizontal,
                                                         options.gapOptions.vertical,
-                                                        options.zen_percentage));
+                                                        options.zen_percentage, minimum_sizes));
   }
   return geometries;
 }
@@ -2394,9 +2567,31 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   auto mark_geometries_dirty = [&]() { geometries_dirty = true; };
 
+  // Interpret a completed drag against the layout the user actually dragged from.
+  // Its snapshot may already describe another monitor or a newly accepted smaller size.
+  std::vector<std::vector<ctrl::Rect>> drag_geometries;
+  if (input.completed_drag.has_value()) {
+    drag_geometries = ensure_geometries();
+  }
+
+  auto updated_minimums = collect_minimum_sizes(*this, input);
+  const bool minimums_changed = !same_effective_minimums(minimum_sizes, updated_minimums);
+  std::vector<std::vector<ctrl::Rect>> previous_geometries;
+  if (minimums_changed) {
+    previous_geometries = ensure_geometries();
+  }
+  minimum_sizes = std::move(updated_minimums);
+  if (minimums_changed) {
+    mark_geometries_dirty();
+    if (!same_geometries(previous_geometries, ensure_geometries())) {
+      output.layout_changed = true;
+      output.apply_tiles = true;
+    }
+  }
+
   if (input.completed_drag.has_value()) {
     DragResult drag_result =
-        process_completed_drag(system, *input.completed_drag, ensure_geometries(), cluster_options);
+        process_completed_drag(system, *input.completed_drag, drag_geometries, cluster_options);
     output.clear_drag_ended = drag_result.clear_drag_ended;
     output.selection_changed = output.selection_changed || drag_result.selection_changed;
     output.layout_changed = output.layout_changed || drag_result.layout_changed;
@@ -2624,9 +2819,9 @@ ActionResult Engine::process_action(HotkeyAction action,
   auto compute_updated_cluster_geometry = [&](int cluster_index) {
     const auto& options =
         cluster_options_or_default(cluster_options, static_cast<size_t>(cluster_index));
-    return ctrl::compute_cluster_geometry(system.clusters[static_cast<size_t>(cluster_index)],
-                                          options.gapOptions.horizontal,
-                                          options.gapOptions.vertical, options.zen_percentage);
+    return ctrl::compute_cluster_geometry(
+        system.clusters[static_cast<size_t>(cluster_index)], options.gapOptions.horizontal,
+        options.gapOptions.vertical, options.zen_percentage, minimum_sizes);
   };
 
   switch (action) {

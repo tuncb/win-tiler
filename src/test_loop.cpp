@@ -169,6 +169,33 @@ TEST_SUITE("loop") {
     CHECK_FALSE(frame_input.foreground_leaf_id.has_value());
   }
 
+  TEST_CASE("minimum tracking sizes are converted to visible frame sizes") {
+    winapi::LoopInputState input;
+    input.windows_per_monitor.resize(1);
+    winapi::ManagedWindowInfo window;
+    window.handle = reinterpret_cast<winapi::HWND_T>(7);
+    window.minmax_info = winapi::WindowMinMaxInfo{};
+    window.minmax_info->min_track_width = 640;
+    window.minmax_info->min_track_height = 480;
+    window.actual_rect = winapi::WindowPosition{-1000, 20, 700, 500};
+    window.outer_rect = winapi::WindowPosition{-1012, 20, 724, 512};
+    window.dpi = 144;
+    input.windows_per_monitor[0] = {window};
+    std::vector<std::vector<ManagedWindowState>> states;
+    extract_managed_window_states_from_input_into(input, states);
+    CHECK(states[0][0].min_track_width == 616);
+    CHECK(states[0][0].min_track_height == 468);
+    CHECK(states[0][0].dpi == 144);
+
+    // Unknown limits stay unknown; missing DWM/outer bounds retain the raw limit.
+    input.windows_per_monitor[0][0].minmax_info->min_track_width = 0;
+    extract_managed_window_states_from_input_into(input, states);
+    CHECK(states[0][0].min_track_width == 0);
+    input.windows_per_monitor[0][0].outer_rect.reset();
+    extract_managed_window_states_from_input_into(input, states);
+    CHECK(states[0][0].min_track_height == 480);
+  }
+
   TEST_CASE("cluster update extraction reuses retained leaf buffers") {
     winapi::LoopInputState input;
     input.windows_per_monitor.resize(1);

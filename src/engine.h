@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "binary_tree.h"
@@ -135,8 +136,10 @@ struct ManagedWindowState {
   bool is_maximized = false;
   bool is_minimized = false;
   std::optional<ctrl::Rect> actual_rect;
+  // Minimum visible-frame dimensions in physical pixels, after border compensation.
   int min_track_width = 0;
   int min_track_height = 0;
+  unsigned int dpi = 0;
 };
 
 struct PlacementCorrectionTarget {
@@ -150,6 +153,21 @@ struct PlacementCorrectionFailure {
   size_t leaf_id = 0;
   PlacementCorrectionTarget target;
   int attempts = 0;
+  float last_width = 0.0f;
+  float last_height = 0.0f;
+  int stable_width_samples = 0;
+  int stable_height_samples = 0;
+  int sampled_attempts = 0;
+};
+
+struct WindowSizeConstraint {
+  int reported_width = 0;
+  int reported_height = 0;
+  float observed_width = 0.0f;
+  float observed_height = 0.0f;
+  int cluster_index = -1;
+  ctrl::Rect work_area;
+  unsigned int dpi = 0;
 };
 
 struct CompletedDragRequest {
@@ -213,6 +231,7 @@ struct Engine {
   std::optional<MovementMode> configured_movement_mode;
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
   std::vector<PlacementCorrectionFailure> placement_correction_failures;
+  std::unordered_map<size_t, WindowSizeConstraint> minimum_sizes;
 
   // Initialize engine from cluster init info
   void init(const std::vector<ctrl::ClusterInitInfo>& infos,

@@ -269,6 +269,9 @@ struct ManagedWindowInfo {
   bool is_minimized = false;
   std::optional<WindowPosition> actual_rect;
   std::optional<WindowMinMaxInfo> minmax_info;
+  // Outer bounds in the same physical pixels as actual_rect (which excludes invisible borders).
+  std::optional<WindowPosition> outer_rect;
+  unsigned int dpi = 0;
 };
 
 // Consolidated input state for the main loop
