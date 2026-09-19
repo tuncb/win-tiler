@@ -2470,6 +2470,122 @@ TEST_SUITE("Automatic split targets") {
 }
 
 TEST_SUITE("Directional movement") {
+  TEST_CASE("both modes move onto empty monitors in all directions and survive the next frame") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      for (auto action : {HotkeyAction::MoveLeft, HotkeyAction::MoveRight, HotkeyAction::MoveUp,
+                          HotkeyAction::MoveDown}) {
+        for (bool only_window : {false, true}) {
+          CAPTURE(mode);
+          CAPTURE(action);
+          CAPTURE(only_window);
+          const bool horizontal =
+              action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveRight;
+          const bool backwards = action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveUp;
+          ClusterInitInfo source{0, 0, 800, 600, 0, 0, 800, 600, {1}};
+          if (!only_window) {
+            source.initial_cell_ids.push_back(2);
+          }
+          ClusterInitInfo target = source;
+          target.x = target.monitor_x = horizontal ? (backwards ? -800.0f : 800.0f) : 0;
+          target.y = target.monitor_y = horizontal ? 0 : (backwards ? -600.0f : 600.0f);
+          target.initial_cell_ids.clear();
+          Engine engine;
+          engine.init({source, target}, horizontal ? SplitMode::Vertical : SplitMode::Horizontal);
+          const size_t moved_id = only_window || backwards ? 1 : 2;
+          REQUIRE(engine.select_leaf(moved_id));
+          engine.system.clusters[0].zen_cell_index = engine.system.selection->cell_index;
+          EngineFrameInput input;
+          input.initial_movement_mode = mode;
+          input.cluster_updates = build_current_cluster_updates(engine);
+          input.has_completed_initial_tile_pass = true;
+          input.hotkey_action = action;
+          input.gap_h = 10;
+          input.gap_v = 20;
+          input.zen_pct = 0.9f;
+          auto output = engine.process_frame(input);
+          REQUIRE(output.apply_tiles);
+          CHECK(output.layout_changed);
+          CHECK(output.focus_leaf_id == moved_id);
+          CHECK(engine.selected_leaf_id() == moved_id);
+          REQUIRE(engine.find_leaf(moved_id).has_value());
+          CHECK(engine.find_leaf(moved_id)->cluster_index == 1);
+          CHECK(engine.system.clusters[0].tree.empty() == only_window);
+          CHECK_FALSE(engine.system.clusters[0].zen_cell_index.has_value());
+          CHECK(collect_cluster_leaf_ids(engine.system.clusters[1]) ==
+                std::vector<size_t>{moved_id});
+          const auto& rect = output.geometries[1][0];
+          CHECK(rect.x == doctest::Approx(target.x + 10));
+          CHECK(rect.y == doctest::Approx(target.y + 20));
+          CHECK(rect.width == doctest::Approx(780));
+          CHECK(rect.height == doctest::Approx(560));
+          REQUIRE(output.cursor_pos.has_value());
+          CHECK(output.cursor_pos->x == compute_rect_center(rect).x);
+          CHECK(output.cursor_pos->y == compute_rect_center(rect).y);
+
+          input.hotkey_action.reset();
+          input.cluster_updates = build_current_cluster_updates(engine);
+          auto next = engine.process_frame(input);
+          CHECK_FALSE(next.topology_changed);
+          CHECK_FALSE(next.apply_tiles);
+          CHECK(engine.find_leaf(moved_id)->cluster_index == 1);
+        }
+      }
+    }
+  }
+
+  TEST_CASE("an empty monitor wins over a farther occupied monitor but not a nearer window") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      Engine engine;
+      engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1, 2}},
+                   {800, 0, 800, 600, 800, 0, 800, 600, {}},
+                   {1600, 0, 800, 600, 1600, 0, 800, 600, {3}}},
+                  SplitMode::Vertical);
+      engine.movement_mode = mode;
+      REQUIRE(engine.select_leaf(1));
+      auto result = engine.process_action(HotkeyAction::MoveRight,
+                                          compute_default_geometries(engine), 10, 10, 0);
+      REQUIRE(result.success);
+      CHECK(engine.find_leaf(1)->cluster_index == 0);
+      CHECK(engine.system.clusters[1].tree.empty());
+      result = engine.process_action(HotkeyAction::MoveRight, compute_default_geometries(engine),
+                                     10, 10, 0);
+      REQUIRE(result.success);
+      CHECK(engine.find_leaf(1)->cluster_index == 1);
+      CHECK(engine.find_leaf(2)->cluster_index == 0);
+      CHECK(engine.find_leaf(3)->cluster_index == 2);
+    }
+  }
+
+  TEST_CASE("empty monitor candidates respect direction alignment and fullscreen exclusion") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      Engine engine;
+      engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1}},
+                   {-800, 0, 800, 600, -800, 0, 800, 600, {}},
+                   {800, 1200, 800, 600, 800, 1200, 800, 600, {}},
+                   {1600, 0, 800, 600, 1600, 0, 800, 600, {}}});
+      engine.movement_mode = mode;
+      REQUIRE(engine.select_leaf(1));
+      auto navigation = engine.process_action(HotkeyAction::NavigateRight,
+                                              compute_default_geometries(engine), 10, 10, 0);
+      CHECK_FALSE(navigation.success);
+      CHECK(engine.selected_leaf_id() == 1);
+      auto result = engine.process_action(HotkeyAction::MoveRight,
+                                          compute_default_geometries(engine), 10, 10, 0);
+      REQUIRE(result.success);
+      CHECK(engine.find_leaf(1)->cluster_index == 3);
+
+      Engine blocked = create_engine_with_empty_second_cluster();
+      blocked.movement_mode = mode;
+      blocked.system.clusters[1].has_fullscreen_cell = true;
+      REQUIRE(blocked.select_leaf(2));
+      result = blocked.process_action(HotkeyAction::MoveRight, compute_default_geometries(blocked),
+                                      10, 10, 0);
+      CHECK_FALSE(result.success);
+      CHECK_FALSE(result.apply_tiles);
+      CHECK(blocked.find_leaf(2)->cluster_index == 0);
+    }
+  }
+
   TEST_CASE("all directions preserve the moved window and place it beyond the neighbor") {
     for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
       for (auto action : {HotkeyAction::MoveLeft, HotkeyAction::MoveRight, HotkeyAction::MoveUp,

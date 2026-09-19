@@ -534,8 +534,9 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
 
   if (!src_cluster.tree.is_valid_index(source_cell_index) ||
       !src_cluster.tree.is_leaf(source_cell_index) ||
-      !tgt_cluster.tree.is_valid_index(target_cell_index) ||
-      !tgt_cluster.tree.is_leaf(target_cell_index)) {
+      (tgt_cluster.tree.empty() ? target_cell_index != -1 || tgt_cluster.has_fullscreen_cell
+                                : !tgt_cluster.tree.is_valid_index(target_cell_index) ||
+                                      !tgt_cluster.tree.is_leaf(target_cell_index))) {
     return false;
   }
 
@@ -928,7 +929,8 @@ float directional_distance(const Rect& from, const Rect& to, Direction dir) {
 
 std::optional<CellIndicatorByIndex>
 find_directional_neighbor(const System& system, Direction dir,
-                          const std::vector<std::vector<Rect>>& cell_geometries) {
+                          const std::vector<std::vector<Rect>>& cell_geometries,
+                          bool include_empty_clusters = false) {
   if (!system.selection.has_value()) {
     return std::nullopt;
   }
@@ -958,6 +960,21 @@ find_directional_neighbor(const System& system, Direction dir,
     }
     const auto& cluster = system.clusters[ci];
     const auto& cluster_rects = cell_geometries[ci];
+
+    if (include_empty_clusters && cluster.tree.empty() && !cluster.has_fullscreen_cell) {
+      const Rect work_area{cluster.global_x, cluster.global_y, cluster.window_width,
+                           cluster.window_height};
+      if (work_area.width > 0 && work_area.height > 0 &&
+          is_in_direction(current_rect, work_area, dir)) {
+        const float score = directional_distance(current_rect, work_area, dir);
+        if (score < best_score) {
+          best_score = score;
+          // -1 creates the first leaf when moving into an empty cluster.
+          best_candidate = CellIndicatorByIndex{static_cast<int>(ci), -1};
+        }
+      }
+      continue;
+    }
 
     if (cluster.zen_cell_index.has_value()) {
       int zen_idx = *cluster.zen_cell_index;
@@ -2894,11 +2911,11 @@ ActionResult Engine::process_action(HotkeyAction action,
       direction = ctrl::Direction::Up;
     if (action == HotkeyAction::MoveDown)
       direction = ctrl::Direction::Down;
-    auto target = ctrl::find_directional_neighbor(system, direction, global_geometries);
+    auto target = ctrl::find_directional_neighbor(system, direction, global_geometries, true);
     if (!target.has_value()) {
       break;
     }
-    if (movement_mode == MovementMode::Swap) {
+    if (movement_mode == MovementMode::Swap && target->cell_index != -1) {
       result.success = ctrl::swap_cells(system, source.cluster_index, source.cell_index,
                                         target->cluster_index, target->cell_index);
     } else {
