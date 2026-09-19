@@ -828,14 +828,18 @@ TEST_SUITE("IgnoreOptions Merge") {
 TEST_SUITE("Layout Options") {
   TEST_CASE("split targets parse case insensitively and round trip") {
     for (auto target : {LayoutSplitTarget::Pointer, LayoutSplitTarget::Focused,
-                         LayoutSplitTarget::Largest}) {
+                         LayoutSplitTarget::Largest, LayoutSplitTarget::LargestAllMonitors}) {
       auto temp_path = create_temp_file_path();
       TempFileGuard guard(temp_path);
       const char* name = target == LayoutSplitTarget::Pointer ? "POINTER"
-                         : target == LayoutSplitTarget::Focused ? "Focused" : "largest";
+                         : target == LayoutSplitTarget::Focused ? "Focused"
+                         : target == LayoutSplitTarget::Largest ? "largest"
+                                                               : "Largest_All_Monitors";
       {
         std::ofstream file(temp_path);
         file << "[layout]\nsplit_target = \"" << name << "\"\n";
+        file << "[[monitor_profiles]]\n[monitor_profiles.match]\nindex = 1\n"
+                "[monitor_profiles.layout]\nsplit_target = \"" << name << "\"\n";
       }
       auto result = read_options_toml(temp_path);
       REQUIRE(result.has_value());
@@ -844,6 +848,9 @@ TEST_SUITE("Layout Options") {
       auto round_trip = read_options_toml(temp_path);
       REQUIRE(round_trip.has_value());
       CHECK(round_trip->layoutOptions.split_target == target);
+      REQUIRE(round_trip->monitorProfiles.size() == 1);
+      REQUIRE(round_trip->monitorProfiles[0].layoutOptions.has_value());
+      CHECK(round_trip->monitorProfiles[0].layoutOptions->split_target == target);
     }
   }
 

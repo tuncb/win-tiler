@@ -289,7 +289,7 @@ int pre_create_leaves(Cluster& cluster, const std::vector<size_t>& cell_ids, Spl
   int current_selection = -1;
 
   for (size_t cell_id : cell_ids) {
-    if (target == LayoutSplitTarget::Largest) {
+    if (target == LayoutSplitTarget::Largest || target == LayoutSplitTarget::LargestAllMonitors) {
       current_selection = find_largest_leaf(cluster);
     }
     SplitDir split_dir = determine_split_dir(cluster, current_selection, mode);
@@ -1244,7 +1244,7 @@ bool apply_layout_templates(System& system,
   return updated;
 }
 
-bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+bool sync_cluster_updates(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
                  std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options,
                  const std::vector<ClusterTilingOptions>* cluster_options) {
   bool updated = false;
@@ -1390,7 +1390,8 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
 
       if (cluster.tree.empty()) {
         current_selection = -1;
-      } else if (split_target == LayoutSplitTarget::Largest) {
+      } else if (split_target == LayoutSplitTarget::Largest ||
+                 split_target == LayoutSplitTarget::LargestAllMonitors) {
         current_selection = find_largest_leaf(cluster);
       } else if (split_from_index >= 0 && cluster.tree.is_valid_index(split_from_index) &&
                  cluster.tree.is_leaf(split_from_index)) {
@@ -1416,6 +1417,118 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
     }
   }
 
+  return updated;
+}
+
+std::optional<int> automatic_policy_cluster(
+    const System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates) {
+  if (system.focused_leaf_id.has_value()) {
+    for (size_t i = 0; i < system.clusters.size(); ++i) {
+      if (find_cell_by_leaf_id(system.clusters[i], *system.focused_leaf_id).has_value()) {
+        return static_cast<int>(i);
+      }
+    }
+  }
+  for (size_t i = 0; i < cluster_updates.size() && i < system.clusters.size(); ++i) {
+    for (size_t id : cluster_updates[i].leaf_ids) {
+      const bool exists = std::any_of(system.clusters.begin(), system.clusters.end(),
+          [id](const Cluster& cluster) { return find_cell_by_leaf_id(cluster, id).has_value(); });
+      if (!exists) {
+        return static_cast<int>(i);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
+                 std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options,
+                 const std::vector<ClusterTilingOptions>* cluster_options) {
+  if (redirect_cluster_index.has_value()) {
+    return sync_cluster_updates(system, cluster_updates, redirect_cluster_index, layout_options,
+                                cluster_options);
+  }
+  const auto policy_cluster = automatic_policy_cluster(system, cluster_updates);
+  const LayoutOptions* policy = layout_options;
+  if (policy_cluster.has_value() && cluster_options != nullptr &&
+      static_cast<size_t>(*policy_cluster) < cluster_options->size()) {
+    policy = &(*cluster_options)[static_cast<size_t>(*policy_cluster)].layoutOptions;
+  }
+  if (policy == nullptr || policy->split_target != LayoutSplitTarget::LargestAllMonitors) {
+    return sync_cluster_updates(system, cluster_updates, redirect_cluster_index, layout_options,
+                                cluster_options);
+  }
+
+  // Freeze arrivals before reconciling existing windows. Existing cross-monitor moves must
+  // retain their requested destination, and closing windows must not compete as targets.
+  struct Arrival {
+    size_t leaf_id;
+    size_t incoming_cluster;
+  };
+  std::vector<Arrival> arrivals;
+  auto desired = cluster_updates;
+  for (size_t i = 0; i < desired.size() && i < system.clusters.size(); ++i) {
+    if (desired[i].has_fullscreen_cell) {
+      continue;
+    }
+    auto& ids = desired[i].leaf_ids;
+    std::sort(ids.begin(), ids.end());
+    std::erase_if(ids, [&](size_t id) {
+      const bool exists = std::any_of(system.clusters.begin(), system.clusters.end(),
+          [id](const Cluster& cluster) { return find_cell_by_leaf_id(cluster, id).has_value(); });
+      if (!exists) {
+        arrivals.push_back({id, i});
+      }
+      return !exists;
+    });
+  }
+  bool updated = sync_cluster_updates(system, desired, std::nullopt, layout_options,
+                                       cluster_options);
+  if (arrivals.empty()) {
+    return updated;
+  }
+
+  // Force local largest selection after choosing a destination, without replacing its
+  // layout rules or other settings with those of the monitor that selected this policy.
+  std::vector<ClusterTilingOptions> insertion_options(system.clusters.size());
+  for (size_t i = 0; i < insertion_options.size(); ++i) {
+    if (cluster_options != nullptr && i < cluster_options->size()) {
+      insertion_options[i] = (*cluster_options)[i];
+    } else if (layout_options != nullptr) {
+      insertion_options[i].layoutOptions = *layout_options;
+    }
+    insertion_options[i].layoutOptions.split_target = LayoutSplitTarget::Largest;
+  }
+
+  for (const auto& arrival : arrivals) {
+    size_t destination = arrival.incoming_cluster;
+    double best_area = -1.0;
+    bool best_is_focused = false;
+    for (size_t i = 0; i < system.clusters.size() && i < desired.size(); ++i) {
+      const auto& cluster = system.clusters[i];
+      if (desired[i].has_fullscreen_cell) {
+        continue;
+      }
+      int cell_index = -1;
+      double area = -1.0;
+      if (cluster.tree.empty()) {
+        area = static_cast<double>(cluster.window_width) * cluster.window_height;
+      } else {
+        find_largest_leaf(cluster, 0, cluster.window_width, cluster.window_height, cell_index, area);
+      }
+      const bool is_focused = system.focused_leaf_id.has_value() &&
+          find_cell_by_leaf_id(cluster, *system.focused_leaf_id).has_value();
+      if ((cluster.tree.empty() || cell_index >= 0) &&
+          (area > best_area || (area == best_area && is_focused && !best_is_focused))) {
+        destination = i;
+        best_area = area;
+        best_is_focused = is_focused;
+      }
+    }
+    desired[destination].leaf_ids.push_back(arrival.leaf_id);
+    system.clusters[destination].zen_cell_index.reset();
+    updated |= sync_cluster_updates(system, desired, std::nullopt, nullptr, &insertion_options);
+  }
   return updated;
 }
 
@@ -2678,18 +2791,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
         focused_cluster_index = focused_cell->cluster_index;
       }
     }
-    auto policy_cluster_index = focused_cluster_index;
-    if (!policy_cluster_index.has_value()) {
-      // With no known tiled focus, use the incoming monitor's policy and membership.
-      for (size_t i = 0; i < input.cluster_updates.size(); ++i) {
-        const auto& ids = input.cluster_updates[i].leaf_ids;
-        if (std::any_of(ids.begin(), ids.end(),
-                        [&](size_t id) { return !find_leaf(id).has_value(); })) {
-          policy_cluster_index = static_cast<int>(i);
-          break;
-        }
-      }
-    }
+    const auto policy_cluster_index = ctrl::automatic_policy_cluster(system, input.cluster_updates);
     auto split_target = input.layout_options != nullptr ? input.layout_options->split_target
                                                        : LayoutSplitTarget::Pointer;
     if (policy_cluster_index.has_value()) {
@@ -2703,9 +2805,10 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
         redirect_cluster_index = static_cast<int>(*hover_cluster_index);
       }
     }
-    if (split_target != LayoutSplitTarget::Pointer) {
+    if (split_target == LayoutSplitTarget::Focused || split_target == LayoutSplitTarget::Largest) {
       redirect_cluster_index = focused_cluster_index;
-    } else if (!redirect_cluster_index.has_value() && system.selection.has_value()) {
+    } else if (split_target == LayoutSplitTarget::Pointer && !redirect_cluster_index.has_value() &&
+               system.selection.has_value()) {
       redirect_cluster_index = system.selection->cluster_index;
     }
 

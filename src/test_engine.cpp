@@ -2469,6 +2469,317 @@ TEST_SUITE("Automatic split targets") {
   }
 }
 
+TEST_SUITE("Largest split target across monitors") {
+  EngineFrameInput global_largest_input() {
+    EngineFrameInput input;
+    input.cluster_options.resize(2);
+    for (auto& options : input.cluster_options) {
+      options.layoutOptions.split_target = LayoutSplitTarget::LargestAllMonitors;
+    }
+    input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+    input.has_completed_initial_tile_pass = true;
+    return input;
+  }
+
+  TEST_CASE("arrival ignores focus and pointer and remains on destination next frame") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cursor_pos = Point{10, 10};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.foreground_leaf_id = 4;
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).apply_tiles);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+    input.cluster_updates = {{{1, 2}, false}, {{3, 4}, false}};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("batch recalculates globally after each split for every direction") {
+    for (auto mode : {SplitMode::Dwindle, SplitMode::Vertical, SplitMode::Horizontal}) {
+      auto engine = create_test_engine();
+      engine.system.split_mode = mode;
+      auto input = global_largest_input();
+      input.foreground_leaf_id = 1;
+      input.cluster_updates[0].leaf_ids = {1, 2, 4, 5, 6};
+      CHECK(engine.process_frame(input).topology_changed);
+      REQUIRE(engine.find_leaf(4).has_value());
+      REQUIRE(engine.find_leaf(5).has_value());
+      REQUIRE(engine.find_leaf(6).has_value());
+      CHECK(engine.find_leaf(4)->cluster_index == 1);
+      CHECK(engine.find_leaf(5)->cluster_index == 0);
+      CHECK(engine.find_leaf(6)->cluster_index == 0);
+    }
+  }
+
+  TEST_CASE("ties prefer focused monitor then monitor order and first child") {
+    for (bool focus_second : {false, true}) {
+      Engine engine;
+      engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1}},
+                   {800, 0, 800, 600, 800, 0, 800, 600, {3}}});
+      auto input = global_largest_input();
+      input.cluster_updates = {{{1, 4}, false}, {{3}, false}};
+      if (focus_second) {
+        input.foreground_leaf_id = 3;
+      }
+      CHECK(engine.process_frame(input).topology_changed);
+      REQUIRE(engine.find_leaf(4).has_value());
+      CHECK(engine.find_leaf(4)->cluster_index == (focus_second ? 1 : 0));
+    }
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 2;
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    input.cluster_updates[1].has_fullscreen_cell = true;
+    CHECK(engine.process_frame(input).topology_changed);
+    const auto first = engine.find_leaf(1);
+    const auto added = engine.find_leaf(4);
+    REQUIRE(first.has_value());
+    REQUIRE(added.has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(added->cell_index));
+  }
+
+  TEST_CASE("removals on later monitors happen before choosing a destination") {
+    Engine engine;
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1, 2}},
+                 {800, 0, 800, 600, 800, 0, 800, 600, {3, 4}}});
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_updates = {{{1, 2, 5}, false}, {{3}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    CHECK_FALSE(engine.find_leaf(4).has_value());
+    REQUIRE(engine.find_leaf(5).has_value());
+    CHECK(engine.find_leaf(5)->cluster_index == 1);
+  }
+
+  TEST_CASE("empty work areas compete with cells and all empty ties follow monitor order") {
+    for (bool all_empty : {false, true}) {
+      auto engine = create_engine_with_empty_second_cluster();
+      auto input = global_largest_input();
+      if (all_empty) {
+        engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {}},
+                     {800, 0, 800, 600, 800, 0, 800, 600, {}}});
+        input.cluster_updates[0].leaf_ids.clear();
+      }
+      input.cluster_updates[1].leaf_ids = {4};
+      CHECK(engine.process_frame(input).topology_changed);
+      REQUIRE(engine.find_leaf(4).has_value());
+      const auto added = *engine.find_leaf(4);
+      CHECK(added.cluster_index == (all_empty ? 0 : 1));
+      const auto geometry = engine.compute_geometries(0, 0, 0);
+      CHECK(geometry[added.cluster_index][added.cell_index].width == doctest::Approx(800.0f));
+      CHECK(geometry[added.cluster_index][added.cell_index].height == doctest::Approx(600.0f));
+      input.cluster_updates = all_empty
+          ? std::vector<ClusterCellUpdateInfo>{{{4}, false}, {{}, false}}
+          : std::vector<ClusterCellUpdateInfo>{{{1, 2}, false}, {{4}, false}};
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+    }
+  }
+
+  TEST_CASE("smaller empty work areas lose to larger existing cells") {
+    auto engine = create_engine_with_empty_second_cluster();
+    engine.system.clusters[1].window_width = 300;
+    engine.system.clusters[1].window_height = 300;
+    auto input = global_largest_input();
+    input.cluster_updates[1].leaf_ids = {4};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+    CHECK(engine.system.clusters[1].tree.empty());
+  }
+
+  TEST_CASE("all empty monitors choose largest work area rather than incoming monitor") {
+    Engine engine;
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {}},
+                 {800, 0, 1200, 800, 800, 0, 1200, 800, {}}});
+    auto input = global_largest_input();
+    input.cluster_updates = {{{4}, false}, {{}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("equal empty and occupied work areas prefer the focused monitor") {
+    Engine engine;
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {}},
+                 {800, 0, 800, 600, 800, 0, 800, 600, {3}}});
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 3;
+    input.cluster_updates = {{{4}, false}, {{3}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("batch fills empty monitor then splits and reevaluates its cells") {
+    auto engine = create_engine_with_empty_second_cluster();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_updates = {{{1, 2, 4, 5, 6}, false}, {{}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    REQUIRE(engine.find_leaf(5).has_value());
+    REQUIRE(engine.find_leaf(6).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+    CHECK(engine.find_leaf(5)->cluster_index == 1);
+    CHECK(engine.find_leaf(6)->cluster_index == 0);
+  }
+
+  TEST_CASE("monitor emptied by a closure competes in the same frame") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_updates = {{{1, 2, 4}, false}, {{}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    CHECK_FALSE(engine.find_leaf(3).has_value());
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("current fullscreen snapshot excludes targets and leaves fullscreen arrivals alone") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.cluster_updates = {{{1, 2, 4}, false}, {{3, 5}, true}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    REQUIRE(engine.find_leaf(5).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+    CHECK(engine.find_leaf(5)->cluster_index == 1);
+
+    // An empty monitor remains eligible when every existing cell is fullscreen.
+    auto fallback = create_engine_with_empty_second_cluster();
+    input.cluster_updates = {{{1, 2}, true}, {{4}, false}};
+    CHECK(fallback.process_frame(input).topology_changed);
+    REQUIRE(fallback.find_leaf(4).has_value());
+    CHECK(fallback.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("work area and resized ratios determine area before gaps and zen") {
+    Engine engine;
+    engine.init({{0, 0, 1200, 800, 0, 0, 1200, 800, {1, 2}},
+                 {1200, 0, 800, 600, 1200, 0, 800, 600, {3}}});
+    engine.system.clusters[0].tree[0].split_ratio = 0.75f;
+    auto input = global_largest_input();
+    input.cluster_options[0].gapOptions.horizontal = 200;
+    input.cluster_options[0].gapOptions.vertical = 200;
+    engine.system.clusters[1].zen_cell_index = engine.find_leaf(3)->cell_index;
+    input.cluster_updates[1].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+    CHECK(engine.system.clusters[0].tree.get_parent(engine.find_leaf(1)->cell_index) ==
+          engine.system.clusters[0].tree.get_parent(engine.find_leaf(4)->cell_index));
+    CHECK(engine.system.clusters[1].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("destination pointer policy cannot replace global largest selection") {
+    Engine engine;
+    engine.init({{0, 0, 400, 400, 0, 0, 400, 400, {1}},
+                 {400, 0, 1200, 800, 400, 0, 1200, 800, {2, 3, 4}}});
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_options[1].layoutOptions.split_target = LayoutSplitTarget::Pointer;
+    input.cursor_pos = Point{1500, 700};
+    input.cluster_updates = {{{1, 5}, false}, {{2, 3, 4}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(5).has_value());
+    CHECK(engine.find_leaf(5)->cluster_index == 1);
+    CHECK(engine.system.clusters[1].tree.get_parent(engine.find_leaf(2)->cell_index) ==
+          engine.system.clusters[1].tree.get_parent(engine.find_leaf(5)->cell_index));
+  }
+
+  TEST_CASE("destination layout rules override splitting and insertion exits zen") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.3f);
+    engine.system.clusters[1].zen_cell_index = engine.find_leaf(3)->cell_index;
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.3f));
+    CHECK_FALSE(engine.system.clusters[1].zen_cell_index.has_value());
+  }
+
+  TEST_CASE("incoming policy is used without focus and other focused policies stay local") {
+    for (bool local_focus : {false, true}) {
+      auto engine = create_test_engine();
+      auto input = global_largest_input();
+      input.cluster_options[1].layoutOptions.split_target = LayoutSplitTarget::Focused;
+      input.cluster_updates[0].leaf_ids.push_back(4);
+      if (local_focus) {
+        input.foreground_leaf_id = 1;
+        input.cluster_options[0].layoutOptions.split_target = LayoutSplitTarget::Largest;
+        input.cluster_options[1].layoutOptions.split_target = LayoutSplitTarget::LargestAllMonitors;
+      }
+      CHECK(engine.process_frame(input).topology_changed);
+      REQUIRE(engine.find_leaf(4).has_value());
+      CHECK(engine.find_leaf(4)->cluster_index == (local_focus ? 0 : 1));
+    }
+  }
+
+  TEST_CASE("batch reevaluates area after destination layout rules") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.foreground_leaf_id = 1;
+    input.cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.9f);
+    input.cluster_updates[0].leaf_ids = {1, 2, 4, 5};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    REQUIRE(engine.find_leaf(5).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+    CHECK(engine.find_leaf(5)->cluster_index == 1);
+    CHECK(engine.system.clusters[1].tree.get_parent(engine.find_leaf(3)->cell_index) ==
+          engine.system.clusters[1].tree.get_parent(engine.find_leaf(5)->cell_index));
+  }
+
+  TEST_CASE("explicit redirection takes precedence over global policy") {
+    auto engine = create_test_engine();
+    LayoutOptions options;
+    options.split_target = LayoutSplitTarget::LargestAllMonitors;
+    CHECK(engine.update({{{1, 2}, false}, {{3, 4}, false}}, 0, &options).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+  }
+
+  TEST_CASE("existing external moves retain destination under global policy") {
+    auto engine = create_test_engine();
+    auto input = global_largest_input();
+    input.cluster_updates = {{{1, 2, 3}, false}, {{}, false}};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(3).has_value());
+    CHECK(engine.find_leaf(3)->cluster_index == 0);
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+  }
+
+  TEST_CASE("startup and reinitialization preserve membership and use local largest") {
+    std::vector<ClusterInitInfo> infos = {
+        {0, 0, 800, 800, 0, 0, 800, 800, {1, 2, 3, 4}},
+        {800, 0, 1600, 1600, 800, 0, 1600, 1600, {5}}};
+    for (auto& info : infos) {
+      info.split_target = LayoutSplitTarget::LargestAllMonitors;
+    }
+    Engine engine;
+    for (int pass = 0; pass < 2; ++pass) {
+      engine.init(infos);
+      const auto geometry = engine.compute_geometries(0, 0, 0);
+      for (size_t id : {1u, 2u, 3u, 4u}) {
+        const auto cell = engine.find_leaf(id);
+        REQUIRE(cell.has_value());
+        CHECK(cell->cluster_index == 0);
+        CHECK(geometry[0][cell->cell_index].width == doctest::Approx(400.0f));
+        CHECK(geometry[0][cell->cell_index].height == doctest::Approx(400.0f));
+      }
+      REQUIRE(engine.find_leaf(5).has_value());
+      CHECK(engine.find_leaf(5)->cluster_index == 1);
+    }
+  }
+}
+
 TEST_SUITE("Directional movement") {
   TEST_CASE("both modes move onto empty monitors in all directions and survive the next frame") {
     for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {

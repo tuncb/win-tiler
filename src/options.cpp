@@ -178,6 +178,8 @@ std::string layout_split_target_to_string(LayoutSplitTarget target) {
     return "focused";
   case LayoutSplitTarget::Largest:
     return "largest";
+  case LayoutSplitTarget::LargestAllMonitors:
+    return "largest_all_monitors";
   }
   return "pointer";
 }
@@ -193,6 +195,9 @@ std::optional<LayoutSplitTarget> string_to_layout_split_target(std::string value
   }
   if (value == "largest") {
     return LayoutSplitTarget::Largest;
+  }
+  if (value == "largest_all_monitors") {
+    return LayoutSplitTarget::LargestAllMonitors;
   }
   return std::nullopt;
 }
@@ -417,8 +422,8 @@ LayoutOptions parse_layout_options(toml::table& table) {
     if (target.has_value()) {
       options.split_target = *target;
     } else {
-      spdlog::error("Invalid layout.split_target: must be \"pointer\", \"focused\", or "
-                    "\"largest\". Using default.");
+      spdlog::error("Invalid layout.split_target: must be \"pointer\", \"focused\", "
+                    "\"largest\", or \"largest_all_monitors\". Using default.");
     }
   }
 
@@ -570,9 +575,21 @@ std::string get_options_toml_documentation() {
 # - "pointer": use the monitor and cell under the pointer (default).
 # - "focused": split the last focused tiled window, independent of the pointer.
 # - "largest": split the largest cell by area on the last focused tiled window's monitor.
+# - "largest_all_monitors": use the largest cell or empty monitor work area across eligible
+# monitors on the current virtual desktop.
 # Focused/largest use the incoming monitor when no tiled focus is known; focused then uses
 # the first leaf. Equal largest areas use first-child tree order. Each insertion is 50/50.
 # Largest is recalculated for every new window, including startup and batches.
+# For largest_all_monitors, an empty monitor's entire work area competes with existing cells;
+# choosing it places the new window there without splitting. Fullscreen monitors are excluded.
+# With no eligible target, keep the incoming monitor. Ties prefer the last focused tiled
+# window's monitor, then monitor order and first-child tree order. Recalculate after each
+# arrival, following removals.
+# Both largest modes compare work-area pixel sizes and split ratios, before gaps, minimum
+# window sizes, and zen enlargement. Largest_all_monitors exits zen on the destination monitor.
+# largest_all_monitors preserves monitor membership at startup/reinitialization, using local
+# largest splits there. Arrivals include windows returning to tiling (e.g. from floating).
+# Destination layout rules still take precedence over splitting the selected cell.
 # split_width_multiplier: positive multiplier for split width changes.
 # rules: optional fixed layouts selected by window_count.
 #
@@ -647,7 +664,9 @@ std::string get_options_toml_documentation() {
 # match.index: zero-based monitor index from the Windows monitor list.
 # match.device_name: Windows monitor device name such as "\\\\.\\DISPLAY1".
 # At least one match field is required for a monitor profile.
-# The focused monitor's split_target policy controls whether insertion follows focus or pointer.
+# The last focused tiled window's monitor selects the automatic split_target policy; without
+# tiled focus, use the first incoming monitor's policy. Largest_all_monitors searches all
+# eligible monitors regardless of their split_target, retaining destination layout settings.
 # gap: optional per-monitor horizontal and/or vertical gap override.
 # layout: optional per-monitor layout override using the same layout fields above.
 # visualization.render.zen_percentage: optional per-monitor zen size override.

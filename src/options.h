@@ -118,7 +118,7 @@ struct LoopOptions {
 
 enum class LayoutSplitDir { Vertical, Horizontal };
 
-enum class LayoutSplitTarget { Pointer, Focused, Largest };
+enum class LayoutSplitTarget { Pointer, Focused, Largest, LargestAllMonitors };
 
 enum class LayoutSplitMode {
   Dwindle,
