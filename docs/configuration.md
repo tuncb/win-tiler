@@ -45,6 +45,7 @@ Windows key.
 
 ```toml
 [keyboard]
+movement_mode = "swap"
 bindings = [
   { action = "NavigateLeft", hotkey = "super+shift+h" },
 ]
@@ -54,10 +55,27 @@ Supported actions:
 
 ```text
 NavigateLeft, NavigateDown, NavigateUp, NavigateRight, ToggleSplit, Exit,
-CycleSplitMode, StoreCell, ClearStored, Exchange, Move, SplitIncrease,
+CycleSplitMode, MoveLeft, MoveDown, MoveUp, MoveRight, ToggleMovementMode, SplitIncrease,
 SplitDecrease, ExchangeSiblings, ToggleZen, ResetSplitRatio, TogglePause,
 DumpWindowManagement, RestartSystem, ToggleFloating, ToggleVerboseLogging
 ```
+
+`keyboard.movement_mode` sets the initial mode: `"swap"` (default) exchanges the selected
+window with its directional neighbor; `"insert"` removes it from its old position and splits
+the neighbor's space, placing it on the requested side. Invalid values fall back to `"swap"`.
+
+`MoveLeft`, `MoveDown`, `MoveUp`, and `MoveRight` default to `Win+Alt+Shift+H/J/K/L`.
+`ToggleMovementMode` defaults to `Win+Alt+Shift+,`; a toast and the tray menu show the current mode.
+The toggle is session-only and tracked per virtual desktop. A changed configured mode takes
+effect on the desktop's next frame; unrelated config reloads preserve the toggled mode.
+
+Insertion orientation follows the direction: left/right means side by side, up/down means
+stacked. This operation overrides `layout.split_mode` and does not reapply layout templates.
+Both modes retain selection/focus on the moved window and can target windows on other monitors.
+No neighbor means no movement; empty monitors are not directional targets.
+
+The former `StoreCell`, `ClearStored`, `Exchange`, and `Move` bindings are no longer supported.
+The former `visualization.render.stored_color` setting has also been removed.
 
 ## Ignore Rules
 
@@ -121,8 +139,9 @@ split_width_multiplier = 1.0
 rules = []
 ```
 
-`layout.split_mode` controls how new or moved windows choose the split direction when no
+`layout.split_mode` controls the split direction for new windows and mouse insertions when no
 declarative layout rule is applied. Supported values are `dwindle`, `vertical`, and `horizontal`.
+Directional keyboard insertion instead uses the direction pressed.
 
 `dwindle` splits wide target cells left/right and tall target cells top/bottom. The
 `split_width_multiplier` value defaults to `1.0` and is applied to the target cell width before
@@ -204,7 +223,6 @@ toast_duration_ms = 2000
 show_rectangles = true
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
-stored_color = [255, 180, 0, 200]
 border_width = 3.0
 toast_font_size = 60.0
 zen_percentage = 0.90
@@ -217,7 +235,6 @@ hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 | `show_rectangles` | Whether overlay rectangles are visible. Defaults to `true`; toast messages are unaffected. |
 | `normal_color` | Overlay rectangle color for normal cells. |
 | `selected_color` | Overlay rectangle color for the selected cell. |
-| `stored_color` | Overlay rectangle color for the stored cell. |
 | `border_width` | Overlay border width in pixels. Must be non-negative; `0` hides rectangles even when `show_rectangles = true`. |
 | `toast_font_size` | Toast text size. Must be at least `1.0`. |
 | `zen_percentage` | Zen cell size from `0.1` to `1.0` of the monitor cluster. |
@@ -312,6 +329,7 @@ ignore_children_of_processes = []
 small_window_barrier = { width = 200, height = 150 }
 
 [keyboard]
+movement_mode = "swap"
 bindings = [
   { action = "NavigateLeft", hotkey = "super+shift+h" },
   { action = "NavigateDown", hotkey = "super+shift+j" },
@@ -320,10 +338,11 @@ bindings = [
   { action = "ToggleSplit", hotkey = "super+shift+y" },
   { action = "Exit", hotkey = "super+shift+escape" },
   { action = "CycleSplitMode", hotkey = "super+shift+;" },
-  { action = "StoreCell", hotkey = "super+shift+[" },
-  { action = "ClearStored", hotkey = "super+shift+]" },
-  { action = "Exchange", hotkey = "super+shift+," },
-  { action = "Move", hotkey = "super+shift+." },
+  { action = "MoveLeft", hotkey = "super+alt+shift+h" },
+  { action = "MoveDown", hotkey = "super+alt+shift+j" },
+  { action = "MoveUp", hotkey = "super+alt+shift+k" },
+  { action = "MoveRight", hotkey = "super+alt+shift+l" },
+  { action = "ToggleMovementMode", hotkey = "super+alt+shift+," },
   { action = "SplitIncrease", hotkey = "super+shift+pageup" },
   { action = "SplitDecrease", hotkey = "super+shift+pagedown" },
   { action = "ExchangeSiblings", hotkey = "super+shift+e" },
@@ -360,7 +379,6 @@ toast_duration_ms = 2000
 show_rectangles = true
 normal_color = [255, 255, 255, 100]
 selected_color = [0, 120, 255, 200]
-stored_color = [255, 180, 0, 200]
 border_width = 3.0
 toast_font_size = 60.0
 zen_percentage = 0.9

@@ -15,7 +15,6 @@
 
 #include "engine.h"
 #include "loop_perf.h"
-#include "model.h"
 #include "multi_cell_renderer.h"
 #include "multi_engine.h"
 #include "overlay.h"
@@ -87,10 +86,11 @@ bool trace_logging_enabled() {
   return logger != nullptr && logger->should_log(spdlog::level::trace);
 }
 
-OverlayRenderSnapshot make_overlay_render_snapshot(
-    const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
-    const renderer::RenderOptions& config, std::optional<StoredCell> stored_cell,
-    const std::optional<std::string>& message, bool suppress_rectangles) {
+OverlayRenderSnapshot
+make_overlay_render_snapshot(const ctrl::System& system,
+                             const std::vector<std::vector<ctrl::Rect>>& geometries,
+                             const renderer::RenderOptions& config,
+                             const std::optional<std::string>& message, bool suppress_rectangles) {
   OverlayRenderSnapshot snapshot;
   snapshot.message = message;
   snapshot.toast_font_size = message.has_value() ? config.toast_font_size : 0.0f;
@@ -125,7 +125,6 @@ OverlayRenderSnapshot make_overlay_render_snapshot(
         continue;
       }
 
-      const auto& cell_data = cluster.tree[i];
       const auto& rect = rects[static_cast<size_t>(i)];
       overlay::Color color = config.normal_color;
 
@@ -133,11 +132,6 @@ OverlayRenderSnapshot make_overlay_render_snapshot(
           static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
           system.selection->cell_index == i) {
         color = config.selected_color;
-      }
-
-      if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx &&
-          cell_data.leaf_id.has_value() && *cell_data.leaf_id == stored_cell->leaf_id) {
-        color = config.stored_color;
       }
 
       snapshot.rects.push_back(
@@ -166,13 +160,6 @@ OverlayRenderSnapshot make_overlay_render_snapshot(
         static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
         system.selection->cell_index == zen_cell_index) {
       color = config.selected_color;
-    }
-
-    if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-      const auto& cell_data = cluster.tree[zen_cell_index];
-      if (cell_data.leaf_id.has_value() && *cell_data.leaf_id == stored_cell->leaf_id) {
-        color = config.stored_color;
-      }
     }
 
     snapshot.rects.push_back(
@@ -216,10 +203,11 @@ NoDesktopHotkeyAction classify_no_desktop_hotkey(std::optional<HotkeyAction> hot
   case HotkeyAction::NavigateRight:
   case HotkeyAction::ToggleSplit:
   case HotkeyAction::CycleSplitMode:
-  case HotkeyAction::StoreCell:
-  case HotkeyAction::ClearStored:
-  case HotkeyAction::Exchange:
-  case HotkeyAction::Move:
+  case HotkeyAction::MoveLeft:
+  case HotkeyAction::MoveDown:
+  case HotkeyAction::MoveUp:
+  case HotkeyAction::MoveRight:
+  case HotkeyAction::ToggleMovementMode:
   case HotkeyAction::SplitIncrease:
   case HotkeyAction::SplitDecrease:
   case HotkeyAction::ExchangeSiblings:
@@ -257,10 +245,11 @@ ManualPauseHotkeyAction classify_manual_pause_hotkey(std::optional<HotkeyAction>
   case HotkeyAction::NavigateRight:
   case HotkeyAction::ToggleSplit:
   case HotkeyAction::CycleSplitMode:
-  case HotkeyAction::StoreCell:
-  case HotkeyAction::ClearStored:
-  case HotkeyAction::Exchange:
-  case HotkeyAction::Move:
+  case HotkeyAction::MoveLeft:
+  case HotkeyAction::MoveDown:
+  case HotkeyAction::MoveUp:
+  case HotkeyAction::MoveRight:
+  case HotkeyAction::ToggleMovementMode:
   case HotkeyAction::SplitIncrease:
   case HotkeyAction::SplitDecrease:
   case HotkeyAction::ExchangeSiblings:
@@ -839,6 +828,7 @@ void apply_frame_output(const EngineFrameOutput& output, const ctrl::System& sys
     toggle_runtime_verbose_logging(logging_state);
   }
 
+  winapi::set_notification_area_movement_mode(output.movement_mode);
   if (output.toast_message.has_value()) {
     toast.show(*output.toast_message);
   }
@@ -1168,13 +1158,12 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
       auto visible_message = toast.get_visible_message();
       auto render_snapshot = make_overlay_render_snapshot(
-          engine.system, geometries, options.visualizationOptions.renderOptions, engine.stored_cell,
-          visible_message, input_state.suppress_overlay_rectangles);
+          engine.system, geometries, options.visualizationOptions.renderOptions, visible_message,
+          input_state.suppress_overlay_rectangles);
       if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
         auto render_start = std::chrono::steady_clock::now();
         renderer::render(engine.system, geometries, options.visualizationOptions.renderOptions,
-                         engine.stored_cell, visible_message,
-                         input_state.suppress_overlay_rectangles);
+                         visible_message, input_state.suppress_overlay_rectangles);
         perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
       }
       perf.note_active_frame();
@@ -1219,6 +1208,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                             provider.options.loopOptions.toggle_zen_on_window_maximize,
                             poll_hotkey_action(), provider.options.layoutOptions,
                             provider.options.loopOptions.mouse_drag_drop, frame_input);
+    frame_input.initial_movement_mode = provider.options.keyboardOptions.movement_mode;
     perf.record_stage(LoopPerfStage::BuildFrameInput,
                       std::chrono::steady_clock::now() - build_frame_input_start);
 
@@ -1301,12 +1291,12 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     auto visible_message = toast.get_visible_message();
     auto render_snapshot = make_overlay_render_snapshot(
         engine.system, geometries, provider.options.visualizationOptions.renderOptions,
-        engine.stored_cell, visible_message, input_state.suppress_overlay_rectangles);
+        visible_message, input_state.suppress_overlay_rectangles);
     if (should_render_overlay(overlay_render_cache, std::move(render_snapshot))) {
       auto render_start = std::chrono::steady_clock::now();
       renderer::render(engine.system, geometries,
-                       provider.options.visualizationOptions.renderOptions, engine.stored_cell,
-                       visible_message, input_state.suppress_overlay_rectangles);
+                       provider.options.visualizationOptions.renderOptions, visible_message,
+                       input_state.suppress_overlay_rectangles);
       perf.record_stage(LoopPerfStage::Render, std::chrono::steady_clock::now() - render_start);
     }
 

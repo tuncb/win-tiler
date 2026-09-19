@@ -59,10 +59,11 @@ configuration file.
 | `NavigateRight` | `super+shift+l` | Select the nearest tiled window to the right. |
 | `ToggleSplit` | `super+shift+y` | Toggle the selected tile's parent split between vertical and horizontal. |
 | `CycleSplitMode` | `super+shift+;` | Cycle the split mode used for new splits: dwindle, vertical, then horizontal. |
-| `StoreCell` | `super+shift+[` | Store the selected tile as the source for a later exchange or move. |
-| `ClearStored` | `super+shift+]` | Clear the stored tile. |
-| `Exchange` | `super+shift+,` | Swap the stored tile with the selected tile. |
-| `Move` | `super+shift+.` | Move the stored tile into the selected tile's position. |
+| `MoveLeft` | `super+alt+shift+h` | Move the selected window left using the current movement mode. |
+| `MoveDown` | `super+alt+shift+j` | Move the selected window down using the current movement mode. |
+| `MoveUp` | `super+alt+shift+k` | Move the selected window up using the current movement mode. |
+| `MoveRight` | `super+alt+shift+l` | Move the selected window right using the current movement mode. |
+| `ToggleMovementMode` | `super+alt+shift+,` | Toggle directional movement between Swap and Insert (also available in the tray). |
 | `SplitIncrease` | `super+shift+pageup` | Give the selected tile more space in its parent split. |
 | `SplitDecrease` | `super+shift+pagedown` | Give the selected tile less space in its parent split. |
 | `ExchangeSiblings` | `super+shift+e` | Swap the selected tile with its sibling in the same parent split. |
@@ -74,6 +75,26 @@ configuration file.
 | `ToggleFloating` | `super+shift+f` | Temporarily remove the selected or foreground window from tiling for this session; run it again to tile that window again. |
 | `ToggleVerboseLogging` | `super+shift+v` or tray menu | Toggle verbose runtime logging. |
 | `Exit` | `super+shift+escape` or tray menu | Exit `win-tiler`. |
+
+### Directional Window Movement
+
+Use `Win+Alt+Shift+H/J/K/L` to move left/down/up/right. Selection and focus follow the
+moved window, so the shortcut can be repeated. Navigation remains `Win+Shift+H/J/K/L`.
+
+`Win+Alt+Shift+,` toggles the mode and shows a toast; the tray also displays and toggles it:
+
+- **Swap** (default): exchange positions with the nearest window in that direction.
+- **Insert**: remove the window from its old split and insert it on the requested side of
+  the neighbor. Left/right creates a side-by-side split; up/down creates a stacked split.
+  Direction overrides the ordinary split mode and layout templates for this operation.
+
+Movement can cross monitors when a destination window exists. With no directional neighbor,
+it does nothing (including when the next monitor is empty). Configure the initial mode with
+`keyboard.movement_mode = "swap"` or `"insert"`. Toggles persist per virtual desktop for the
+session; changing that configuration value applies the new mode on the desktop's next frame.
+
+The old StoreCell, ClearStored, Exchange, and Move actions and stored-cell highlighting have
+been removed. Update custom bindings to the directional actions above.
 
 ### Mouse Actions
 

@@ -226,6 +226,9 @@ void register_notification_area_icon(const NotificationAreaIconOptions& options)
 void unregister_notification_area_icon();
 void set_notification_area_manual_pause_active(bool is_paused);
 void set_notification_area_verbose_logging_active(bool is_enabled);
+void set_notification_area_movement_mode(wintiler::MovementMode mode);
+[[nodiscard]] const wchar_t*
+get_notification_area_movement_mode_menu_text(wintiler::MovementMode mode);
 void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_options);
 void set_notification_area_save_layout_monitors(
     const std::vector<NotificationAreaSaveLayoutMonitor>& monitors);

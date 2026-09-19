@@ -6,8 +6,8 @@ namespace wintiler {
 namespace renderer {
 
 void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect>>& geometries,
-            const RenderOptions& config, std::optional<StoredCell> stored_cell,
-            const std::optional<std::string>& message, bool suppress_rectangles) {
+            const RenderOptions& config, const std::optional<std::string>& message,
+            bool suppress_rectangles) {
   // Begin frame
   overlay::begin_frame();
 
@@ -33,15 +33,13 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
           continue;
         }
 
-        const auto& cell_data = cluster.tree[i];
-
         // Get precomputed rect for this cell
         if (static_cast<size_t>(i) >= rects.size()) {
           continue;
         }
         const auto& rect = rects[static_cast<size_t>(i)];
 
-        // Determine color based on selection/stored state
+        // Determine color based on selection state
         overlay::Color color = config.normal_color;
 
         // Check if this is the selected cell
@@ -49,13 +47,6 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
             static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
             system.selection->cell_index == i) {
           color = config.selected_color;
-        }
-
-        // Check if this is the stored cell (operation) - overrides selection color
-        if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-          if (cell_data.leaf_id.has_value() && cell_data.leaf_id.value() == stored_cell->leaf_id) {
-            color = config.stored_color;
-          }
         }
 
         // Draw rectangle immediately
@@ -97,14 +88,6 @@ void render(const ctrl::System& system, const std::vector<std::vector<ctrl::Rect
           static_cast<size_t>(system.selection->cluster_index) == cluster_idx &&
           system.selection->cell_index == zen_cell_index) {
         color = config.selected_color;
-      }
-
-      // Check if zen cell is also the stored cell
-      if (stored_cell.has_value() && stored_cell->cluster_index == cluster_idx) {
-        const auto& cell_data = cluster.tree[zen_cell_index];
-        if (cell_data.leaf_id.has_value() && cell_data.leaf_id.value() == stored_cell->leaf_id) {
-          color = config.stored_color;
-        }
       }
 
       // Draw zen rectangle

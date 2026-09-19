@@ -87,7 +87,7 @@ TEST_SUITE("loop_desktop_state") {
     CHECK(desktop_two->get().data.has_completed_initial_tile_pass == false);
   }
 
-  TEST_CASE("reinitialize_all_desktops resets each engine and clears stored state") {
+  TEST_CASE("reinitialize_all_desktops resets each engine") {
     std::vector<ctrl::ClusterInitInfo> initial_cluster_infos = {
         {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}}};
     std::vector<ctrl::ClusterInitInfo> updated_cluster_infos = {
@@ -100,8 +100,6 @@ TEST_SUITE("loop_desktop_state") {
     REQUIRE(desktop_one.has_value());
     REQUIRE(desktop_two.has_value());
 
-    desktop_one->get().engine.stored_cell = StoredCell{0, 1};
-    desktop_two->get().engine.stored_cell = StoredCell{0, 2};
     desktop_one->get().data.has_completed_initial_tile_pass = true;
     desktop_two->get().data.has_completed_initial_tile_pass = true;
     desktop_one->get().data.reapply_layout_templates = true;
@@ -113,8 +111,6 @@ TEST_SUITE("loop_desktop_state") {
     CHECK(desktop_two->get().engine.system.clusters.size() == 2);
     CHECK(desktop_one->get().engine.system.clusters[0].window_width == doctest::Approx(800.0f));
     CHECK(desktop_two->get().engine.system.clusters[1].global_x == doctest::Approx(800.0f));
-    CHECK_FALSE(desktop_one->get().engine.stored_cell.has_value());
-    CHECK_FALSE(desktop_two->get().engine.stored_cell.has_value());
     CHECK(desktop_one->get().data.has_completed_initial_tile_pass == false);
     CHECK(desktop_two->get().data.has_completed_initial_tile_pass == false);
     CHECK(desktop_one->get().data.reapply_layout_templates == false);

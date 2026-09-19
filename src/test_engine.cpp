@@ -2,6 +2,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "engine.h"
@@ -1696,211 +1697,6 @@ TEST_SUITE("Engine::process_action - ToggleSplit") {
 }
 
 // =============================================================================
-// Engine::process_action Tests - StoreCell / ClearStored
-// =============================================================================
-
-TEST_SUITE("Engine::process_action - StoreCell/ClearStored") {
-  TEST_CASE("StoreCell stores selected cell") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-
-    ActionResult result = engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.layout_changed == false);
-    CHECK(result.apply_tiles == false);
-    CHECK(engine.stored_cell.has_value());
-  }
-
-  TEST_CASE("StoreCell fails when no current selection was captured") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    engine.stored_cell = StoredCell{0, 1};
-    engine.system.selection.reset();
-
-    ActionResult result = engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == false);
-    REQUIRE(engine.stored_cell.has_value());
-    CHECK(engine.stored_cell->cluster_index == 0);
-    CHECK(engine.stored_cell->leaf_id == 1);
-  }
-
-  TEST_CASE("ClearStored clears stored cell") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    // First store a cell
-    set_selection(engine, 0, 1);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    CHECK(store_result.success == true);
-    CHECK(engine.stored_cell.has_value());
-
-    // Clear it
-    ActionResult result =
-        engine.process_action(HotkeyAction::ClearStored, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.layout_changed == false);
-    CHECK(result.apply_tiles == false);
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-}
-
-// =============================================================================
-// Engine::process_action Tests - Exchange / Move
-// =============================================================================
-
-TEST_SUITE("Engine::process_action - Exchange/Move") {
-  TEST_CASE("Exchange fails without stored cell") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-
-    ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == false);
-  }
-
-  TEST_CASE("Move fails without stored cell") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-
-    ActionResult result = engine.process_action(HotkeyAction::Move, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == false);
-  }
-
-  TEST_CASE("Exchange swaps stored and selected") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    // Store first cell
-    set_selection(engine, 0, 1);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    CHECK(store_result.success == true);
-    size_t stored_leaf_id = engine.stored_cell->leaf_id;
-
-    // Select second cell
-    set_selection(engine, 0, 2);
-    size_t selected_leaf_id = *engine.system.clusters[0].tree[2].leaf_id;
-
-    ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    // Stored cell should be cleared after exchange
-    CHECK_FALSE(engine.stored_cell.has_value());
-
-    // Verify swap occurred - leaf_ids should have swapped positions
-    CHECK(*engine.system.clusters[0].tree[1].leaf_id == selected_leaf_id);
-    CHECK(*engine.system.clusters[0].tree[2].leaf_id == stored_leaf_id);
-  }
-
-  TEST_CASE("Exchange clears stored on success") {
-    Engine engine = create_two_window_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    CHECK(store_result.success == true);
-    set_selection(engine, 0, 2);
-
-    ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    CHECK_FALSE(engine.stored_cell.has_value());
-  }
-
-  TEST_CASE("Exchange across clusters reports selection change and focus") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    REQUIRE(store_result.success == true);
-
-    set_selection(engine, 1, 0);
-    ActionResult result = engine.process_action(HotkeyAction::Exchange, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.selection_changed == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    CHECK(result.focus_leaf_id == std::optional<size_t>{3});
-    REQUIRE(engine.system.selection.has_value());
-    CHECK(engine.system.selection->cluster_index == 0);
-    CHECK(engine.system.selection->cell_index == 1);
-  }
-
-  TEST_CASE("Move across clusters reports selection change and focus") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 0, 1);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    REQUIRE(store_result.success == true);
-
-    set_selection(engine, 1, 0);
-    ActionResult result = engine.process_action(HotkeyAction::Move, geoms, 10.0f, 10.0f, 0.0f);
-
-    CHECK(result.success == true);
-    CHECK(result.selection_changed == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-    CHECK(result.focus_leaf_id == std::optional<size_t>{1});
-    REQUIRE(engine.system.selection.has_value());
-    CHECK(engine.system.selection->cluster_index == 1);
-  }
-
-  TEST_CASE("Move reapplies per-cluster layout rule after splitting target cell") {
-    Engine engine = create_test_engine();
-    auto geoms = compute_default_geometries(engine);
-
-    set_selection(engine, 1, 0);
-    ActionResult store_result =
-        engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
-    REQUIRE(store_result.success == true);
-
-    std::vector<ClusterTilingOptions> cluster_options(2);
-    cluster_options[0].layoutOptions =
-        create_three_window_vertical_right_horizontal_layout_options();
-
-    set_selection(engine, 0, 2);
-    ActionResult result = engine.process_action(HotkeyAction::Move, geoms, cluster_options);
-
-    CHECK(result.success == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-
-    auto moved_leaf = engine.find_leaf(3);
-    REQUIRE(moved_leaf.has_value());
-    CHECK(moved_leaf->cluster_index == 0);
-
-    const auto& cluster = engine.system.clusters[0];
-    REQUIRE(cluster.tree.size() == 5);
-    auto right_child = cluster.tree.get_second_child(0);
-    REQUIRE(right_child.has_value());
-    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
-    CHECK(cluster.tree[*right_child].split_dir == SplitDir::Horizontal);
-  }
-}
-
-// =============================================================================
 // Engine::process_action Tests - SplitIncrease / SplitDecrease
 // =============================================================================
 
@@ -2408,7 +2204,7 @@ TEST_SUITE("Engine - Edge Cases") {
     ActionResult r2 = engine.process_action(HotkeyAction::ToggleSplit, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(r2.success == false);
 
-    ActionResult r3 = engine.process_action(HotkeyAction::StoreCell, geoms, 10.0f, 10.0f, 0.0f);
+    ActionResult r3 = engine.process_action(HotkeyAction::MoveLeft, geoms, 10.0f, 10.0f, 0.0f);
     CHECK(r3.success == false);
 
     ActionResult r4 = engine.process_action(HotkeyAction::ToggleZen, geoms, 10.0f, 10.0f, 0.0f);
@@ -2670,6 +2466,215 @@ TEST_SUITE("Automatic split targets") {
     REQUIRE(third.has_value());
     CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
           engine.system.clusters[0].tree.get_parent(third->cell_index));
+  }
+}
+
+TEST_SUITE("Directional movement") {
+  TEST_CASE("all directions preserve the moved window and place it beyond the neighbor") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      for (auto action : {HotkeyAction::MoveLeft, HotkeyAction::MoveRight, HotkeyAction::MoveUp,
+                          HotkeyAction::MoveDown}) {
+        CAPTURE(mode);
+        CAPTURE(action);
+        bool horizontal = action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveRight;
+        bool backwards = action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveUp;
+        Engine engine = create_two_window_engine();
+        auto& cluster = engine.system.clusters[0];
+        cluster.tree[0].split_dir = horizontal ? SplitDir::Vertical : SplitDir::Horizontal;
+        REQUIRE(engine.select_leaf(backwards ? 2 : 1));
+        auto source_id = *engine.selected_leaf_id();
+        auto target_id = backwards ? 1u : 2u;
+        engine.movement_mode = mode;
+        auto result = engine.process_action(action, compute_default_geometries(engine), 10, 10, 0);
+        REQUIRE(result.success);
+        CHECK(result.apply_tiles);
+        CHECK(result.layout_changed);
+        CHECK(engine.selected_leaf_id() == source_id);
+        CHECK(result.focus_leaf_id == source_id);
+        REQUIRE(result.cursor_pos.has_value());
+        auto geoms = compute_default_geometries(engine);
+        auto source = *engine.find_leaf(source_id);
+        auto target = *engine.find_leaf(target_id);
+        auto sr = geoms[0][static_cast<size_t>(source.cell_index)];
+        auto tr = geoms[0][static_cast<size_t>(target.cell_index)];
+        CHECK((horizontal ? sr.x < tr.x : sr.y < tr.y) == backwards);
+        CHECK(result.cursor_pos->x == compute_rect_center(sr).x);
+        CHECK(result.cursor_pos->y == compute_rect_center(sr).y);
+        // The moved window is now at the edge. Repeating must not wrap or change focus.
+        auto edge = engine.process_action(action, geoms, 10, 10, 0);
+        CHECK_FALSE(edge.success);
+        CHECK_FALSE(edge.apply_tiles);
+        CHECK(engine.selected_leaf_id() == source_id);
+      }
+    }
+  }
+
+  TEST_CASE("insert splits the target in the requested direction regardless of split mode") {
+    for (auto action : {HotkeyAction::MoveLeft, HotkeyAction::MoveRight, HotkeyAction::MoveUp,
+                        HotkeyAction::MoveDown}) {
+      CAPTURE(action);
+      bool horizontal = action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveRight;
+      bool backwards = action == HotkeyAction::MoveLeft || action == HotkeyAction::MoveUp;
+      Engine engine;
+      ClusterInitInfo source;
+      source.width = 800;
+      source.height = 600;
+      source.initial_cell_ids = {1};
+      ClusterInitInfo target = source;
+      target.x = horizontal ? (backwards ? -800.0f : 800.0f) : 0;
+      target.y = horizontal ? 0 : (backwards ? -600.0f : 600.0f);
+      target.initial_cell_ids = {2, 3};
+      engine.init({source, target}, horizontal ? SplitMode::Horizontal : SplitMode::Vertical);
+      engine.movement_mode = MovementMode::Insert;
+      REQUIRE(engine.select_leaf(1));
+      auto result = engine.process_action(action, compute_default_geometries(engine), 10, 10, 0);
+      REQUIRE(result.success);
+      CHECK(engine.system.clusters[0].tree.size() == 0);
+      auto moved = *engine.find_leaf(1);
+      CHECK(moved.cluster_index == 1);
+      const auto& cluster = engine.system.clusters[1];
+      auto parent = cluster.tree.get_parent(moved.cell_index);
+      REQUIRE(parent.has_value());
+      CHECK(cluster.tree[*parent].split_dir ==
+            (horizontal ? SplitDir::Vertical : SplitDir::Horizontal));
+      CHECK((cluster.tree.get_first_child(*parent) == moved.cell_index) == backwards);
+      CHECK(cluster.tree.size() == 5);
+      CHECK(engine.selected_leaf_id() == 1);
+    }
+  }
+
+  TEST_CASE("insert within a tree collapses the old split and preserves all windows") {
+    Engine engine = create_three_window_engine();
+    engine.movement_mode = MovementMode::Insert;
+    REQUIRE(engine.select_leaf(1));
+    auto result = engine.process_action(HotkeyAction::MoveRight, compute_default_geometries(engine),
+                                        10, 10, 0);
+    REQUIRE(result.success);
+    auto ids = collect_cluster_leaf_ids(engine.system.clusters[0]);
+    std::sort(ids.begin(), ids.end());
+    CHECK(ids == std::vector<size_t>{1, 2, 3});
+    CHECK(engine.selected_leaf_id() == 1);
+    const auto& cluster = engine.system.clusters[0];
+    auto moved = *engine.find_leaf(1);
+    auto parent = cluster.tree.get_parent(moved.cell_index);
+    REQUIRE(parent.has_value());
+    CHECK(cluster.tree[*parent].split_dir == SplitDir::Vertical);
+    CHECK(cluster.tree.get_second_child(*parent) == moved.cell_index);
+  }
+
+  TEST_CASE("cross-monitor frame ignores stale membership and keeps focus on the moved window") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      Engine engine = create_test_engine();
+      REQUIRE(engine.select_leaf(2));
+      EngineFrameInput input;
+      input.initial_movement_mode = mode;
+      input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+      input.hotkey_action = HotkeyAction::MoveRight;
+      input.has_completed_initial_tile_pass = true;
+      auto output = engine.process_frame(input);
+      CHECK(output.apply_tiles);
+      CHECK(output.focus_leaf_id == 2);
+      CHECK(engine.selected_leaf_id() == 2);
+      REQUIRE(engine.find_leaf(2).has_value());
+      CHECK(engine.find_leaf(2)->cluster_index == 1);
+      CHECK(output.movement_mode == mode);
+      REQUIRE(output.cursor_pos.has_value());
+      CHECK(output.cursor_pos->x > 800);
+      input.hotkey_action.reset();
+      input.cluster_updates =
+          mode == MovementMode::Swap
+              ? std::vector<ClusterCellUpdateInfo>{{{1, 3}, false}, {{2}, false}}
+              : std::vector<ClusterCellUpdateInfo>{{{1}, false}, {{2, 3}, false}};
+      auto next = engine.process_frame(input);
+      CHECK_FALSE(next.topology_changed);
+      CHECK(engine.find_leaf(2)->cluster_index == 1);
+    }
+  }
+
+  TEST_CASE("repeated movement walks the same window across a row") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      Engine engine;
+      engine.init({{0, 0, 1200, 600, 0, 0, 1200, 600, {1, 2, 3}}}, SplitMode::Vertical);
+      engine.movement_mode = mode;
+      REQUIRE(engine.select_leaf(1));
+      for (int step = 0; step < 2; ++step) {
+        auto result = engine.process_action(HotkeyAction::MoveRight,
+                                            compute_default_geometries(engine), 10, 10, 0);
+        REQUIRE(result.success);
+        CHECK(engine.selected_leaf_id() == 1);
+      }
+      auto geoms = compute_default_geometries(engine);
+      auto moved = *engine.find_leaf(1);
+      for (size_t id : {2u, 3u}) {
+        auto other = *engine.find_leaf(id);
+        CHECK(geoms[0][static_cast<size_t>(moved.cell_index)].x >
+              geoms[0][static_cast<size_t>(other.cell_index)].x);
+      }
+    }
+  }
+
+  TEST_CASE("explicit insertion orientation survives layout templates and the following frame") {
+    Engine engine = create_test_engine();
+    REQUIRE(engine.select_leaf(2));
+    EngineFrameInput input;
+    input.initial_movement_mode = MovementMode::Insert;
+    input.cluster_options.resize(2);
+    LayoutOptions layout;
+    auto rule = create_two_window_vertical_layout_rule(0.3f);
+    rule.tree.split_dir = LayoutSplitDir::Horizontal;
+    layout.rules.push_back(rule);
+    input.cluster_options[1].layoutOptions = layout;
+    input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+    input.hotkey_action = HotkeyAction::MoveRight;
+    input.has_completed_initial_tile_pass = true;
+    auto output = engine.process_frame(input);
+    REQUIRE(output.apply_tiles);
+    CHECK(engine.system.clusters[1].tree[0].split_dir == SplitDir::Vertical);
+    input.hotkey_action.reset();
+    input.cluster_updates = {{{1}, false}, {{2, 3}, false}};
+    output = engine.process_frame(input);
+    CHECK_FALSE(output.layout_changed);
+    CHECK(engine.system.clusters[1].tree[0].split_dir == SplitDir::Vertical);
+    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.5f));
+  }
+
+  TEST_CASE("mode toggle reports toast and survives subsequent frames and reinitialization") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = {{{1, 2}, false}};
+    input.hotkey_action = HotkeyAction::ToggleMovementMode;
+    auto output = engine.process_frame(input);
+    CHECK(output.movement_mode == MovementMode::Insert);
+    CHECK(output.toast_message == "Movement: Insert");
+    input.hotkey_action.reset();
+    CHECK(engine.process_frame(input).movement_mode == MovementMode::Insert);
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1, 2}}});
+    CHECK(engine.process_frame(input).movement_mode == MovementMode::Insert);
+    input.hotkey_action = HotkeyAction::ToggleMovementMode;
+    CHECK(engine.process_frame(input).toast_message == "Movement: Swap");
+    input.hotkey_action.reset();
+    input.initial_movement_mode = MovementMode::Insert;
+    CHECK(engine.process_frame(input).movement_mode == MovementMode::Insert);
+    input.initial_movement_mode = MovementMode::Swap;
+    CHECK(engine.process_frame(input).movement_mode == MovementMode::Swap);
+  }
+
+  TEST_CASE("missing selection or missing neighbor leaves layout unchanged") {
+    for (auto mode : {MovementMode::Swap, MovementMode::Insert}) {
+      Engine engine = create_two_window_engine();
+      engine.movement_mode = mode;
+      engine.system.selection.reset();
+      auto result = engine.process_action(HotkeyAction::MoveRight,
+                                          compute_default_geometries(engine), 10, 10, 0);
+      CHECK_FALSE(result.success);
+      CHECK_FALSE(result.focus_leaf_id.has_value());
+      REQUIRE(engine.select_leaf(1));
+      result = engine.process_action(HotkeyAction::MoveLeft, compute_default_geometries(engine), 10,
+                                     10, 0);
+      CHECK_FALSE(result.success);
+      CHECK_FALSE(result.apply_tiles);
+      CHECK(engine.selected_leaf_id() == 1);
+    }
   }
 }
 

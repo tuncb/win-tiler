@@ -1778,6 +1778,7 @@ std::atomic<bool> g_notification_area_exit_requested{false};
 std::atomic<int> g_notification_area_hotkey_action_requested{NO_NOTIFICATION_AREA_HOTKEY_ACTION};
 std::atomic<bool> g_notification_area_manual_pause_active{false};
 std::atomic<bool> g_notification_area_verbose_logging_active{false};
+std::atomic<wintiler::MovementMode> g_notification_area_movement_mode{wintiler::MovementMode::Swap};
 std::mutex g_notification_area_save_layout_mutex;
 std::optional<NotificationAreaSaveLayoutRequest> g_notification_area_save_layout_request;
 std::vector<NotificationAreaSaveLayoutMonitor> g_notification_area_save_layout_monitors;
@@ -1810,6 +1811,7 @@ constexpr UINT ID_CHECK_UPDATES = 1007;
 constexpr UINT ID_EXIT = 1008;
 constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1009;
 constexpr UINT ID_MANAGE_IGNORED_WINDOWS = 1010;
+constexpr UINT ID_TOGGLE_MOVEMENT_MODE = 1011;
 constexpr UINT ID_SAVE_LAYOUT_MONITOR_BASE = 1100;
 constexpr UINT ID_SAVE_LAYOUT_MONITOR_MAX = 1199;
 constexpr UINT ID_SAVE_LAYOUT_ALL = 1200;
@@ -2866,6 +2868,10 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     spdlog::info("Reset requested from notification area menu");
     return;
 
+  case ID_TOGGLE_MOVEMENT_MODE:
+    request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleMovementMode);
+    return;
+
   case ID_TOGGLE_VERBOSE_LOGGING:
     request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleVerboseLogging);
     spdlog::info("Verbose logging toggle requested from notification area menu");
@@ -2970,6 +2976,10 @@ void show_notification_area_menu(HWND hwnd) {
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_RESET, L"Reset") && menu_ok;
   UINT verbose_logging_flags =
       MF_STRING | (g_notification_area_verbose_logging_active.load() ? MF_CHECKED : MF_UNCHECKED);
+  menu_ok = append_notification_menu_item(menu, MF_STRING, ID_TOGGLE_MOVEMENT_MODE,
+                                          get_notification_area_movement_mode_menu_text(
+                                              g_notification_area_movement_mode.load())) &&
+            menu_ok;
   menu_ok = append_notification_menu_item(menu, verbose_logging_flags, ID_TOGGLE_VERBOSE_LOGGING,
                                           L"Verbose logging") &&
             menu_ok;
@@ -3294,6 +3304,15 @@ void set_notification_area_manual_pause_active(bool is_paused) {
   g_notification_area_manual_pause_active = is_paused;
 }
 
+const wchar_t* get_notification_area_movement_mode_menu_text(wintiler::MovementMode mode) {
+  return mode == wintiler::MovementMode::Swap ? L"Movement: Swap (toggle)"
+                                              : L"Movement: Insert (toggle)";
+}
+
+void set_notification_area_movement_mode(wintiler::MovementMode mode) {
+  g_notification_area_movement_mode = mode;
+}
+
 void set_notification_area_verbose_logging_active(bool is_enabled) {
   g_notification_area_verbose_logging_active = is_enabled;
 }
@@ -3332,10 +3351,11 @@ std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() 
   case wintiler::HotkeyAction::ToggleSplit:
   case wintiler::HotkeyAction::Exit:
   case wintiler::HotkeyAction::CycleSplitMode:
-  case wintiler::HotkeyAction::StoreCell:
-  case wintiler::HotkeyAction::ClearStored:
-  case wintiler::HotkeyAction::Exchange:
-  case wintiler::HotkeyAction::Move:
+  case wintiler::HotkeyAction::MoveLeft:
+  case wintiler::HotkeyAction::MoveDown:
+  case wintiler::HotkeyAction::MoveUp:
+  case wintiler::HotkeyAction::MoveRight:
+  case wintiler::HotkeyAction::ToggleMovementMode:
   case wintiler::HotkeyAction::SplitIncrease:
   case wintiler::HotkeyAction::SplitDecrease:
   case wintiler::HotkeyAction::ExchangeSiblings:

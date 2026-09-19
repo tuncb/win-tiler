@@ -520,7 +520,8 @@ bool exchange_siblings(System& system, int cluster_index, int cell_index) {
 }
 
 bool move_cell(System& system, int source_cluster_index, int source_cell_index,
-               int target_cluster_index, int target_cell_index) {
+               int target_cluster_index, int target_cell_index,
+               std::optional<Direction> direction = std::nullopt) {
   if (source_cluster_index < 0 ||
       static_cast<size_t>(source_cluster_index) >= system.clusters.size() ||
       target_cluster_index < 0 ||
@@ -559,6 +560,19 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
 
     if (src_parent_opt.has_value() && tgt_parent_opt.has_value() &&
         *src_parent_opt == *tgt_parent_opt) {
+      if (direction.has_value()) {
+        auto& parent = src_cluster.tree[*src_parent_opt];
+        parent.split_dir = (*direction == Direction::Left || *direction == Direction::Right)
+                               ? SplitDir::Vertical
+                               : SplitDir::Horizontal;
+        parent.split_ratio = 0.5f;
+        bool source_first = src_cluster.tree.get_first_child(*src_parent_opt) == source_cell_index;
+        bool want_first = *direction == Direction::Left || *direction == Direction::Up;
+        if (source_first != want_first) {
+          src_cluster.tree.swap_children(*src_parent_opt);
+        }
+        return true;
+      }
       src_cluster.tree.swap_children(*src_parent_opt);
       if (source_was_selected) {
         system.selection->cell_index = target_cell_index;
@@ -627,7 +641,12 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
     }
   }
 
-  SplitDir split_dir = determine_split_dir(tgt_cluster, adjusted_target_index, system.split_mode);
+  SplitDir split_dir =
+      direction.has_value()
+          ? ((*direction == Direction::Left || *direction == Direction::Right)
+                 ? SplitDir::Vertical
+                 : SplitDir::Horizontal)
+          : determine_split_dir(tgt_cluster, adjusted_target_index, system.split_mode);
   auto result_opt =
       split_leaf(tgt_cluster, adjusted_target_index, source_leaf_id.value_or(0), split_dir);
 
@@ -638,6 +657,9 @@ bool move_cell(System& system, int source_cluster_index, int source_cell_index,
   int new_selection_index = result_opt->new_selection_index;
   auto second_child_opt = tgt_cluster.tree.get_second_child(adjusted_target_index);
   int new_cell_index = second_child_opt.value_or(new_selection_index);
+  if (direction == Direction::Left || direction == Direction::Up) {
+    tgt_cluster.tree.swap_children(adjusted_target_index);
+  }
 
   if (tgt_cluster.zen_cell_index.has_value() &&
       *tgt_cluster.zen_cell_index == adjusted_target_index) {
@@ -860,8 +882,8 @@ float directional_distance(const Rect& from, const Rect& to, Direction dir) {
 }
 
 std::optional<CellIndicatorByIndex>
-move_selection(System& system, Direction dir,
-               const std::vector<std::vector<Rect>>& cell_geometries) {
+find_directional_neighbor(const System& system, Direction dir,
+                          const std::vector<std::vector<Rect>>& cell_geometries) {
   if (!system.selection.has_value()) {
     return std::nullopt;
   }
@@ -939,6 +961,16 @@ move_selection(System& system, Direction dir,
     return std::nullopt;
   }
 
+  return best_candidate;
+}
+
+std::optional<CellIndicatorByIndex>
+move_selection(System& system, Direction dir,
+               const std::vector<std::vector<Rect>>& cell_geometries) {
+  auto best_candidate = find_directional_neighbor(system, dir, cell_geometries);
+  if (!best_candidate.has_value()) {
+    return std::nullopt;
+  }
   system.selection = best_candidate;
 
   auto& new_cluster = system.clusters[static_cast<size_t>(best_candidate->cluster_index)];
@@ -1833,31 +1865,6 @@ struct DragResult {
   std::optional<size_t> cursor_leaf_id;
 };
 
-bool store_selected_cell(const ctrl::System& system, std::optional<StoredCell>& stored_cell) {
-  if (!system.selection.has_value()) {
-    return false;
-  }
-
-  int cluster_index = system.selection->cluster_index;
-  int cell_index = system.selection->cell_index;
-  if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
-    return false;
-  }
-
-  const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
-  if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
-    return false;
-  }
-
-  const auto& cell_data = cluster.tree[cell_index];
-  if (cell_data.leaf_id.has_value()) {
-    stored_cell = StoredCell{static_cast<size_t>(cluster_index), *cell_data.leaf_id};
-    return true;
-  }
-
-  return false;
-}
-
 std::optional<ctrl::Point>
 get_selected_center(const ctrl::System& system,
                     const std::vector<std::vector<ctrl::Rect>>& geometries) {
@@ -2340,6 +2347,11 @@ Engine::update_selection_from_hover(float global_x, float global_y,
 
 EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   EngineFrameOutput output;
+  if (configured_movement_mode != input.initial_movement_mode) {
+    configured_movement_mode = input.initial_movement_mode;
+    movement_mode = input.initial_movement_mode;
+  }
+  output.movement_mode = movement_mode;
   output.has_completed_initial_tile_pass = input.has_completed_initial_tile_pass;
   std::vector<ClusterTilingOptions> cluster_options = input.cluster_options;
   if (cluster_options.empty()) {
@@ -2406,6 +2418,14 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   if (input.hotkey_action.has_value()) {
     ActionResult action_result =
         process_action(*input.hotkey_action, ensure_geometries(), cluster_options);
+    output.movement_mode = movement_mode;
+    // Window snapshots still describe the positions before this keyboard move.
+    if (action_result.success && (*input.hotkey_action == HotkeyAction::MoveLeft ||
+                                  *input.hotkey_action == HotkeyAction::MoveRight ||
+                                  *input.hotkey_action == HotkeyAction::MoveUp ||
+                                  *input.hotkey_action == HotkeyAction::MoveDown)) {
+      skip_cluster_update = true;
+    }
     output.control = action_result.control;
     output.selection_changed = output.selection_changed || action_result.selection_changed;
     output.layout_changed = output.layout_changed || action_result.layout_changed;
@@ -2544,10 +2564,6 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   return output;
 }
 
-void Engine::clear_stored_cell() {
-  stored_cell.reset();
-}
-
 std::optional<ctrl::CellIndicatorByIndex> Engine::find_leaf(size_t leaf_id) const {
   return find_cell_by_leaf_id(system, leaf_id);
 }
@@ -2660,64 +2676,51 @@ ActionResult Engine::process_action(HotkeyAction action,
     }
     break;
 
-  case HotkeyAction::StoreCell:
-    spdlog::info("StoreCell: storing current cell for swap/move operation");
-    result.success = store_selected_cell(system, stored_cell);
-    break;
-
-  case HotkeyAction::ClearStored:
-    spdlog::info("ClearStored: clearing stored cell reference");
-    clear_stored_cell();
+  case HotkeyAction::ToggleMovementMode:
+    movement_mode = movement_mode == MovementMode::Swap ? MovementMode::Insert : MovementMode::Swap;
     result.success = true;
+    result.toast_message =
+        movement_mode == MovementMode::Swap ? "Movement: Swap" : "Movement: Insert";
     break;
 
-  case HotkeyAction::Exchange:
-    spdlog::info("Exchange: swapping stored cell with selected cell");
-    if (stored_cell.has_value() && system.selection.has_value()) {
-      auto previous_selection = system.selection;
-      // Find stored cell index from leaf_id
-      auto stored_cell_idx = ctrl::find_cell_by_leaf_id(system.clusters[stored_cell->cluster_index],
-                                                        stored_cell->leaf_id);
-      if (stored_cell_idx.has_value()) {
-        if (ctrl::swap_cells(system, system.selection->cluster_index, system.selection->cell_index,
-                             static_cast<int>(stored_cell->cluster_index), *stored_cell_idx)) {
-          clear_stored_cell();
-          result.success = true;
-          result.selection_changed = !selections_equal(previous_selection, system.selection);
-          result.layout_changed = true;
-          result.apply_tiles = true;
-        }
+  case HotkeyAction::MoveLeft:
+  case HotkeyAction::MoveDown:
+  case HotkeyAction::MoveUp:
+  case HotkeyAction::MoveRight: {
+    auto source_id = selected_leaf_id();
+    if (!source_id.has_value()) {
+      break;
+    }
+    auto source = *system.selection;
+    ctrl::Direction direction = ctrl::Direction::Left;
+    if (action == HotkeyAction::MoveRight)
+      direction = ctrl::Direction::Right;
+    if (action == HotkeyAction::MoveUp)
+      direction = ctrl::Direction::Up;
+    if (action == HotkeyAction::MoveDown)
+      direction = ctrl::Direction::Down;
+    auto target = ctrl::find_directional_neighbor(system, direction, global_geometries);
+    if (!target.has_value()) {
+      break;
+    }
+    if (movement_mode == MovementMode::Swap) {
+      result.success = ctrl::swap_cells(system, source.cluster_index, source.cell_index,
+                                        target->cluster_index, target->cell_index);
+    } else {
+      result.success = ctrl::move_cell(system, source.cluster_index, source.cell_index,
+                                       target->cluster_index, target->cell_index, direction);
+    }
+    if (result.success) {
+      if (!select_leaf(*source_id)) {
+        spdlog::error("Directional movement lost source window {}", *source_id);
       }
+      result.selection_changed = true;
+      result.layout_changed = true;
+      result.apply_tiles = true;
+      result.cursor_pos = get_selected_center(system, compute_geometries(cluster_options));
     }
     break;
-
-  case HotkeyAction::Move:
-    spdlog::info("Move: moving stored cell to selected cell's position");
-    if (stored_cell.has_value() && system.selection.has_value()) {
-      auto previous_selection = system.selection;
-      size_t source_cluster_before_move = stored_cell->cluster_index;
-      size_t moved_leaf_id = stored_cell->leaf_id;
-      // Find stored cell index from leaf_id
-      auto stored_cell_idx = ctrl::find_cell_by_leaf_id(system.clusters[stored_cell->cluster_index],
-                                                        stored_cell->leaf_id);
-      if (stored_cell_idx.has_value()) {
-        if (ctrl::move_cell(system, static_cast<int>(stored_cell->cluster_index), *stored_cell_idx,
-                            system.selection->cluster_index, system.selection->cell_index)) {
-          auto moved_cell = find_cell_by_leaf_id(system, moved_leaf_id);
-          std::vector<size_t> affected_clusters = {source_cluster_before_move};
-          if (moved_cell.has_value() && moved_cell->cluster_index >= 0) {
-            affected_clusters.push_back(static_cast<size_t>(moved_cell->cluster_index));
-          }
-          apply_layout_templates_for_clusters(system, cluster_options, affected_clusters);
-          clear_stored_cell();
-          result.success = true;
-          result.selection_changed = !selections_equal(previous_selection, system.selection);
-          result.layout_changed = true;
-          result.apply_tiles = true;
-        }
-      }
-    }
-    break;
+  }
 
   case HotkeyAction::SplitIncrease:
     spdlog::info("SplitIncrease: increasing split ratio by 5%%");

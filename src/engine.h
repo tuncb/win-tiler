@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "binary_tree.h"
-#include "model.h"
 #include "options.h"
 
 namespace wintiler::ctrl {
@@ -161,6 +160,7 @@ struct CompletedDragRequest {
 };
 
 struct EngineFrameInput {
+  MovementMode initial_movement_mode = MovementMode::Swap;
   std::vector<ctrl::ClusterCellUpdateInfo> cluster_updates;
   std::vector<std::vector<ManagedWindowState>> managed_windows;
   std::optional<HotkeyAction> hotkey_action;
@@ -179,6 +179,7 @@ struct EngineFrameInput {
 };
 
 struct EngineFrameOutput {
+  MovementMode movement_mode = MovementMode::Swap;
   LoopControl control = LoopControl::Continue;
   bool topology_changed = false;
   bool selection_changed = false;
@@ -208,7 +209,8 @@ struct HoverInfo {
 // All members are public for easy access
 struct Engine {
   ctrl::System system;
-  std::optional<StoredCell> stored_cell;
+  MovementMode movement_mode = MovementMode::Swap;
+  std::optional<MovementMode> configured_movement_mode;
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
   std::vector<PlacementCorrectionFailure> placement_correction_failures;
 
@@ -268,9 +270,6 @@ struct Engine {
   // Move a managed leaf to a target leaf cell
   [[nodiscard]] bool move_leaf_to_cell(size_t source_leaf_id, int target_cluster_index,
                                        int target_cell_index);
-
-  // Clear the stored cell reference
-  void clear_stored_cell();
 };
 
 } // namespace wintiler

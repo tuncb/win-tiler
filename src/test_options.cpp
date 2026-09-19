@@ -425,6 +425,7 @@ TEST_SUITE("Generated TOML") {
         "width",
         "height",
         "bindings",
+        "movement_mode",
         "action",
         "hotkey",
         "horizontal",
@@ -447,7 +448,6 @@ TEST_SUITE("Generated TOML") {
         "show_rectangles",
         "normal_color",
         "selected_color",
-        "stored_color",
         "border_width",
         "toast_font_size",
         "zen_percentage",
@@ -1862,6 +1862,49 @@ TEST_SUITE("Type Coercion") {
 
     CHECK(result.value().loopOptions.configRefreshIntervalMs == kDefaultConfigRefreshIntervalMs);
   }
+}
+
+TEST_CASE("directional movement defaults are unique and replace stored-cell actions") {
+  auto options = get_default_global_options();
+  CHECK(options.keyboardOptions.movement_mode == MovementMode::Swap);
+  CHECK(find_hotkey_binding(options.keyboardOptions, HotkeyAction::MoveLeft) ==
+        "super+alt+shift+h");
+  CHECK(find_hotkey_binding(options.keyboardOptions, HotkeyAction::MoveDown) ==
+        "super+alt+shift+j");
+  CHECK(find_hotkey_binding(options.keyboardOptions, HotkeyAction::MoveUp) == "super+alt+shift+k");
+  CHECK(find_hotkey_binding(options.keyboardOptions, HotkeyAction::MoveRight) ==
+        "super+alt+shift+l");
+  CHECK(find_hotkey_binding(options.keyboardOptions, HotkeyAction::ToggleMovementMode) ==
+        "super+alt+shift+,");
+  for (const auto& first : options.keyboardOptions.bindings) {
+    for (const auto& second : options.keyboardOptions.bindings) {
+      if (first.action != second.action)
+        CHECK(first.hotkey != second.hotkey);
+    }
+  }
+}
+
+TEST_CASE("keyboard movement mode round trips and invalid values fall back to swap") {
+  auto path = create_temp_file_path();
+  auto options = get_default_global_options();
+  options.keyboardOptions.movement_mode = MovementMode::Insert;
+  REQUIRE(write_options_toml(options, path).has_value());
+  auto loaded = read_options_toml(path);
+  REQUIRE(loaded.has_value());
+  CHECK(loaded->keyboardOptions.movement_mode == MovementMode::Insert);
+  for (const auto& binding : options.keyboardOptions.bindings) {
+    CHECK(find_hotkey_binding(loaded->keyboardOptions, binding.action) == binding.hotkey);
+  }
+  for (const auto* value : {"\"invalid\"", "42", "\"swap\""}) {
+    {
+      std::ofstream file(path);
+      file << "[keyboard]\nmovement_mode = " << value << "\n";
+    }
+    loaded = read_options_toml(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->keyboardOptions.movement_mode == MovementMode::Swap);
+  }
+  std::filesystem::remove(path);
 }
 
 #endif // !DOCTEST_CONFIG_DISABLE

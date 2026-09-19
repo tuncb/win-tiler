@@ -449,4 +449,40 @@ TEST_SUITE("winapi") {
   }
 }
 
+TEST_CASE("movement mode tray text and action reflect the two modes") {
+  CHECK(std::wstring(winapi::get_notification_area_movement_mode_menu_text(
+            wintiler::MovementMode::Swap)) == L"Movement: Swap (toggle)");
+  CHECK(std::wstring(winapi::get_notification_area_movement_mode_menu_text(
+            wintiler::MovementMode::Insert)) == L"Movement: Insert (toggle)");
+  winapi::request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleMovementMode);
+  CHECK(winapi::consume_notification_area_hotkey_action() ==
+        wintiler::HotkeyAction::ToggleMovementMode);
+  CHECK_FALSE(winapi::consume_notification_area_hotkey_action().has_value());
+}
+
+TEST_CASE("directional movement defaults parse as Win Alt Shift with the expected direction keys") {
+  const auto options = get_default_global_options();
+  const HotkeyAction actions[] = {HotkeyAction::MoveLeft, HotkeyAction::MoveDown,
+                                   HotkeyAction::MoveUp, HotkeyAction::MoveRight};
+  const unsigned int keys[] = {'H', 'J', 'K', 'L'};
+  for (int i = 0; i < 4; ++i) {
+    const auto binding = find_hotkey_binding(options.keyboardOptions, actions[i]);
+    REQUIRE(binding.has_value());
+    const auto hotkey = winapi::create_hotkey(*binding, i);
+    REQUIRE(hotkey.has_value());
+    CHECK(hotkey->modifiers == (MOD_WIN | MOD_ALT | MOD_SHIFT));
+    CHECK(hotkey->key == keys[i]);
+  }
+}
+
+TEST_CASE("movement mode toggle shares the Win Alt Shift base and uses comma") {
+  const auto options = get_default_global_options();
+  const auto binding = find_hotkey_binding(options.keyboardOptions, HotkeyAction::ToggleMovementMode);
+  REQUIRE(binding.has_value());
+  const auto hotkey = winapi::create_hotkey(*binding, 42);
+  REQUIRE(hotkey.has_value());
+  CHECK(hotkey->modifiers == (MOD_WIN | MOD_ALT | MOD_SHIFT));
+  CHECK(hotkey->key == VK_OEM_COMMA);
+}
+
 #endif // !DOCTEST_CONFIG_DISABLE

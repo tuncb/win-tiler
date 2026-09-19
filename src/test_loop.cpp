@@ -321,7 +321,7 @@ TEST_SUITE("loop") {
     CHECK_FALSE(should_clear_overlay(cache));
   }
 
-  TEST_CASE("overlay render snapshot captures selected and stored cell colors") {
+  TEST_CASE("overlay render snapshot captures selected and normal cell colors") {
     ctrl::System system;
     ctrl::Cluster cluster;
 
@@ -345,11 +345,9 @@ TEST_SUITE("loop") {
     renderer::RenderOptions options;
     options.normal_color = {1, 2, 3, 4};
     options.selected_color = {5, 6, 7, 8};
-    options.stored_color = {9, 10, 11, 12};
     options.border_width = 4.0f;
 
-    auto snapshot = make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 20},
-                                                 std::nullopt, false);
+    auto snapshot = make_overlay_render_snapshot(system, geometries, options, std::nullopt, false);
 
     REQUIRE(snapshot.rects.size() == 2);
     CHECK(snapshot.rects[0].x == doctest::Approx(10.0f));
@@ -357,8 +355,8 @@ TEST_SUITE("loop") {
     CHECK(snapshot.rects[0].color.g == 6);
     CHECK(snapshot.rects[0].border_width == doctest::Approx(4.0f));
     CHECK(snapshot.rects[1].x == doctest::Approx(320.0f));
-    CHECK(snapshot.rects[1].color.r == 9);
-    CHECK(snapshot.rects[1].color.g == 10);
+    CHECK(snapshot.rects[1].color.r == 1);
+    CHECK(snapshot.rects[1].color.g == 2);
     CHECK_FALSE(snapshot.message.has_value());
   }
 
@@ -376,7 +374,7 @@ TEST_SUITE("loop") {
     renderer::RenderOptions options;
     options.toast_font_size = 32.0f;
 
-    auto snapshot = make_overlay_render_snapshot(system, geometries, options, std::nullopt,
+    auto snapshot = make_overlay_render_snapshot(system, geometries, options,
                                                  std::optional<std::string>("Paused"), true);
 
     CHECK(snapshot.rects.empty());
@@ -402,7 +400,7 @@ TEST_SUITE("loop") {
     options.toast_font_size = 32.0f;
     OverlayRenderCache cache;
     auto snapshot = [&]() {
-      return make_overlay_render_snapshot(system, geometries, options, StoredCell{0, 10},
+      return make_overlay_render_snapshot(system, geometries, options,
                                           std::optional<std::string>("Paused"), false);
     };
 
@@ -429,8 +427,8 @@ TEST_SUITE("loop") {
     options.border_width = 3.0f;
     REQUIRE(snapshot().rects.size() == 1);
     CHECK(should_render_overlay(cache, snapshot()));
-    CHECK(make_overlay_render_snapshot(system, geometries, options, std::nullopt,
-                                       std::nullopt, true).rects.empty());
+    CHECK(make_overlay_render_snapshot(system, geometries, options, std::nullopt, true)
+              .rects.empty());
   }
 
   TEST_CASE("runtime verbose logging toggles between trace and configured level") {

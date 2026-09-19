@@ -43,10 +43,11 @@ enum class HotkeyAction {
   ToggleSplit,
   Exit,
   CycleSplitMode,
-  StoreCell,
-  ClearStored,
-  Exchange,
-  Move,
+  MoveLeft,
+  MoveDown,
+  MoveUp,
+  MoveRight,
+  ToggleMovementMode,
   SplitIncrease,
   SplitDecrease,
   ExchangeSiblings,
@@ -65,7 +66,10 @@ struct HotkeyBinding {
   std::string hotkey; // e.g., "super+shift+h"
 };
 
+enum class MovementMode { Swap, Insert };
+
 struct KeyboardOptions {
+  MovementMode movement_mode = MovementMode::Swap;
   std::vector<HotkeyBinding> bindings;
 };
 
@@ -154,7 +158,6 @@ struct RenderOptions {
   bool show_rectangles = true;
   overlay::Color normal_color{255, 255, 255, 100}; // Semi-transparent white
   overlay::Color selected_color{0, 120, 255, 200}; // Blue
-  overlay::Color stored_color{255, 180, 0, 200};   // Orange
   float border_width = kDefaultBorderWidth;
   float toast_font_size = kDefaultToastFontSize;
   float zen_percentage = kDefaultZenPercentage; // Zen cell size as percentage of cluster (0.0-1.0)

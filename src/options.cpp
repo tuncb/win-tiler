@@ -37,14 +37,16 @@ std::string hotkey_action_to_string(HotkeyAction action) {
     return "Exit";
   case HotkeyAction::CycleSplitMode:
     return "CycleSplitMode";
-  case HotkeyAction::StoreCell:
-    return "StoreCell";
-  case HotkeyAction::ClearStored:
-    return "ClearStored";
-  case HotkeyAction::Exchange:
-    return "Exchange";
-  case HotkeyAction::Move:
-    return "Move";
+  case HotkeyAction::MoveLeft:
+    return "MoveLeft";
+  case HotkeyAction::MoveDown:
+    return "MoveDown";
+  case HotkeyAction::MoveUp:
+    return "MoveUp";
+  case HotkeyAction::MoveRight:
+    return "MoveRight";
+  case HotkeyAction::ToggleMovementMode:
+    return "ToggleMovementMode";
   case HotkeyAction::SplitIncrease:
     return "SplitIncrease";
   case HotkeyAction::SplitDecrease:
@@ -84,14 +86,16 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
     return HotkeyAction::Exit;
   if (str == "CycleSplitMode")
     return HotkeyAction::CycleSplitMode;
-  if (str == "StoreCell")
-    return HotkeyAction::StoreCell;
-  if (str == "ClearStored")
-    return HotkeyAction::ClearStored;
-  if (str == "Exchange")
-    return HotkeyAction::Exchange;
-  if (str == "Move")
-    return HotkeyAction::Move;
+  if (str == "MoveLeft")
+    return HotkeyAction::MoveLeft;
+  if (str == "MoveDown")
+    return HotkeyAction::MoveDown;
+  if (str == "MoveUp")
+    return HotkeyAction::MoveUp;
+  if (str == "MoveRight")
+    return HotkeyAction::MoveRight;
+  if (str == "ToggleMovementMode")
+    return HotkeyAction::ToggleMovementMode;
   if (str == "SplitIncrease")
     return HotkeyAction::SplitIncrease;
   if (str == "SplitDecrease")
@@ -232,14 +236,16 @@ std::string get_default_hotkey(HotkeyAction action) {
     return "super+shift+escape";
   case HotkeyAction::CycleSplitMode:
     return "super+shift+;";
-  case HotkeyAction::StoreCell:
-    return "super+shift+[";
-  case HotkeyAction::ClearStored:
-    return "super+shift+]";
-  case HotkeyAction::Exchange:
-    return "super+shift+,";
-  case HotkeyAction::Move:
-    return "super+shift+.";
+  case HotkeyAction::MoveLeft:
+    return "super+alt+shift+h";
+  case HotkeyAction::MoveDown:
+    return "super+alt+shift+j";
+  case HotkeyAction::MoveUp:
+    return "super+alt+shift+k";
+  case HotkeyAction::MoveRight:
+    return "super+alt+shift+l";
+  case HotkeyAction::ToggleMovementMode:
+    return "super+alt+shift+,";
   case HotkeyAction::SplitIncrease:
     return "super+shift+pageup";
   case HotkeyAction::SplitDecrease:
@@ -488,6 +494,12 @@ std::string get_options_toml_documentation() {
 #
 # Keyboard options:
 # [keyboard]
+# movement_mode = "swap"
+# movement_mode: initial directional movement behavior, "swap" or "insert".
+# ToggleMovementMode changes it for the current desktop session without writing config.
+# MoveLeft/Down/Up/Right use Win+Alt+Shift+H/J/K/L; toggle uses Win+Alt+Shift+comma.
+# Insert follows the direction (left/right: side by side; up/down: stacked).
+# With no neighbor in that direction, movement does nothing.
 # bindings = [
 #   { action = "NavigateLeft", hotkey = "super+shift+h" },
 # ]
@@ -497,7 +509,7 @@ std::string get_options_toml_documentation() {
 #
 # Hotkey actions and what they do:
 # NavigateLeft, NavigateDown, NavigateUp, NavigateRight, ToggleSplit, Exit,
-# CycleSplitMode, StoreCell, ClearStored, Exchange, Move, SplitIncrease,
+# CycleSplitMode, MoveLeft, MoveDown, MoveUp, MoveRight, ToggleMovementMode, SplitIncrease,
 # SplitDecrease, ExchangeSiblings, ToggleZen, ResetSplitRatio, TogglePause,
 # DumpWindowManagement, RestartSystem, ToggleFloating, ToggleVerboseLogging.
 #
@@ -591,7 +603,6 @@ std::string get_options_toml_documentation() {
 # show_rectangles = true
 # normal_color = [255, 255, 255, 100]
 # selected_color = [0, 120, 255, 200]
-# stored_color = [255, 180, 0, 200]
 # border_width = 3.0
 # toast_font_size = 60.0
 # zen_percentage = 0.90
@@ -601,7 +612,6 @@ std::string get_options_toml_documentation() {
 # show_rectangles: whether overlay rectangles are visible. Toast messages are unaffected.
 # normal_color: overlay rectangle color for normal cells.
 # selected_color: overlay rectangle color for the selected cell.
-# stored_color: overlay rectangle color for the stored cell.
 # border_width: overlay border width in pixels. Must be non-negative; 0 hides rectangles.
 # toast_font_size: toast text size. Must be at least 1.0.
 # zen_percentage: zen cell size from 0.1 to 1.0 of the monitor cluster.
@@ -865,6 +875,9 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
 
     // Build keyboard section
     toml::table keyboard;
+    keyboard.insert("movement_mode", options.keyboardOptions.movement_mode == MovementMode::Swap
+                                         ? "swap"
+                                         : "insert");
     toml::array bindings;
     for (const auto& binding : options.keyboardOptions.bindings) {
       toml::table b;
@@ -908,7 +921,6 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     render.insert("show_rectangles", ro.show_rectangles);
     render.insert("normal_color", colorToArray(ro.normal_color));
     render.insert("selected_color", colorToArray(ro.selected_color));
-    render.insert("stored_color", colorToArray(ro.stored_color));
     render.insert("border_width", ro.border_width);
     render.insert("toast_font_size", ro.toast_font_size);
     render.insert("zen_percentage", ro.zen_percentage);
@@ -1139,6 +1151,15 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
 
     // Parse keyboard section
     if (auto keyboard = tbl["keyboard"].as_table()) {
+      if (auto mode = (*keyboard)["movement_mode"].as_string()) {
+        if (mode->get() == "insert") {
+          options.keyboardOptions.movement_mode = MovementMode::Insert;
+        } else if (mode->get() != "swap") {
+          spdlog::error("Invalid keyboard.movement_mode: expected swap or insert. Using swap.");
+        }
+      } else if ((*keyboard)["movement_mode"]) {
+        spdlog::error("Invalid keyboard.movement_mode: expected a string. Using swap.");
+      }
       if (auto bindings = (*keyboard)["bindings"].as_array()) {
         for (const auto& b : *bindings) {
           if (auto binding_tbl = b.as_table()) {
@@ -1274,11 +1295,7 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
         } else if ((*render)["selected_color"]) {
           spdlog::error("Invalid selected_color: values must be 0-255. Using default.");
         }
-        if (auto color = parseColor((*render)["stored_color"].as_array())) {
-          ro.stored_color = *color;
-        } else if ((*render)["stored_color"]) {
-          spdlog::error("Invalid stored_color: values must be 0-255. Using default.");
-        }
+
         if (auto borderWidth = get_number<float>((*render)["border_width"])) {
           ro.border_width = *borderWidth;
         }
