@@ -287,6 +287,7 @@ struct LoopInputState {
 
   // Window state
   HWND_T foreground_window = nullptr;
+  HWND_T pointer_window = nullptr;
 
   // Monitor data (index in vector = monitor index)
   std::vector<MonitorInfo> monitors;

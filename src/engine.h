@@ -184,6 +184,8 @@ struct EngineFrameInput {
   std::optional<HotkeyAction> hotkey_action;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<size_t> foreground_leaf_id;
+  // Top-level OS window under the pointer; may be outside the managed layout.
+  std::optional<size_t> pointer_window_id;
   std::optional<CompletedDragRequest> completed_drag;
   bool auto_zen_on_maximize = false;
   bool update_hover_selection = true;
@@ -229,6 +231,7 @@ struct Engine {
   ctrl::System system;
   MovementMode movement_mode = MovementMode::Swap;
   std::optional<MovementMode> configured_movement_mode;
+  std::optional<ctrl::Point> previous_cursor_pos;
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
   std::vector<PlacementCorrectionFailure> placement_correction_failures;
   std::unordered_map<size_t, WindowSizeConstraint> minimum_sizes;

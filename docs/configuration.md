@@ -252,10 +252,11 @@ selected, stored, and zen cells and preserve toast messages. Process-based suppr
 still hides rectangles when a matching window is open.
 
 To draw a rectangle only around the active window, set `show_only_active_window = true`
-with `show_rectangles = true`. This follows Windows focus independently of the selected
-or hovered tile, including zen windows. No rectangle is drawn when the foreground window
-is floating, ignored, or otherwise outside the tiled layout. Fullscreen and process-based
-suppression still apply; toast messages remain visible.
+with `show_rectangles = true`. This follows Windows focus, including zen windows.
+Moving the mouse over a tiled window focuses it, regardless of this setting. A stationary
+pointer does not override keyboard focus changes such as Alt+Tab. No rectangle is drawn
+when the foreground window is floating, ignored, or otherwise outside the tiled layout.
+Fullscreen and process-based suppression still apply; toast messages remain visible.
 
 ## Monitor Profiles
 

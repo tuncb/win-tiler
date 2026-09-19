@@ -953,7 +953,7 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(*output.toast_message == "System restarted");
   }
 
-  TEST_CASE("hover selection happens inside process_frame") {
+  TEST_CASE("hover selects and focuses a window inside process_frame") {
     Engine engine = create_two_window_engine();
     set_selection(engine, 0, 1);
     auto geoms = compute_default_geometries(engine);
@@ -961,6 +961,7 @@ TEST_SUITE("Engine::process_frame") {
 
     EngineFrameInput input;
     input.cluster_updates = build_current_cluster_updates(engine);
+    input.pointer_window_id = 2;
     input.cursor_pos = ctrl::Point{static_cast<long>(target_rect.x + target_rect.width / 2.0f),
                                    static_cast<long>(target_rect.y + target_rect.height / 2.0f)};
     input.gap_h = 10.0f;
@@ -971,6 +972,113 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(output.selection_changed == true);
     REQUIRE(engine.system.selection.has_value());
     CHECK(engine.system.selection->cell_index == 2);
+    CHECK(output.focus_leaf_id == 2);
+    CHECK(engine.system.focused_leaf_id == 2);
+  }
+
+  TEST_CASE("mouse movement focuses across monitors and within the selected tile") {
+    Engine engine = create_test_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.pointer_window_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+
+    input.cursor_pos = ctrl::Point{1000, 100};
+    input.pointer_window_id = 3;
+    CHECK(engine.process_frame(input).focus_leaf_id == 3);
+    CHECK(engine.selected_leaf_id() == 3);
+
+    // Alt+Tab can change focus while the mouse stays on the same selected tile.
+    input.foreground_leaf_id = 2;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    input.cursor_pos->x += 1;
+    const auto output = engine.process_frame(input);
+    CHECK_FALSE(output.selection_changed);
+    CHECK(output.focus_leaf_id == 3);
+    CHECK(engine.system.focused_leaf_id == 3);
+
+    input.foreground_leaf_id = 3;
+    input.cursor_pos->x += 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+  }
+
+  TEST_CASE("hover focus respects disabled hover and non-window areas") {
+    Engine engine = create_test_engine_with_secondary_taskbar();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.pointer_window_id = 3;
+    input.cursor_pos = ctrl::Point{1000, 100};
+    input.gap_h = 10.0f;
+    input.gap_v = 10.0f;
+
+    SUBCASE("hover disabled") { input.update_hover_selection = false; }
+    SUBCASE("taskbar") { input.cursor_pos = ctrl::Point{1000, 580}; }
+    SUBCASE("gap") { input.cursor_pos = ctrl::Point{0, 0}; }
+    SUBCASE("outside monitors") { input.cursor_pos = ctrl::Point{-100, -100}; }
+    SUBCASE("missing cursor") { input.cursor_pos.reset(); }
+    SUBCASE("missing window under pointer") { input.pointer_window_id.reset(); }
+    SUBCASE("floating window or menu covers tile") { input.pointer_window_id = 99; }
+    SUBCASE("another tiled window covers tile") { input.pointer_window_id = 2; }
+    SUBCASE("fullscreen monitor") {
+      engine.system.clusters[1].has_fullscreen_cell = true;
+      input.cluster_updates[1].has_fullscreen_cell = true;
+    }
+
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+  }
+
+  TEST_CASE("hover focus respects zen and explicit frame actions") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.pointer_window_id = 2;
+    input.cursor_pos = ctrl::Point{600, 300};
+
+    SUBCASE("zen window takes precedence over background tile") {
+      engine.system.clusters[0].zen_cell_index = 1;
+      input.zen_pct = 0.90f;
+      input.foreground_leaf_id = 2;
+      input.pointer_window_id = 1;
+      CHECK(engine.process_frame(input).focus_leaf_id == 1);
+    }
+    SUBCASE("navigation takes precedence over hovered window") {
+      input.cursor_pos = ctrl::Point{100, 100};
+      input.pointer_window_id = 1;
+      input.hotkey_action = HotkeyAction::NavigateRight;
+      const auto output = engine.process_frame(input);
+      CHECK(output.focus_leaf_id == 2);
+      REQUIRE(output.cursor_pos.has_value());
+      input.cursor_pos = output.cursor_pos;
+      input.pointer_window_id = 2;
+      input.hotkey_action.reset();
+      // Even if focus has not caught up, our own warp must not request focus again.
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
+    SUBCASE("new window keeps foreground focus during topology update") {
+      input.cluster_updates = {{{1, 2, 4}, false}};
+      input.foreground_leaf_id = 4;
+      const auto output = engine.process_frame(input);
+      CHECK(output.topology_changed);
+      CHECK_FALSE(output.focus_leaf_id.has_value());
+      REQUIRE(output.cursor_pos.has_value());
+      input.cursor_pos = output.cursor_pos;
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
+    SUBCASE("completed drag does not focus the hovered window") {
+      CompletedDragRequest drag;
+      drag.leaf_id = 1;
+      drag.cursor_pos = input.cursor_pos;
+      input.completed_drag = drag;
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
   }
 
   TEST_CASE("redirects new windows to the hovered monitor taskbar area") {
@@ -2369,6 +2477,8 @@ TEST_SUITE("Automatic split targets") {
       input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
       input.cursor_pos = Point{1200, 300};
       input.foreground_leaf_id = 1;
+      input.pointer_window_id = 3;
+      engine.previous_cursor_pos = input.cursor_pos; // Keyboard focus with a stationary pointer.
       auto initial = engine.process_frame(input);
       CHECK_FALSE(initial.topology_changed);
       CHECK(engine.system.focused_leaf_id == 1);
@@ -2434,6 +2544,8 @@ TEST_SUITE("Automatic split targets") {
     input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
     input.foreground_leaf_id = 3;
     input.cursor_pos = Point{10, 10};
+    input.pointer_window_id = 1;
+    engine.previous_cursor_pos = input.cursor_pos; // Keyboard focus with a stationary pointer.
     auto initial = engine.process_frame(input);
     CHECK_FALSE(initial.topology_changed);
     input.foreground_leaf_id = 99; // Untiled dialog: retain the preceding tiled focus.

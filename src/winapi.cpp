@@ -3651,6 +3651,13 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.is_any_window_being_moved = is_any_window_being_moved();
   state.drag_info = get_drag_info();
   state.cursor_pos = get_cursor_pos();
+  state.pointer_window = nullptr;
+  if (state.cursor_pos.has_value()) {
+    HWND pointer_window = WindowFromPoint({state.cursor_pos->x, state.cursor_pos->y});
+    if (pointer_window != nullptr) {
+      state.pointer_window = reinterpret_cast<HWND_T>(GetAncestor(pointer_window, GA_ROOT));
+    }
+  }
   state.is_ctrl_pressed = is_ctrl_pressed();
   state.is_right_mouse_pressed = is_right_mouse_pressed();
   state.foreground_window = get_foreground_window();

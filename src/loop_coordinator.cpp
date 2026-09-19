@@ -129,6 +129,10 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   frame_input.hotkey_action = hotkey_action;
   frame_input.cursor_pos.reset();
   frame_input.foreground_leaf_id.reset();
+  frame_input.pointer_window_id.reset();
+  if (input_state.pointer_window != nullptr) {
+    frame_input.pointer_window_id = reinterpret_cast<size_t>(input_state.pointer_window);
+  }
   if (input_state.foreground_window != nullptr) {
     frame_input.foreground_leaf_id = reinterpret_cast<size_t>(input_state.foreground_window);
   }

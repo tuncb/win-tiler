@@ -2520,6 +2520,7 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
   system = ctrl::create_system(infos, split_mode);
+  previous_cursor_pos.reset();
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
   placement_correction_failures.clear();
   minimum_sizes.clear();
@@ -2650,6 +2651,10 @@ Engine::update_selection_from_hover(float global_x, float global_y,
 
 EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   EngineFrameOutput output;
+  const bool pointer_moved = input.cursor_pos.has_value() &&
+      (!previous_cursor_pos.has_value() || input.cursor_pos->x != previous_cursor_pos->x ||
+       input.cursor_pos->y != previous_cursor_pos->y);
+  previous_cursor_pos = input.cursor_pos;
   if (configured_movement_mode != input.initial_movement_mode) {
     configured_movement_mode = input.initial_movement_mode;
     movement_mode = input.initial_movement_mode;
@@ -2812,8 +2817,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
       redirect_cluster_index = system.selection->cluster_index;
     }
 
-    if (!input.hotkey_action.has_value() && input.cursor_pos.has_value() &&
-        !output.selection_changed && !output.cursor_pos.has_value()) {
+    if (input.update_hover_selection && !input.hotkey_action.has_value() &&
+        input.cursor_pos.has_value() && !output.selection_changed && !output.cursor_pos.has_value()) {
       HoverSelectionResult hover_result =
           update_selection_from_hover(static_cast<float>(input.cursor_pos->x),
                                       static_cast<float>(input.cursor_pos->y), ensure_geometries());
@@ -2863,6 +2868,28 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   if (!output.cursor_pos.has_value() && drag_cursor_leaf_id.has_value()) {
     output.cursor_pos = get_leaf_center(system, *drag_cursor_leaf_id, ensure_geometries());
+  }
+
+  // Only pointer movement requests hover focus. An idle pointer must not undo Alt+Tab,
+  // and explicit keyboard, drag, or topology actions keep their own focus/cursor effects.
+  if (pointer_moved && input.update_hover_selection && !input.hotkey_action.has_value() &&
+      !input.completed_drag.has_value() && !output.topology_changed &&
+      !output.cursor_pos.has_value() && !output.focus_leaf_id.has_value()) {
+    const auto hover = get_hover_info(static_cast<float>(input.cursor_pos->x),
+                                     static_cast<float>(input.cursor_pos->y), ensure_geometries());
+    if (hover.cell.has_value()) {
+      const auto& cluster = system.clusters[static_cast<size_t>(hover.cell->cluster_index)];
+      const auto leaf_id = cluster.tree[hover.cell->cell_index].leaf_id;
+      // Floating windows, dialogs and menus must not activate a tile behind them.
+      if (!cluster.has_fullscreen_cell && leaf_id.has_value() &&
+          leaf_id == input.pointer_window_id && leaf_id != input.foreground_leaf_id) {
+        output.focus_leaf_id = leaf_id;
+      }
+    }
+  }
+  if (output.cursor_pos.has_value()) {
+    // Do not interpret our own cursor warp as mouse movement on the next frame.
+    previous_cursor_pos = output.cursor_pos;
   }
 
   output.geometries = ensure_geometries();
