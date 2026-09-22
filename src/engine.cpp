@@ -2872,7 +2872,12 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   // Only pointer movement requests hover focus. An idle pointer must not undo Alt+Tab,
   // and explicit keyboard, drag, or topology actions keep their own focus/cursor effects.
+  // An active untiled dialog keeps focus while the pointer travels towards it.
+  // Closing it or explicitly switching away naturally releases this guard.
+  const bool active_untiled_dialog = input.foreground_is_dialog &&
+      input.foreground_leaf_id.has_value() && !find_leaf(*input.foreground_leaf_id).has_value();
   if (pointer_moved && input.update_hover_selection && !input.hotkey_action.has_value() &&
+      !active_untiled_dialog &&
       !input.completed_drag.has_value() && !output.topology_changed &&
       !output.cursor_pos.has_value() && !output.focus_leaf_id.has_value()) {
     const auto hover = get_hover_info(static_cast<float>(input.cursor_pos->x),
@@ -2882,8 +2887,12 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
       const auto leaf_id = cluster.tree[hover.cell->cell_index].leaf_id;
       // Floating windows, dialogs and menus must not activate a tile behind them.
       if (!cluster.has_fullscreen_cell && leaf_id.has_value() &&
-          leaf_id == input.pointer_window_id && leaf_id != input.foreground_leaf_id) {
-        output.focus_leaf_id = leaf_id;
+          leaf_id == input.pointer_window_id) {
+        const auto target =
+            input.pointer_window_enabled ? leaf_id : input.pointer_blocking_dialog_id;
+        if (target.has_value() && target != input.foreground_leaf_id) {
+          output.focus_leaf_id = target;
+        }
       }
     }
   }

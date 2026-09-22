@@ -1032,6 +1032,95 @@ TEST_SUITE("Engine::process_frame") {
     CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
   }
 
+  TEST_CASE("an untiled foreground dialog protects focus until closed or switched away") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+    input.pointer_window_id = 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+
+    input.foreground_leaf_id = 99;
+    input.foreground_is_dialog = true;
+    input.cursor_pos->x += 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    CHECK(engine.system.focused_leaf_id == 1);
+
+    const auto geoms = compute_default_geometries(engine);
+    const auto& other = geoms[0][2];
+    input.cursor_pos = compute_rect_center(other);
+    input.pointer_window_id = 2;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    input.pointer_window_id = 99; // The pointer reaches the dialog itself.
+    input.cursor_pos->x += 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+
+    SUBCASE("dialog closes") { input.foreground_leaf_id = 1; }
+    SUBCASE("user switches to an unmanaged ordinary window") { input.foreground_leaf_id = 100; }
+    input.foreground_is_dialog = false;
+    input.pointer_window_id = 2;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value()); // Still idle.
+    input.cursor_pos->x += 1;
+    CHECK(engine.process_frame(input).focus_leaf_id == 2);
+  }
+
+  TEST_CASE("hover redirects a disabled owner to its blocking dialog") {
+    Engine engine = create_two_window_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.pointer_window_id = 2;
+    input.pointer_window_enabled = false;
+    input.pointer_blocking_dialog_id = 99;
+    input.cursor_pos = compute_rect_center(compute_default_geometries(engine)[0][2]);
+
+    SUBCASE("blocking dialog receives focus without becoming a tiled leaf") {
+      CHECK(engine.process_frame(input).focus_leaf_id == 99);
+      CHECK_FALSE(engine.find_leaf(99).has_value());
+      CHECK(engine.system.focused_leaf_id == 1);
+      input.foreground_leaf_id = 99;
+      input.foreground_is_dialog = true;
+      input.cursor_pos->x += 1;
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
+    SUBCASE("disabled owner without a usable dialog is not activated") {
+      input.pointer_blocking_dialog_id.reset();
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
+    SUBCASE("enabled owner is focused normally") {
+      input.pointer_window_enabled = true;
+      CHECK(engine.process_frame(input).focus_leaf_id == 2);
+    }
+    SUBCASE("covering unmanaged window still prevents hover activation") {
+      input.pointer_window_id = 100;
+      CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    }
+  }
+
+  TEST_CASE("dialog protection leaves explicit navigation and managed dialogs usable") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_is_dialog = true;
+    input.foreground_leaf_id = 99;
+    input.pointer_window_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+
+    SUBCASE("keyboard navigation can leave an untiled dialog") {
+      input.hotkey_action = HotkeyAction::NavigateRight;
+      CHECK(engine.process_frame(input).focus_leaf_id == 2);
+    }
+    SUBCASE("a tiled dialog does not suspend ordinary hover focus") {
+      input.foreground_leaf_id = 2;
+      CHECK(engine.process_frame(input).focus_leaf_id == 1);
+    }
+  }
+
   TEST_CASE("hover focus respects zen and explicit frame actions") {
     Engine engine = create_two_window_engine();
     set_selection(engine, 0, 1);

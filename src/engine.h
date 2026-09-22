@@ -186,6 +186,9 @@ struct EngineFrameInput {
   std::optional<size_t> foreground_leaf_id;
   // Top-level OS window under the pointer; may be outside the managed layout.
   std::optional<size_t> pointer_window_id;
+  bool foreground_is_dialog = false;
+  bool pointer_window_enabled = true;
+  std::optional<size_t> pointer_blocking_dialog_id;
   std::optional<CompletedDragRequest> completed_drag;
   bool auto_zen_on_maximize = false;
   bool update_hover_selection = true;
@@ -211,6 +214,7 @@ struct EngineFrameOutput {
   bool toggle_verbose_logging = false;
   bool clear_drag_ended = false;
   bool has_completed_initial_tile_pass = false;
+  // OS focus target; hover may target an untiled blocking dialog.
   std::optional<size_t> focus_leaf_id;
   std::optional<size_t> floating_leaf_id;
   std::optional<ctrl::Point> cursor_pos;

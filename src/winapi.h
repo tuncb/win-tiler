@@ -140,6 +140,10 @@ struct Point {
 bool set_cursor_pos(long x, long y);
 [[nodiscard]] HWND_T get_foreground_window();
 bool set_foreground_window(HWND_T hwnd);
+// Focus metadata for dialogs that are intentionally outside the tiled layout.
+[[nodiscard]] bool is_focus_dialog(HWND_T hwnd);
+[[nodiscard]] HWND_T find_blocking_dialog(HWND_T owner);
+[[nodiscard]] HWND_T get_hover_window(Point point);
 
 // Keyboard hotkey support
 struct HotKeyInfo {
@@ -289,6 +293,9 @@ struct LoopInputState {
   // Window state
   HWND_T foreground_window = nullptr;
   HWND_T pointer_window = nullptr;
+  bool foreground_is_dialog = false;
+  bool pointer_window_enabled = true;
+  HWND_T pointer_blocking_dialog = nullptr;
 
   // Monitor data (index in vector = monitor index)
   std::vector<MonitorInfo> monitors;

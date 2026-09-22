@@ -1432,6 +1432,115 @@ HWND_T get_foreground_window() {
   return reinterpret_cast<HWND_T>(GetForegroundWindow());
 }
 
+static bool is_visible_focus_window(HWND hwnd) {
+  if (hwnd == nullptr || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) ||
+      (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_NOACTIVATE) != 0) {
+    return false;
+  }
+  DWORD cloaked = 0;
+  return FAILED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) ||
+      cloaked == 0;
+}
+
+bool is_focus_dialog(HWND_T hwnd) {
+  const auto window = static_cast<HWND>(hwnd);
+  if (!is_visible_focus_window(window) || !IsWindowEnabled(window)) {
+    return false;
+  }
+  wchar_t class_name[256]{};
+  if (GetClassNameW(window, class_name, 256) == 0) {
+    return false;
+  }
+  const std::wstring_view window_class(class_name);
+  if (window_class == L"#32768" || window_class == L"tooltips_class32") {
+    return false;
+  }
+  if (window_class == L"#32770") {
+    return true;
+  }
+  // Custom dialog frameworks need not use the standard dialog class. A disabled
+  // owner is the stronger indication of modality, including nested dialogs.
+  HWND owner = GetWindow(window, GW_OWNER);
+  for (int depth = 0; owner != nullptr && depth < 64; ++depth) {
+    if (!IsWindowEnabled(owner)) {
+      return true;
+    }
+    owner = GetWindow(owner, GW_OWNER);
+  }
+  return false;
+}
+
+HWND_T find_blocking_dialog(HWND_T owner) {
+  const auto window = static_cast<HWND>(owner);
+  if (!is_visible_focus_window(window) || IsWindowEnabled(window)) {
+    return nullptr;
+  }
+  const auto is_candidate = [window](HWND candidate) {
+    return candidate != window && is_focus_dialog(candidate) &&
+        window_chain_contains(candidate, window, get_owner_window);
+  };
+  const auto last_popup = GetLastActivePopup(GetAncestor(window, GA_ROOTOWNER));
+  if (is_candidate(last_popup)) {
+    return last_popup;
+  }
+  // The popup may not have activated yet, or the remembered popup may have closed.
+  // Enumerate to also find the enabled leaf of a nested modal owner chain.
+  struct Search {
+    HWND owner;
+    HWND result = nullptr;
+    bool stopped = false;
+  } search{window};
+  const auto callback = [](HWND candidate, LPARAM param) -> BOOL {
+    auto& context = *reinterpret_cast<Search*>(param);
+    if (candidate != context.owner && is_focus_dialog(candidate) &&
+        window_chain_contains(candidate, context.owner, get_owner_window)) {
+      context.result = candidate;
+      context.stopped = true;
+      return FALSE;
+    }
+    return TRUE;
+  };
+  if (!EnumWindows(callback, reinterpret_cast<LPARAM>(&search)) && !search.stopped) {
+    spdlog::debug("Failed to enumerate blocking dialogs, error={}", GetLastError());
+  }
+  return search.result;
+}
+
+HWND_T get_hover_window(Point point) {
+  const POINT screen_point{point.x, point.y};
+  const HWND hit = WindowFromPoint(screen_point);
+  const HWND root = hit == nullptr ? nullptr : GetAncestor(hit, GA_ROOT);
+  // WindowFromPoint skips disabled windows. Recover the first disabled window
+  // above its result so a modal owner cannot accidentally expose a tile behind it.
+  struct Search {
+    POINT point;
+    HWND result;
+    bool stopped = false;
+  } search{screen_point, root};
+  const auto callback = [](HWND candidate, LPARAM param) -> BOOL {
+    auto& context = *reinterpret_cast<Search*>(param);
+    if (candidate == context.result) {
+      context.stopped = true;
+      return FALSE;
+    }
+    if (IsWindowEnabled(candidate) || !is_visible_focus_window(candidate) ||
+        (GetWindowLongPtrW(candidate, GWL_EXSTYLE) & WS_EX_TRANSPARENT) != 0) {
+      return TRUE;
+    }
+    RECT rect{};
+    if (GetWindowRect(candidate, &rect) && PtInRect(&rect, context.point)) {
+      context.result = candidate;
+      context.stopped = true;
+      return FALSE;
+    }
+    return TRUE;
+  };
+  if (!EnumWindows(callback, reinterpret_cast<LPARAM>(&search)) && !search.stopped) {
+    spdlog::debug("Failed to enumerate disabled hover windows, error={}", GetLastError());
+  }
+  return search.result;
+}
+
 static std::optional<Point> get_cursor_pos() {
   POINT pt;
   SetLastError(ERROR_SUCCESS);
@@ -3652,15 +3761,22 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.drag_info = get_drag_info();
   state.cursor_pos = get_cursor_pos();
   state.pointer_window = nullptr;
+  state.pointer_window_enabled = true;
+  state.pointer_blocking_dialog = nullptr;
   if (state.cursor_pos.has_value()) {
-    HWND pointer_window = WindowFromPoint({state.cursor_pos->x, state.cursor_pos->y});
-    if (pointer_window != nullptr) {
-      state.pointer_window = reinterpret_cast<HWND_T>(GetAncestor(pointer_window, GA_ROOT));
+    state.pointer_window = get_hover_window(*state.cursor_pos);
+    if (state.pointer_window != nullptr) {
+      state.pointer_window_enabled =
+          IsWindowEnabled(static_cast<HWND>(state.pointer_window)) != 0;
+      if (!state.pointer_window_enabled) {
+        state.pointer_blocking_dialog = find_blocking_dialog(state.pointer_window);
+      }
     }
   }
   state.is_ctrl_pressed = is_ctrl_pressed();
   state.is_right_mouse_pressed = is_right_mouse_pressed();
   state.foreground_window = get_foreground_window();
+  state.foreground_is_dialog = is_focus_dialog(state.foreground_window);
   state.desktop_id.reset();
 
   // Get desktop ID from first managed window

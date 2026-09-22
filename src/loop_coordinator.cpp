@@ -146,6 +146,13 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   frame_input.cursor_pos.reset();
   frame_input.foreground_leaf_id.reset();
   frame_input.pointer_window_id.reset();
+  frame_input.foreground_is_dialog = input_state.foreground_is_dialog;
+  frame_input.pointer_window_enabled = input_state.pointer_window_enabled;
+  frame_input.pointer_blocking_dialog_id.reset();
+  if (input_state.pointer_blocking_dialog != nullptr) {
+    frame_input.pointer_blocking_dialog_id =
+        reinterpret_cast<size_t>(input_state.pointer_blocking_dialog);
+  }
   if (input_state.pointer_window != nullptr) {
     frame_input.pointer_window_id = reinterpret_cast<size_t>(input_state.pointer_window);
   }

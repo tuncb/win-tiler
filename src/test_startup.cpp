@@ -32,6 +32,27 @@ std::string read_text_file(const std::filesystem::path& path) {
   return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
+struct TestFocusWindow {
+  HWND handle = nullptr;
+
+  TestFocusWindow(const wchar_t* class_name = L"STATIC", HWND owner = nullptr,
+                  DWORD ex_style = 0, int x = -30000, int y = -30000) {
+    handle = CreateWindowExW(ex_style, class_name, L"WinTiler focus test", WS_POPUP,
+                             x, y, 100, 100, owner, nullptr, GetModuleHandleW(nullptr), nullptr);
+    REQUIRE(handle != nullptr);
+    ShowWindow(handle, SW_SHOWNOACTIVATE);
+  }
+
+  ~TestFocusWindow() {
+    if (handle != nullptr && !DestroyWindow(handle)) {
+      spdlog::error("Failed to destroy focus test window, error={}", GetLastError());
+    }
+  }
+
+  TestFocusWindow(const TestFocusWindow&) = delete;
+  TestFocusWindow& operator=(const TestFocusWindow&) = delete;
+};
+
 } // namespace
 
 TEST_SUITE("startup") {
@@ -319,6 +340,73 @@ TEST_SUITE("installer") {
 }
 
 TEST_SUITE("winapi") {
+  TEST_CASE("focus dialog detection distinguishes dialogs from ordinary floating windows") {
+    TestFocusWindow owner;
+    TestFocusWindow dialog(L"#32770", owner.handle);
+    TestFocusWindow custom(L"STATIC", owner.handle);
+    TestFocusWindow unowned_dialog(L"#32770");
+    CHECK(winapi::is_focus_dialog(dialog.handle));
+    CHECK(winapi::is_focus_dialog(unowned_dialog.handle));
+    CHECK_FALSE(winapi::is_focus_dialog(owner.handle));
+    CHECK_FALSE(winapi::is_focus_dialog(custom.handle));
+    CHECK_FALSE(winapi::is_focus_dialog(nullptr));
+
+    EnableWindow(owner.handle, FALSE);
+    CHECK(winapi::is_focus_dialog(custom.handle));
+    ShowWindow(dialog.handle, SW_HIDE);
+    CHECK_FALSE(winapi::is_focus_dialog(dialog.handle));
+    EnableWindow(custom.handle, FALSE);
+    CHECK_FALSE(winapi::is_focus_dialog(custom.handle));
+  }
+
+  TEST_CASE("blocking dialog lookup validates modality visibility and ownership") {
+    TestFocusWindow owner;
+    TestFocusWindow dialog(L"#32770", owner.handle);
+    TestFocusWindow unrelated(L"#32770");
+    CHECK(winapi::find_blocking_dialog(owner.handle) == nullptr);
+    CHECK(winapi::find_blocking_dialog(nullptr) == nullptr);
+    EnableWindow(owner.handle, FALSE);
+    CHECK(winapi::find_blocking_dialog(owner.handle) == dialog.handle);
+
+    SUBCASE("hidden dialog is not a focus target") {
+      ShowWindow(dialog.handle, SW_HIDE);
+      CHECK(winapi::find_blocking_dialog(owner.handle) == nullptr);
+    }
+    SUBCASE("destroyed dialog is not a focus target") {
+      REQUIRE(DestroyWindow(dialog.handle) != 0);
+      dialog.handle = nullptr;
+      CHECK(winapi::find_blocking_dialog(owner.handle) == nullptr);
+    }
+    SUBCASE("nested custom modal dialog is selected instead of its disabled owner") {
+      TestFocusWindow nested(L"STATIC", dialog.handle);
+      EnableWindow(dialog.handle, FALSE);
+      CHECK(winapi::is_focus_dialog(nested.handle));
+      CHECK(winapi::find_blocking_dialog(owner.handle) == nested.handle);
+      CHECK(winapi::find_blocking_dialog(dialog.handle) == nested.handle);
+    }
+    SUBCASE("nonactivating popup is excluded") {
+      ShowWindow(dialog.handle, SW_HIDE);
+      TestFocusWindow tooltip(L"STATIC", owner.handle, WS_EX_NOACTIVATE);
+      CHECK_FALSE(winapi::is_focus_dialog(tooltip.handle));
+      CHECK(winapi::find_blocking_dialog(owner.handle) == nullptr);
+    }
+  }
+
+  TEST_CASE("hover lookup includes disabled owners but respects covering windows") {
+    // Tiny nonactivating test windows exercise real Win32 hit testing without
+    // moving the user's pointer or changing the foreground application.
+    TestFocusWindow owner(L"#32770", nullptr, WS_EX_TOPMOST, 100, 100);
+    EnableWindow(owner.handle, FALSE);
+    const winapi::Point point{150, 150};
+    CHECK(winapi::get_hover_window(point) == owner.handle);
+    TestFocusWindow cover(L"#32770", nullptr, WS_EX_TOPMOST, 100, 100);
+    CHECK(winapi::get_hover_window(point) == cover.handle);
+    ShowWindow(cover.handle, SW_HIDE);
+    CHECK(winapi::get_hover_window(point) == owner.handle);
+    ShowWindow(owner.handle, SW_HIDE);
+    CHECK(winapi::get_hover_window(point) != owner.handle);
+  }
+
   TEST_CASE("owned standard dialog windows are ignored") {
     CHECK(winapi::should_ignore_owned_dialog_window(true, "#32770"));
   }
