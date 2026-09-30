@@ -1066,6 +1066,52 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(engine.process_frame(input).focus_leaf_id == 2);
   }
 
+  TEST_CASE("an elevated foreground window protects focus across monitors until switched away") {
+    Engine engine = create_test_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+    input.pointer_window_id = 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+
+    SUBCASE("untiled elevated window") { input.foreground_leaf_id = 99; }
+    SUBCASE("managed elevated window") { input.foreground_leaf_id = 1; }
+    input.foreground_requires_elevation = true;
+    input.cursor_pos = compute_rect_center(compute_default_geometries(engine)[0][2]);
+    input.pointer_window_id = 2;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    CHECK(engine.selected_leaf_id() == 2);
+    CHECK(engine.system.focused_leaf_id == 1);
+
+    input.cursor_pos = ctrl::Point{1000, 100};
+    input.pointer_window_id = 3;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    CHECK(engine.selected_leaf_id() == 3);
+    CHECK(engine.system.focused_leaf_id == 1);
+
+    input.foreground_leaf_id = 1;
+    input.foreground_requires_elevation = false;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value()); // Still idle.
+    input.cursor_pos->x += 1;
+    CHECK(engine.process_frame(input).focus_leaf_id == 3);
+  }
+
+  TEST_CASE("elevated foreground protection allows explicit keyboard navigation") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 99;
+    input.foreground_requires_elevation = true;
+    input.pointer_window_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+    input.hotkey_action = HotkeyAction::NavigateRight;
+    CHECK(engine.process_frame(input).focus_leaf_id == 2);
+  }
+
   TEST_CASE("hover redirects a disabled owner to its blocking dialog") {
     Engine engine = create_two_window_engine();
     EngineFrameInput input;

@@ -340,6 +340,24 @@ TEST_SUITE("installer") {
 }
 
 TEST_SUITE("winapi") {
+  TEST_CASE("focus elevation protection depends on win-tiler and target privileges") {
+    CHECK(winapi::should_protect_focus_for_elevation(false, true));
+    CHECK_FALSE(winapi::should_protect_focus_for_elevation(false, false));
+    CHECK_FALSE(winapi::should_protect_focus_for_elevation(true, true));
+    CHECK_FALSE(winapi::should_protect_focus_for_elevation(true, false));
+    CHECK(winapi::should_protect_focus_for_elevation(false, std::nullopt));
+    CHECK_FALSE(winapi::should_protect_focus_for_elevation(true, std::nullopt));
+  }
+
+  TEST_CASE("focus elevation lookup rejects missing windows and win-tiler's own windows") {
+    CHECK_FALSE(winapi::focus_requires_elevation(nullptr));
+    TestFocusWindow window;
+    CHECK_FALSE(winapi::focus_requires_elevation(window.handle));
+    REQUIRE(DestroyWindow(window.handle) != 0);
+    CHECK_FALSE(winapi::focus_requires_elevation(window.handle));
+    window.handle = nullptr;
+  }
+
   TEST_CASE("focus dialog detection distinguishes dialogs from ordinary floating windows") {
     TestFocusWindow owner;
     TestFocusWindow dialog(L"#32770", owner.handle);

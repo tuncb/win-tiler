@@ -34,6 +34,7 @@
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Comctl32.lib")
+#pragma comment(lib, "Advapi32.lib")
 #pragma comment(linker,                                                                            \
                 "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' "     \
                 "version='6.0.0.0' processorArchitecture='*' "                                     \
@@ -1468,6 +1469,62 @@ bool is_focus_dialog(HWND_T hwnd) {
     owner = GetWindow(owner, GW_OWNER);
   }
   return false;
+}
+
+static std::optional<bool> get_process_elevation(HANDLE process) {
+  HANDLE token = nullptr;
+  if (!OpenProcessToken(process, TOKEN_QUERY, &token)) {
+    spdlog::debug("Failed to open process token for focus protection, error={}", GetLastError());
+    return std::nullopt;
+  }
+
+  TOKEN_ELEVATION elevation{};
+  DWORD returned_size = 0;
+  const bool queried =
+      GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &returned_size) != 0;
+  if (!queried) {
+    spdlog::debug("Failed to query process elevation for focus protection, error={}", GetLastError());
+  }
+  if (!CloseHandle(token)) {
+    spdlog::error("Failed to close process token for focus protection, error={}", GetLastError());
+  }
+  if (!queried) {
+    return std::nullopt;
+  }
+  return elevation.TokenIsElevated != 0;
+}
+
+bool should_protect_focus_for_elevation(bool current_process_elevated,
+                                       std::optional<bool> window_process_elevated) {
+  return !current_process_elevated && window_process_elevated.value_or(true);
+}
+
+bool focus_requires_elevation(HWND_T hwnd) {
+  const auto pid = get_window_process_id(hwnd);
+  if (!pid.has_value() || *pid == GetCurrentProcessId()) {
+    return false;
+  }
+  // A process's elevation does not change during its lifetime.
+  static const auto current_elevation = get_process_elevation(GetCurrentProcess());
+  if (!current_elevation.has_value() || *current_elevation) {
+    return false;
+  }
+
+  // Limited query access works for elevated processes belonging to this account.
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, *pid);
+  if (process == nullptr) {
+    const DWORD error = GetLastError();
+    spdlog::debug("Failed to open foreground process {} for focus protection, error={}", *pid, error);
+    // Another account or a protected process may deny even limited query access.
+    // Preserve its focus rather than assuming it runs at our privilege level.
+    return error == ERROR_ACCESS_DENIED;
+  }
+  const auto window_elevation = get_process_elevation(process);
+  if (!CloseHandle(process)) {
+    spdlog::error("Failed to close foreground process {} for focus protection, error={}", *pid,
+                  GetLastError());
+  }
+  return should_protect_focus_for_elevation(*current_elevation, window_elevation);
 }
 
 HWND_T find_blocking_dialog(HWND_T owner) {
@@ -3777,6 +3834,7 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.is_right_mouse_pressed = is_right_mouse_pressed();
   state.foreground_window = get_foreground_window();
   state.foreground_is_dialog = is_focus_dialog(state.foreground_window);
+  state.foreground_requires_elevation = focus_requires_elevation(state.foreground_window);
   state.desktop_id.reset();
 
   // Get desktop ID from first managed window

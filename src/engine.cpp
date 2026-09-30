@@ -2872,12 +2872,13 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   // Only pointer movement requests hover focus. An idle pointer must not undo Alt+Tab,
   // and explicit keyboard, drag, or topology actions keep their own focus/cursor effects.
-  // An active untiled dialog keeps focus while the pointer travels towards it.
-  // Closing it or explicitly switching away naturally releases this guard.
-  const bool active_untiled_dialog = input.foreground_is_dialog &&
-      input.foreground_leaf_id.has_value() && !find_leaf(*input.foreground_leaf_id).has_value();
+  // Untiled dialogs and elevated windows inaccessible to win-tiler keep focus
+  // while the pointer travels towards them. Switching away releases this guard.
+  const bool preserve_foreground_focus = input.foreground_leaf_id.has_value() &&
+      (input.foreground_requires_elevation ||
+       (input.foreground_is_dialog && !find_leaf(*input.foreground_leaf_id).has_value()));
   if (pointer_moved && input.update_hover_selection && !input.hotkey_action.has_value() &&
-      !active_untiled_dialog &&
+      !preserve_foreground_focus &&
       !input.completed_drag.has_value() && !output.topology_changed &&
       !output.cursor_pos.has_value() && !output.focus_leaf_id.has_value()) {
     const auto hover = get_hover_info(static_cast<float>(input.cursor_pos->x),

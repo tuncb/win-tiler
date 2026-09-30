@@ -98,6 +98,12 @@ been removed. Update custom bindings to the directional actions above.
 
 ### Mouse Actions
 
+Moving the pointer over a tiled window selects and focuses it. Automatic pointer focus pauses
+while an untiled dialog is active, or while an administrator window is active and `win-tiler`
+runs without administrator rights. It resumes after you close that window or switch away.
+Keyboard navigation remains available. In user mode, an active process that denies elevation
+queries receives the same focus protection.
+
 | Action | Mouse input | What it does |
 | --- | --- | --- |
 | Select a tile | Move the cursor over a tiled window. | Makes that tile the selected tile for hotkey actions. |

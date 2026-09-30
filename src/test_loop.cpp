@@ -133,6 +133,7 @@ TEST_SUITE("loop") {
     input.foreground_window = reinterpret_cast<winapi::HWND_T>(7);
     input.pointer_window = reinterpret_cast<winapi::HWND_T>(7);
     input.foreground_is_dialog = true;
+    input.foreground_requires_elevation = true;
     input.pointer_window_enabled = false;
     input.pointer_blocking_dialog = reinterpret_cast<winapi::HWND_T>(99);
     input.is_ctrl_pressed = true;
@@ -159,6 +160,7 @@ TEST_SUITE("loop") {
     CHECK(frame_input.foreground_leaf_id == 7);
     CHECK(frame_input.pointer_window_id == 7);
     CHECK(frame_input.foreground_is_dialog);
+    CHECK(frame_input.foreground_requires_elevation);
     CHECK_FALSE(frame_input.pointer_window_enabled);
     CHECK(frame_input.pointer_blocking_dialog_id == 99);
     CHECK(frame_input.hotkey_action == HotkeyAction::NavigateLeft);
@@ -174,6 +176,7 @@ TEST_SUITE("loop") {
     input.foreground_window = nullptr;
     input.pointer_window = nullptr;
     input.foreground_is_dialog = false;
+    input.foreground_requires_elevation = false;
     input.pointer_window_enabled = true;
     input.pointer_blocking_dialog = nullptr;
     fill_engine_frame_input(input, desktop_data, cluster_options, true, std::nullopt,
@@ -181,6 +184,7 @@ TEST_SUITE("loop") {
     CHECK_FALSE(frame_input.foreground_leaf_id.has_value());
     CHECK_FALSE(frame_input.pointer_window_id.has_value());
     CHECK_FALSE(frame_input.foreground_is_dialog);
+    CHECK_FALSE(frame_input.foreground_requires_elevation);
     CHECK(frame_input.pointer_window_enabled);
     CHECK_FALSE(frame_input.pointer_blocking_dialog_id.has_value());
   }
