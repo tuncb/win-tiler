@@ -187,6 +187,7 @@ struct EngineFrameInput {
   // Top-level OS window under the pointer; may be outside the managed layout.
   std::optional<size_t> pointer_window_id;
   bool foreground_is_dialog = false;
+  bool foreground_is_owned_popup = false;
   bool foreground_requires_elevation = false;
   bool pointer_window_enabled = true;
   std::optional<size_t> pointer_blocking_dialog_id;

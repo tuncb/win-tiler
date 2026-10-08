@@ -142,6 +142,8 @@ bool set_cursor_pos(long x, long y);
 bool set_foreground_window(HWND_T hwnd);
 // Focus metadata for dialogs that are intentionally outside the tiled layout.
 [[nodiscard]] bool is_focus_dialog(HWND_T hwnd);
+// Activatable owned popups can leave their owner enabled (for example, browser flyouts).
+[[nodiscard]] bool is_owned_focus_popup(HWND_T hwnd);
 // Unknown elevation protects inaccessible foreground processes in user mode.
 [[nodiscard]] bool should_protect_focus_for_elevation(
     bool current_process_elevated, std::optional<bool> window_process_elevated);
@@ -298,6 +300,7 @@ struct LoopInputState {
   HWND_T foreground_window = nullptr;
   HWND_T pointer_window = nullptr;
   bool foreground_is_dialog = false;
+  bool foreground_is_owned_popup = false;
   bool foreground_requires_elevation = false;
   bool pointer_window_enabled = true;
   HWND_T pointer_blocking_dialog = nullptr;

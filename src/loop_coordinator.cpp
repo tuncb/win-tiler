@@ -147,6 +147,7 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   frame_input.foreground_leaf_id.reset();
   frame_input.pointer_window_id.reset();
   frame_input.foreground_is_dialog = input_state.foreground_is_dialog;
+  frame_input.foreground_is_owned_popup = input_state.foreground_is_owned_popup;
   frame_input.foreground_requires_elevation = input_state.foreground_requires_elevation;
   frame_input.pointer_window_enabled = input_state.pointer_window_enabled;
   frame_input.pointer_blocking_dialog_id.reset();

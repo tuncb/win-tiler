@@ -99,8 +99,9 @@ been removed. Update custom bindings to the directional actions above.
 ### Mouse Actions
 
 Moving the pointer over a tiled window selects and focuses it. Automatic pointer focus pauses
-while an untiled dialog is active, or while an administrator window is active and `win-tiler`
-runs without administrator rights. It resumes after you close that window or switch away.
+while an untiled dialog or owned popup (such as a browser downloads flyout) is active,
+or while an administrator window is active and `win-tiler` runs without administrator rights.
+It resumes after you close that window or switch away.
 Keyboard navigation remains available. In user mode, an active process that denies elevation
 queries receives the same focus protection.
 

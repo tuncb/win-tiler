@@ -1066,6 +1066,69 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(engine.process_frame(input).focus_leaf_id == 2);
   }
 
+  TEST_CASE("an untiled owned popup protects focus over its owner and across monitors") {
+    Engine engine = create_test_engine();
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 1;
+    input.pointer_window_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+
+    // Browser flyouts use a custom class and keep the main window enabled.
+    input.foreground_leaf_id = 99;
+    input.foreground_is_owned_popup = true;
+    input.cursor_pos->x += 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    CHECK(engine.system.focused_leaf_id == 1);
+
+    input.cursor_pos = compute_rect_center(compute_default_geometries(engine)[0][2]);
+    input.pointer_window_id = 2;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    input.cursor_pos = ctrl::Point{1000, 100};
+    input.pointer_window_id = 3;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    input.pointer_window_id = 99;
+    input.cursor_pos->x += 1;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value());
+    CHECK(engine.system.focused_leaf_id == 1);
+    CHECK_FALSE(engine.find_leaf(99).has_value());
+
+    SUBCASE("popup closes") { input.foreground_leaf_id = 1; }
+    SUBCASE("user switches to an unrelated floating window") { input.foreground_leaf_id = 100; }
+    input.foreground_is_owned_popup = false;
+    input.pointer_window_id = 3;
+    CHECK_FALSE(engine.process_frame(input).focus_leaf_id.has_value()); // Still idle.
+    input.cursor_pos->x += 1;
+    CHECK(engine.process_frame(input).focus_leaf_id == 3);
+  }
+
+  TEST_CASE("owned popup protection allows explicit navigation and managed windows") {
+    Engine engine = create_two_window_engine();
+    set_selection(engine, 0, 1);
+    EngineFrameInput input;
+    input.cluster_updates = build_current_cluster_updates(engine);
+    input.has_completed_initial_tile_pass = true;
+    input.foreground_leaf_id = 99;
+    input.foreground_is_owned_popup = true;
+    input.pointer_window_id = 1;
+    input.cursor_pos = ctrl::Point{100, 100};
+
+    SUBCASE("keyboard navigation can leave an untiled popup") {
+      input.hotkey_action = HotkeyAction::NavigateRight;
+      CHECK(engine.process_frame(input).focus_leaf_id == 2);
+    }
+    SUBCASE("a tiled owned window still allows hover focus") {
+      input.foreground_leaf_id = 2;
+      CHECK(engine.process_frame(input).focus_leaf_id == 1);
+    }
+    SUBCASE("missing foreground does not block hover focus") {
+      input.foreground_leaf_id.reset();
+      CHECK(engine.process_frame(input).focus_leaf_id == 1);
+    }
+  }
+
   TEST_CASE("an elevated foreground window protects focus across monitors until switched away") {
     Engine engine = create_test_engine();
     EngineFrameInput input;

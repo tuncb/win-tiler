@@ -36,8 +36,8 @@ struct TestFocusWindow {
   HWND handle = nullptr;
 
   TestFocusWindow(const wchar_t* class_name = L"STATIC", HWND owner = nullptr,
-                  DWORD ex_style = 0, int x = -30000, int y = -30000) {
-    handle = CreateWindowExW(ex_style, class_name, L"WinTiler focus test", WS_POPUP,
+                  DWORD ex_style = 0, int x = -30000, int y = -30000, DWORD style = WS_POPUP) {
+    handle = CreateWindowExW(ex_style, class_name, L"WinTiler focus test", style,
                              x, y, 100, 100, owner, nullptr, GetModuleHandleW(nullptr), nullptr);
     REQUIRE(handle != nullptr);
     ShowWindow(handle, SW_SHOWNOACTIVATE);
@@ -375,6 +375,42 @@ TEST_SUITE("winapi") {
     CHECK_FALSE(winapi::is_focus_dialog(dialog.handle));
     EnableWindow(custom.handle, FALSE);
     CHECK_FALSE(winapi::is_focus_dialog(custom.handle));
+  }
+
+  TEST_CASE("owned focus popups are recognized even when their owners stay enabled") {
+    TestFocusWindow owner;
+    TestFocusWindow popup(L"STATIC", owner.handle);
+    CHECK(IsWindowEnabled(owner.handle));
+    CHECK_FALSE(winapi::is_focus_dialog(popup.handle));
+    CHECK(winapi::is_owned_focus_popup(popup.handle));
+    CHECK_FALSE(winapi::is_owned_focus_popup(owner.handle));
+    CHECK_FALSE(winapi::is_owned_focus_popup(nullptr));
+
+    SUBCASE("nested popup is recognized") {
+      TestFocusWindow nested(L"STATIC", popup.handle);
+      CHECK(winapi::is_owned_focus_popup(nested.handle));
+    }
+    SUBCASE("hidden popup is excluded") {
+      ShowWindow(popup.handle, SW_HIDE);
+      CHECK_FALSE(winapi::is_owned_focus_popup(popup.handle));
+    }
+    SUBCASE("disabled popup is excluded") {
+      EnableWindow(popup.handle, FALSE);
+      CHECK_FALSE(winapi::is_owned_focus_popup(popup.handle));
+    }
+    SUBCASE("nonactivating tooltip is excluded") {
+      TestFocusWindow tooltip(L"STATIC", owner.handle, WS_EX_NOACTIVATE);
+      CHECK_FALSE(winapi::is_owned_focus_popup(tooltip.handle));
+    }
+    SUBCASE("ordinary child control is excluded") {
+      TestFocusWindow child(L"STATIC", owner.handle, 0, 0, 0, WS_CHILD);
+      CHECK_FALSE(winapi::is_owned_focus_popup(child.handle));
+    }
+    SUBCASE("destroyed popup is excluded") {
+      REQUIRE(DestroyWindow(popup.handle) != 0);
+      CHECK_FALSE(winapi::is_owned_focus_popup(popup.handle));
+      popup.handle = nullptr;
+    }
   }
 
   TEST_CASE("blocking dialog lookup validates modality visibility and ownership") {

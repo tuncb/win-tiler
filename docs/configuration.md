@@ -255,10 +255,11 @@ To draw a rectangle only around the active window, set `show_only_active_window 
 with `show_rectangles = true`. This follows Windows focus, including zen windows.
 Moving the mouse over a tiled window focuses it, regardless of this setting. A stationary
 pointer does not override keyboard focus changes such as Alt+Tab. Hover focus pauses while
-an untiled dialog is active, until it closes or you explicitly switch away (for example,
-by clicking another window or using Alt+Tab). Hovering a tiled window disabled by a modal
+an untiled dialog or owned popup is active, until it closes or you explicitly switch away
+(for example, by clicking another window or using Alt+Tab). Hovering a tiled window disabled by a modal
 dialog brings its visible blocking dialog forward instead. Standard dialogs and custom
-dialogs with disabled owners are recognized. No rectangle is drawn
+dialogs with disabled owners are recognized, as are owned popups whose owners remain enabled
+(such as browser downloads flyouts). No rectangle is drawn
 when the foreground window is floating, ignored, or otherwise outside the tiled layout.
 Fullscreen and process-based suppression still apply; toast messages remain visible.
 

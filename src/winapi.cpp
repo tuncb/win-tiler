@@ -1471,6 +1471,12 @@ bool is_focus_dialog(HWND_T hwnd) {
   return false;
 }
 
+bool is_owned_focus_popup(HWND_T hwnd) {
+  const auto window = static_cast<HWND>(hwnd);
+  return is_visible_focus_window(window) && IsWindowEnabled(window) &&
+      GetAncestor(window, GA_ROOT) == window && GetWindow(window, GW_OWNER) != nullptr;
+}
+
 static std::optional<bool> get_process_elevation(HANDLE process) {
   HANDLE token = nullptr;
   if (!OpenProcessToken(process, TOKEN_QUERY, &token)) {
@@ -3834,6 +3840,7 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.is_right_mouse_pressed = is_right_mouse_pressed();
   state.foreground_window = get_foreground_window();
   state.foreground_is_dialog = is_focus_dialog(state.foreground_window);
+  state.foreground_is_owned_popup = is_owned_focus_popup(state.foreground_window);
   state.foreground_requires_elevation = focus_requires_elevation(state.foreground_window);
   state.desktop_id.reset();
 
