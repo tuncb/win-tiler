@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <memory>
 #include <optional>
 #include <string>
 #include <tl/expected.hpp>
@@ -101,11 +100,6 @@ struct GapOptions {
   float vertical = kDefaultGapVertical;
 };
 
-struct GapOverrideOptions {
-  std::optional<float> horizontal;
-  std::optional<float> vertical;
-};
-
 enum class MouseDragDropAction { Exchange, Split };
 
 // Loop configuration
@@ -116,8 +110,6 @@ struct LoopOptions {
   MouseDragDropAction mouse_drag_drop = MouseDragDropAction::Exchange;
 };
 
-enum class LayoutSplitDir { Vertical, Horizontal };
-
 enum class LayoutSplitTarget { Pointer, Focused, Largest, LargestAllMonitors };
 
 enum class LayoutSplitMode {
@@ -126,30 +118,10 @@ enum class LayoutSplitMode {
   Horizontal,
 };
 
-struct LayoutTreeNode {
-  LayoutSplitDir split_dir = LayoutSplitDir::Vertical;
-  float split_ratio = 0.5f;
-  std::shared_ptr<LayoutTreeNode> first;
-  std::shared_ptr<LayoutTreeNode> second;
-};
-
-struct LayoutRule {
-  size_t window_count = 0;
-  LayoutTreeNode tree;
-};
-
 struct LayoutOptions {
-  bool enabled = true;
   LayoutSplitMode split_mode = LayoutSplitMode::Dwindle;
   LayoutSplitTarget split_target = LayoutSplitTarget::Pointer;
   float split_width_multiplier = kDefaultSplitWidthMultiplier;
-  std::vector<LayoutRule> rules;
-};
-
-struct MonitorMatchOptions {
-  std::optional<std::string> device_name;
-  std::optional<size_t> index;
-  std::optional<bool> primary;
 };
 
 // Render-specific options used by the renderer
@@ -172,14 +144,6 @@ struct VisualizationOptions {
   int toastDurationMs = kDefaultToastDurationMs;
 };
 
-struct MonitorProfileOptions {
-  std::string name;
-  MonitorMatchOptions match;
-  std::optional<GapOverrideOptions> gapOptions;
-  std::optional<LayoutOptions> layoutOptions;
-  std::optional<float> zen_percentage;
-};
-
 struct ClusterTilingOptions {
   GapOptions gapOptions;
   LayoutOptions layoutOptions;
@@ -194,7 +158,6 @@ struct GlobalOptions {
   LoopOptions loopOptions;
   LayoutOptions layoutOptions;
   VisualizationOptions visualizationOptions;
-  std::vector<MonitorProfileOptions> monitorProfiles;
 };
 
 // Get default global options
@@ -203,11 +166,6 @@ GlobalOptions get_default_global_options();
 // Find the configured hotkey text for a specific action
 std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_options,
                                                HotkeyAction action);
-
-[[nodiscard]] size_t count_layout_windows(const LayoutTreeNode& node);
-
-[[nodiscard]] std::optional<LayoutRule>
-find_layout_rule_for_window_count(const LayoutOptions& layout_options, size_t window_count);
 
 // Get default ignore options (convenience function)
 IgnoreOptions get_default_ignore_options();

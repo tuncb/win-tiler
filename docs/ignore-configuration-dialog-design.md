@@ -11,7 +11,7 @@ Add a notification-area menu item that opens a dialog for reviewing windows mana
 - `src/winapi.cpp` owns notification-area menu construction and command handling.
 - `src/winapi.cpp` already has private `WindowManagementState` inspection used by `dump_window_management_state`.
 - `src/loop.cpp` consumes ignore options during WinAPI input gathering and already supports session-only floating through `ToggleFloating`.
-- `src/save_layout.cpp` has a config-preserving TOML update pattern that is a better model for dialog edits than rewriting the whole config with `write_options_toml`.
+- `src/ignore_config.cpp` updates ignore rules while preserving unrelated TOML configuration.
 
 ## Recommended implementation shape
 
@@ -91,7 +91,7 @@ When a rule comes from built-in defaults, the dialog should not pretend it can r
 
 Avoid using `write_options_toml()` for single dialog edits because it rewrites the whole config file with generated comments and serialized current options.
 
-Prefer a config-preserving helper similar to `save_monitor_layout_rules_to_config`:
+Use the config-preserving helpers in `src/ignore_config.cpp`:
 
 1. Read the existing config text.
 2. Parse it with toml++ to validate it before editing.

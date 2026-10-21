@@ -119,29 +119,6 @@ std::optional<HotkeyAction> string_to_hotkey_action(const std::string& str) {
   return std::nullopt;
 }
 
-std::string layout_split_dir_to_string(LayoutSplitDir split_dir) {
-  switch (split_dir) {
-  case LayoutSplitDir::Vertical:
-    return "vertical";
-  case LayoutSplitDir::Horizontal:
-    return "horizontal";
-  }
-  return "vertical";
-}
-
-std::optional<LayoutSplitDir> string_to_layout_split_dir(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-
-  if (value == "vertical") {
-    return LayoutSplitDir::Vertical;
-  }
-  if (value == "horizontal") {
-    return LayoutSplitDir::Horizontal;
-  }
-  return std::nullopt;
-}
-
 std::string layout_split_mode_to_string(LayoutSplitMode split_mode) {
   switch (split_mode) {
   case LayoutSplitMode::Dwindle:
@@ -287,123 +264,8 @@ std::optional<T> get_number(const toml::node_view<toml::node>& node) {
   return std::nullopt;
 }
 
-float clamp_layout_ratio(float ratio) {
-  if (ratio < 0.1f) {
-    spdlog::error("Invalid layout split ratio ({}): must be >= 0.1. Using 0.1.", ratio);
-    return 0.1f;
-  }
-  if (ratio > 0.9f) {
-    spdlog::error("Invalid layout split ratio ({}): must be <= 0.9. Using 0.9.", ratio);
-    return 0.9f;
-  }
-  return ratio;
-}
-
-std::optional<std::shared_ptr<LayoutTreeNode>>
-parse_layout_child(const toml::node_view<toml::node>& node, std::string_view child_name);
-
-std::optional<LayoutTreeNode> parse_layout_tree_node(toml::table& table) {
-  auto split = table["split"].as_string();
-  if (!split) {
-    spdlog::error("Invalid layout rule: split must be \"vertical\" or \"horizontal\".");
-    return std::nullopt;
-  }
-
-  auto split_dir = string_to_layout_split_dir(std::string(split->get()));
-  if (!split_dir.has_value()) {
-    spdlog::error("Invalid layout rule: unknown split value \"{}\".", split->get());
-    return std::nullopt;
-  }
-
-  LayoutTreeNode node;
-  node.split_dir = *split_dir;
-  if (auto ratio = get_number<float>(table["ratio"])) {
-    node.split_ratio = clamp_layout_ratio(*ratio);
-  }
-
-  auto first = parse_layout_child(table["first"], "first");
-  if (!first.has_value()) {
-    return std::nullopt;
-  }
-  node.first = *first;
-
-  auto second = parse_layout_child(table["second"], "second");
-  if (!second.has_value()) {
-    return std::nullopt;
-  }
-  node.second = *second;
-
-  return node;
-}
-
-std::optional<std::shared_ptr<LayoutTreeNode>>
-parse_layout_child(const toml::node_view<toml::node>& node, std::string_view child_name) {
-  if (!node) {
-    return std::optional<std::shared_ptr<LayoutTreeNode>>(std::shared_ptr<LayoutTreeNode>{});
-  }
-
-  if (auto value = node.as_string()) {
-    std::string text = value->get();
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-
-    if (text == "window") {
-      return std::optional<std::shared_ptr<LayoutTreeNode>>(std::shared_ptr<LayoutTreeNode>{});
-    }
-
-    spdlog::error("Invalid layout rule: {} must be \"window\" or a split table.", child_name);
-    return std::nullopt;
-  }
-
-  if (auto table = node.as_table()) {
-    auto parsed_node = parse_layout_tree_node(*table);
-    if (!parsed_node.has_value()) {
-      return std::nullopt;
-    }
-    return std::make_shared<LayoutTreeNode>(std::move(*parsed_node));
-  }
-
-  spdlog::error("Invalid layout rule: {} must be \"window\" or a split table.", child_name);
-  return std::nullopt;
-}
-
-std::optional<LayoutRule> parse_layout_rule(toml::table& table) {
-  auto window_count = table["window_count"].as_integer();
-  if (!window_count || window_count->get() <= 0) {
-    spdlog::error("Invalid layout rule: window_count must be positive.");
-    return std::nullopt;
-  }
-
-  toml::table* tree_table = table["tree"].as_table();
-  if (tree_table == nullptr) {
-    tree_table = &table;
-  }
-
-  auto tree = parse_layout_tree_node(*tree_table);
-  if (!tree.has_value()) {
-    return std::nullopt;
-  }
-
-  LayoutRule rule;
-  rule.window_count = static_cast<size_t>(window_count->get());
-  rule.tree = std::move(*tree);
-
-  size_t leaf_count = count_layout_windows(rule.tree);
-  if (leaf_count != rule.window_count) {
-    spdlog::error("Invalid layout rule for window_count {}: tree contains {} window leaves.",
-                  rule.window_count, leaf_count);
-    return std::nullopt;
-  }
-
-  return rule;
-}
-
 LayoutOptions parse_layout_options(toml::table& table) {
   LayoutOptions options;
-
-  if (auto enabled = table["enabled"].as_boolean()) {
-    options.enabled = enabled->get();
-  }
 
   if (auto split_mode = table["split_mode"].as_string()) {
     auto parsed_split_mode = string_to_layout_split_mode(std::string(split_mode->get()));
@@ -437,52 +299,14 @@ LayoutOptions parse_layout_options(toml::table& table) {
     }
   }
 
-  if (auto rules = table["rules"].as_array()) {
-    for (auto& rule_value : *rules) {
-      if (auto rule_table = rule_value.as_table()) {
-        auto rule = parse_layout_rule(*rule_table);
-        if (rule.has_value()) {
-          options.rules.push_back(std::move(*rule));
-        }
-      } else {
-        spdlog::error("Invalid layout rule: each rule must be a table.");
-      }
-    }
-  }
-
   return options;
-}
-
-toml::table layout_tree_node_to_toml(const LayoutTreeNode& node) {
-  toml::table result;
-  result.insert("split", layout_split_dir_to_string(node.split_dir));
-  result.insert("ratio", node.split_ratio);
-
-  if (node.first) {
-    result.insert("first", layout_tree_node_to_toml(*node.first));
-  }
-  if (node.second) {
-    result.insert("second", layout_tree_node_to_toml(*node.second));
-  }
-
-  return result;
 }
 
 toml::table layout_options_to_toml(const LayoutOptions& options) {
   toml::table layout;
-  layout.insert("enabled", options.enabled);
   layout.insert("split_mode", layout_split_mode_to_string(options.split_mode));
   layout.insert("split_target", layout_split_target_to_string(options.split_target));
   layout.insert("split_width_multiplier", options.split_width_multiplier);
-
-  toml::array layout_rules;
-  for (const auto& rule : options.rules) {
-    toml::table rule_table;
-    rule_table.insert("window_count", static_cast<int64_t>(rule.window_count));
-    rule_table.insert("tree", layout_tree_node_to_toml(rule.tree));
-    layout_rules.push_back(rule_table);
-  }
-  layout.insert("rules", layout_rules);
 
   return layout;
 }
@@ -558,20 +382,17 @@ std::string get_options_toml_documentation() {
 # toggle_zen_on_window_maximize: true toggles zen when a tiled window is maximized.
 # mouse_drag_drop: "exchange" swaps windows, "split" inserts as a split.
 #
-# Layout options:
+# Layout options (apply to every monitor):
 # [layout]
-# enabled = true
 # split_mode = "dwindle"
 # split_target = "pointer"
 # split_width_multiplier = 1.0
-# rules = []
 #
-# enabled: false disables layout rules while keeping normal tiling active.
 # split_mode:
 # - "dwindle": split direction follows the target cell's aspect ratio.
 # - "vertical": prefer left/right splits.
 # - "horizontal": prefer top/bottom splits.
-# split_target: target for automatic insertion; explicit moves and layout rules take precedence.
+# split_target: target for automatic insertion; explicit moves take precedence.
 # - "pointer": use the monitor and cell under the pointer (default).
 # - "focused": split the last focused tiled window, independent of the pointer.
 # - "largest": split the largest cell by area on the last focused tiled window's monitor.
@@ -589,30 +410,8 @@ std::string get_options_toml_documentation() {
 # window sizes, and zen enlargement. Largest_all_monitors exits zen on the destination monitor.
 # largest_all_monitors preserves monitor membership at startup/reinitialization, using local
 # largest splits there. Arrivals include windows returning to tiling (e.g. from floating).
-# Destination layout rules still take precedence over splitting the selected cell.
-# split_width_multiplier: positive multiplier for split width changes.
-# rules: optional fixed layouts selected by window_count.
-#
-# Layout rule example:
-# [[layout.rules]]
-# window_count = 3
-# [layout.rules.tree]
-# split = "vertical"       # "vertical" means left/right, "horizontal" means top/bottom.
-# ratio = 0.35             # first child gets 35%, second child gets 65%.
-# first = "window"         # "window" is a leaf.
-# [layout.rules.tree.second]
-# split = "horizontal"
-# ratio = 0.50
-# first = "window"
-# second = "window"
-#
-# Layout rule fields:
-# window_count: number of tiled windows this rule applies to.
-# split: "vertical" for left/right or "horizontal" for top/bottom.
-# ratio: split ratio from 0.1 to 0.9. Values outside that range are clamped.
-# first: "window" for a leaf, or a nested split table.
-# second: "window" for a leaf, or a nested split table.
-#
+# split_width_multiplier: positive multiplier applied to cell width when dwindle chooses
+# a split direction.
 # Visualization options:
 # [visualization]
 # toast_duration_ms = 2000
@@ -641,78 +440,7 @@ std::string get_options_toml_documentation() {
 # Color values are [red, green, blue, alpha], each in the 0-255 range.
 # Alpha controls opacity: 0 is transparent, 255 is opaque.
 #
-# Monitor profile options:
-# [[monitor_profiles]]
-# name = "Laptop display"
-# [monitor_profiles.match]
-# primary = true
-# index = 0
-# device_name = "\\\\.\\DISPLAY1"
-# [monitor_profiles.gap]
-# horizontal = 8
-# vertical = 8
-# [monitor_profiles.layout]
-# enabled = true
-# split_mode = "vertical"
-# split_target = "largest"
-# split_width_multiplier = 0.8
-# [monitor_profiles.visualization.render]
-# zen_percentage = 0.80
-#
-# name: optional label for your own reference.
-# match.primary: true matches the primary display, false matches non-primary displays.
-# match.index: zero-based monitor index from the Windows monitor list.
-# match.device_name: Windows monitor device name such as "\\\\.\\DISPLAY1".
-# At least one match field is required for a monitor profile.
-# The last focused tiled window's monitor selects the automatic split_target policy; without
-# tiled focus, use the first incoming monitor's policy. Largest_all_monitors searches all
-# eligible monitors regardless of their split_target, retaining destination layout settings.
-# gap: optional per-monitor horizontal and/or vertical gap override.
-# layout: optional per-monitor layout override using the same layout fields above.
-# visualization.render.zen_percentage: optional per-monitor zen size override.
-#
-# Monitor profile example:
-# [[monitor_profiles]]
-# name = "Laptop display"
-# [monitor_profiles.match]
-# primary = true           # Match by primary display, index, or device_name.
-# [monitor_profiles.gap]
-# horizontal = 8
-# vertical = 8
-# [monitor_profiles.visualization.render]
-# zen_percentage = 0.80
-
 )";
-}
-
-std::optional<GapOverrideOptions> parse_gap_override_options(toml::table& table) {
-  GapOverrideOptions options;
-
-  if (auto horizontal = get_number<float>(table["horizontal"])) {
-    if (*horizontal < 0.0f) {
-      spdlog::error("Invalid monitor profile gap.horizontal value ({}): must be non-negative. "
-                    "Using fallback.",
-                    *horizontal);
-    } else {
-      options.horizontal = *horizontal;
-    }
-  }
-
-  if (auto vertical = get_number<float>(table["vertical"])) {
-    if (*vertical < 0.0f) {
-      spdlog::error("Invalid monitor profile gap.vertical value ({}): must be non-negative. "
-                    "Using fallback.",
-                    *vertical);
-    } else {
-      options.vertical = *vertical;
-    }
-  }
-
-  if (!options.horizontal.has_value() && !options.vertical.has_value()) {
-    return std::nullopt;
-  }
-
-  return options;
 }
 
 float clamp_zen_percentage(float zen_percentage) {
@@ -725,55 +453,6 @@ float clamp_zen_percentage(float zen_percentage) {
     return 1.0f;
   }
   return zen_percentage;
-}
-
-std::optional<MonitorProfileOptions> parse_monitor_profile(toml::table& table) {
-  MonitorProfileOptions profile;
-
-  if (auto name = table["name"].as_string()) {
-    profile.name = name->get();
-  }
-
-  if (auto match = table["match"].as_table()) {
-    if (auto device_name = (*match)["device_name"].as_string()) {
-      profile.match.device_name = device_name->get();
-    }
-    if (auto index = (*match)["index"].as_integer()) {
-      if (index->get() >= 0) {
-        profile.match.index = static_cast<size_t>(index->get());
-      } else {
-        spdlog::error("Invalid monitor profile match.index ({}): must be non-negative.",
-                      index->get());
-      }
-    }
-    if (auto primary = (*match)["primary"].as_boolean()) {
-      profile.match.primary = primary->get();
-    }
-  }
-
-  if (!profile.match.device_name.has_value() && !profile.match.index.has_value() &&
-      !profile.match.primary.has_value()) {
-    spdlog::error("Invalid monitor profile: match must include device_name, index, or primary.");
-    return std::nullopt;
-  }
-
-  if (auto gap = table["gap"].as_table()) {
-    profile.gapOptions = parse_gap_override_options(*gap);
-  }
-
-  if (auto layout = table["layout"].as_table()) {
-    profile.layoutOptions = parse_layout_options(*layout);
-  }
-
-  if (auto visualization = table["visualization"].as_table()) {
-    if (auto render = (*visualization)["render"].as_table()) {
-      if (auto zen_percentage = get_number<float>((*render)["zen_percentage"])) {
-        profile.zen_percentage = clamp_zen_percentage(*zen_percentage);
-      }
-    }
-  }
-
-  return profile;
 }
 
 } // anonymous namespace
@@ -816,28 +495,6 @@ std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_o
   for (const auto& binding : keyboard_options.bindings) {
     if (binding.action == action) {
       return binding.hotkey;
-    }
-  }
-
-  return std::nullopt;
-}
-
-size_t count_layout_windows(const LayoutTreeNode& node) {
-  size_t count = 0;
-  count += node.first ? count_layout_windows(*node.first) : 1;
-  count += node.second ? count_layout_windows(*node.second) : 1;
-  return count;
-}
-
-std::optional<LayoutRule> find_layout_rule_for_window_count(const LayoutOptions& layout_options,
-                                                            size_t window_count) {
-  if (!layout_options.enabled) {
-    return std::nullopt;
-  }
-
-  for (const auto& rule : layout_options.rules) {
-    if (rule.window_count == window_count) {
-      return rule;
     }
   }
 
@@ -956,54 +613,6 @@ tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
     visualization.insert("render", render);
     visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
     root.insert("visualization", visualization);
-
-    toml::array monitor_profiles;
-    for (const auto& profile : options.monitorProfiles) {
-      toml::table profile_table;
-      if (!profile.name.empty()) {
-        profile_table.insert("name", profile.name);
-      }
-
-      toml::table match;
-      if (profile.match.device_name.has_value()) {
-        match.insert("device_name", *profile.match.device_name);
-      }
-      if (profile.match.index.has_value()) {
-        match.insert("index", static_cast<int64_t>(*profile.match.index));
-      }
-      if (profile.match.primary.has_value()) {
-        match.insert("primary", *profile.match.primary);
-      }
-      profile_table.insert("match", match);
-
-      if (profile.gapOptions.has_value()) {
-        toml::table profile_gap;
-        if (profile.gapOptions->horizontal.has_value()) {
-          profile_gap.insert("horizontal", *profile.gapOptions->horizontal);
-        }
-        if (profile.gapOptions->vertical.has_value()) {
-          profile_gap.insert("vertical", *profile.gapOptions->vertical);
-        }
-        profile_table.insert("gap", profile_gap);
-      }
-
-      if (profile.layoutOptions.has_value()) {
-        profile_table.insert("layout", layout_options_to_toml(*profile.layoutOptions));
-      }
-
-      if (profile.zen_percentage.has_value()) {
-        toml::table profile_visualization;
-        toml::table profile_render;
-        profile_render.insert("zen_percentage", *profile.zen_percentage);
-        profile_visualization.insert("render", profile_render);
-        profile_table.insert("visualization", profile_visualization);
-      }
-
-      monitor_profiles.push_back(profile_table);
-    }
-    if (!monitor_profiles.empty()) {
-      root.insert("monitor_profiles", monitor_profiles);
-    }
 
     // Write to file
     std::ofstream file(filepath);
@@ -1371,19 +980,6 @@ tl::expected<GlobalOptions, std::string> read_options_toml(const std::filesystem
     }
 
     ro.zen_percentage = clamp_zen_percentage(ro.zen_percentage);
-
-    if (auto monitor_profiles = tbl["monitor_profiles"].as_array()) {
-      for (auto& profile_value : *monitor_profiles) {
-        if (auto profile_table = profile_value.as_table()) {
-          auto profile = parse_monitor_profile(*profile_table);
-          if (profile.has_value()) {
-            options.monitorProfiles.push_back(std::move(*profile));
-          }
-        } else {
-          spdlog::error("Invalid monitor profile: each profile must be a table.");
-        }
-      }
-    }
 
     return options;
   } catch (const toml::parse_error& e) {

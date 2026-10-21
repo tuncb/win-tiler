@@ -75,7 +75,6 @@ struct ClusterInitInfo {
   float monitor_width = 0.0f;
   float monitor_height = 0.0f;
   std::vector<size_t> initial_cell_ids;
-  std::optional<LayoutRule> initial_layout_rule;
   float split_width_multiplier = kDefaultSplitWidthMultiplier;
   LayoutSplitTarget split_target = LayoutSplitTarget::Pointer;
 };
@@ -195,7 +194,6 @@ struct EngineFrameInput {
   bool auto_zen_on_maximize = false;
   bool update_hover_selection = true;
   bool has_completed_initial_tile_pass = false;
-  bool reapply_layout_templates = false;
   const LayoutOptions* layout_options = nullptr;
   std::vector<ClusterTilingOptions> cluster_options;
   float gap_h = 0.0f;
@@ -260,12 +258,10 @@ struct Engine {
   // Synchronize external window state into the engine
   [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                                     std::optional<int> redirect_cluster_index = std::nullopt,
-                                    const LayoutOptions* layout_options = nullptr,
-                                    bool reapply_layout_templates = false);
+                                    const LayoutOptions* layout_options = nullptr);
   [[nodiscard]] UpdateResult update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                                     std::optional<int> redirect_cluster_index,
-                                    const std::vector<ClusterTilingOptions>& cluster_options,
-                                    bool reapply_layout_templates = false);
+                                    const std::vector<ClusterTilingOptions>& cluster_options);
 
   // Update selection based on hover location
   [[nodiscard]] HoverSelectionResult

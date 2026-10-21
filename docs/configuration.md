@@ -22,9 +22,8 @@ empty string to disable that action.
 Ignore lists merge with the built-in defaults by default. Set the relevant
 `merge_*_with_defaults` flag to `false` to use only the list in the config file.
 
-Invalid numeric values fall back to defaults unless noted otherwise. `layout` ratios are clamped to
-the `0.1` to `0.9` range. `visualization.render.zen_percentage` is clamped to the `0.1` to `1.0`
-range.
+Invalid numeric values fall back to defaults unless noted otherwise.
+`visualization.render.zen_percentage` is clamped to the `0.1` to `1.0` range.
 
 ## Sections
 
@@ -34,9 +33,8 @@ range.
 | `keyboard` | Action-to-hotkey bindings. |
 | `gap` | Horizontal and vertical spacing between tiled windows. |
 | `loop` | Main loop timing, automatic zen toggling on maximize, and mouse drag/drop behavior. |
-| `layout` | Split mode and optional declarative tiling rules selected by managed window count. |
+| `layout` | Automatic split direction and new-window placement. |
 | `visualization` | Toast timing and overlay rendering settings. |
-| `monitor_profiles` | Optional per-monitor overrides for gap, layout, and zen mode sizing. |
 
 ## Keyboard
 
@@ -70,7 +68,7 @@ The toggle is session-only and tracked per virtual desktop. A changed configured
 effect on the desktop's next frame; unrelated config reloads preserve the toggled mode.
 
 Insertion orientation follows the direction: left/right means side by side, up/down means
-stacked. This operation overrides `layout.split_mode` and does not reapply layout templates.
+stacked. This operation overrides `layout.split_mode`.
 Both modes retain selection/focus on the moved window and can target windows on other monitors.
 No neighbor means no movement; empty monitors are not directional targets.
 
@@ -109,7 +107,7 @@ horizontal = 10.0
 vertical = 10.0
 ```
 
-Both values are pixels and must be non-negative.
+Both values are pixels and must be non-negative. They apply to every monitor.
 
 ## Loop
 
@@ -132,15 +130,15 @@ mouse_drag_drop = "exchange"
 
 ```toml
 [layout]
-enabled = true
 split_mode = "dwindle"
 split_target = "pointer"
 split_width_multiplier = 1.0
-rules = []
 ```
 
-`layout.split_mode` controls the split direction for new windows and mouse insertions when no
-declarative layout rule is applied. Supported values are `dwindle`, `vertical`, and `horizontal`.
+Layout settings apply to every monitor.
+
+`layout.split_mode` controls the split direction for new windows and mouse insertions.
+Supported values are `dwindle`, `vertical`, and `horizontal`.
 Directional keyboard insertion instead uses the direction pressed.
 
 `dwindle` splits wide target cells left/right and tall target cells top/bottom. The
@@ -152,6 +150,10 @@ Directional keyboard insertion instead uses the direction pressed.
 - `pointer` (default): use the monitor and cell under the pointer, preserving existing behavior.
 - `focused`: split the last focused tiled window, independently of the pointer.
 - `largest`: split the cell with the largest area on the last focused tiled window's monitor.
+- `largest_all_monitors`: choose the largest cell or empty monitor work area across eligible
+  monitors on the current virtual desktop. Fullscreen monitors are excluded; ties prefer the
+  focused monitor, then monitor order and tree order. Each arrival recalculates the target.
+  Startup and reinitialization preserve monitor membership and use local largest-cell splits.
 
 For example, set `split_target = "largest"` with `split_mode = "dwindle"` for automatic
 placement into large cells with an aspect-based split direction. `vertical` and `horizontal`
@@ -160,58 +162,11 @@ also work with any target policy.
 Focused and largest placement remember tiled focus when a new window or an untiled window
 takes OS focus. If no tiled focus is known, windows keep their incoming monitor; focused
 placement falls back to the first leaf there. Hovering does not affect either policy.
-With monitor profiles, the focused monitor's target policy determines whether placement follows
-focus or the pointer; without known focus, the incoming monitor's policy is used.
 
 Largest uses the allocated cell area before gaps or zen expansion, including manually adjusted
 split ratios. Equal areas use first-child tree traversal order. Each new split is 50/50, and
 the largest cell is recalculated after each insertion, including startup and batches.
-Other cells retain their geometry. Explicit moves and drag/drop keep their chosen target,
-and matching declarative layout rules take precedence over automatic target selection.
-
-Declarative layout rules describe tiling structure, not specific apps. Rules are selected by the
-number of managed windows on a monitor. A missing `first` or `second` child means that side is a
-window leaf.
-
-```toml
-[[layout.rules]]
-window_count = 2
-split = "vertical"
-ratio = 0.30
-
-[[layout.rules]]
-window_count = 3
-
-[layout.rules.tree]
-split = "vertical"
-ratio = 0.30
-
-[layout.rules.tree.second]
-split = "horizontal"
-ratio = 0.50
-```
-
-`vertical` splits left/right and `horizontal` splits top/bottom. The ratio belongs to the first side
-of the split, so `ratio = 0.30` gives the first side 30% and the second side 70%. Rules whose tree
-leaf count does not match `window_count` are ignored.
-
-Fully explicit rule example:
-
-```toml
-[[layout.rules]]
-window_count = 3
-
-[layout.rules.tree]
-split = "vertical"
-ratio = 0.35
-first = "window"
-
-[layout.rules.tree.second]
-split = "horizontal"
-ratio = 0.50
-first = "window"
-second = "window"
-```
+Other cells retain their geometry. Explicit moves and drag/drop keep their chosen target.
 
 ## Visualization
 
@@ -262,55 +217,6 @@ dialogs with disabled owners are recognized, as are owned popups whose owners re
 (such as browser downloads flyouts). No rectangle is drawn
 when the foreground window is floating, ignored, or otherwise outside the tiled layout.
 Fullscreen and process-based suppression still apply; toast messages remain visible.
-
-## Monitor Profiles
-
-Per-monitor overrides can target a monitor by device name, monitor index, primary status, or a
-combination of those fields. Later matching profiles override earlier ones. Any field omitted from a
-matching profile falls back to the global configuration.
-
-```toml
-[[monitor_profiles]]
-name = "Laptop"
-match = { device_name = "\\\\.\\DISPLAY1" }
-
-[monitor_profiles.gap]
-horizontal = 8
-vertical = 8
-
-[[monitor_profiles.layout.rules]]
-window_count = 2
-split = "vertical"
-ratio = 0.50
-
-[[monitor_profiles]]
-name = "External"
-match = { device_name = "\\\\.\\DISPLAY2" }
-
-[monitor_profiles.gap]
-horizontal = 16
-vertical = 12
-
-[monitor_profiles.visualization.render]
-zen_percentage = 0.82
-
-[[monitor_profiles.layout.rules]]
-window_count = 3
-split = "vertical"
-ratio = 0.30
-```
-
-| Option | Meaning |
-| --- | --- |
-| `name` | Optional label for your own reference. |
-| `match.primary` | `true` matches the primary display, `false` matches non-primary displays. |
-| `match.index` | Zero-based monitor index from the Windows monitor list. |
-| `match.device_name` | Windows monitor device name such as `\\\\.\\DISPLAY1`. |
-| `gap` | Optional per-monitor horizontal and/or vertical gap override. |
-| `layout` | Optional per-monitor layout override using the same layout fields as the global `layout` section. |
-| `visualization.render.zen_percentage` | Optional per-monitor zen size override. |
-
-At least one match field is required for a monitor profile.
 
 ## Default Generated Config
 
@@ -380,11 +286,9 @@ toggle_zen_on_window_maximize = true
 mouse_drag_drop = "exchange"
 
 [layout]
-enabled = true
 split_mode = "dwindle"
 split_target = "pointer"
 split_width_multiplier = 1.0
-rules = []
 
 [visualization]
 toast_duration_ms = 2000

@@ -11,7 +11,7 @@
 - Binary space partitioning layout engine for splitting, navigating, moving, and exchanging tiles.
 - Multi-monitor support based on monitor work areas.
 - Supports multiple desktops
-- TOML configuration for hotkeys, ignore rules, gaps, loop timing, layouts, and visualization.
+- TOML configuration for hotkeys, ignore rules, gaps, loop timing, automatic tiling, and visualization.
 - Config hot-reload while supported runtime modes are active.
 - Zen mode for focusing the selected tile within the current monitor cluster.
 - Ignore filters for processes, window titles, process/title pairs, child windows, and small windows.
@@ -42,7 +42,7 @@ bindings merge with defaults when an action is omitted. Ignore lists can merge w
 built-in defaults through the `merge_*_with_defaults` flags.
 
 See [docs/configuration.md](docs/configuration.md) for the full configuration reference, default
-generated config, layout rule examples, and monitor profile examples.
+generated config and automatic tiling options. Settings apply to every monitor.
 
 ## How To
 
@@ -86,7 +86,7 @@ moved window, so the shortcut can be repeated. Navigation remains `Win+Shift+H/J
 - **Swap** (default): exchange positions with the nearest window in that direction.
 - **Insert**: remove the window from its old split and insert it on the requested side of
   the neighbor. Left/right creates a side-by-side split; up/down creates a stacked split.
-  Direction overrides the ordinary split mode and layout templates for this operation.
+  Direction overrides the ordinary split mode for this operation.
 
 Movement can cross monitors when a destination window exists. With no directional neighbor,
 it does nothing (including when the next monitor is empty). Configure the initial mode with
@@ -120,7 +120,6 @@ Right-click the `win-tiler` notification-area icon to open the tray menu.
 | --- | --- | --- |
 | Open config file | Tray menu `Open config file`. | Opens the active TOML configuration file, when one is active. |
 | Open log file | Tray menu `Open log file`. | Opens the active log file. |
-| Save layout | Tray menu `Save layout`, then choose one monitor or `Save All`. | Writes the current monitor layout rules to the active config. A monitor needs at least two tiled windows. |
 | Manage ignored windows | Tray menu `Manage ignored windows...`. | Opens a dialog for adding or removing ignore rules. Select a row, then use `Add rule...` or `Remove rule...`; the dialog also has `Refresh`, `Copy details`, `Open config`, and `Close`. |
 | Pause or unpause | Tray menu `Pause` or `Unpause`. | Same as `TogglePause`. |
 | Reset | Tray menu `Reset`. | Same as `RestartSystem`. |

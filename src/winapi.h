@@ -205,30 +205,12 @@ struct NotificationAreaIconOptions {
 struct NotificationAreaMenuAvailability {
   bool can_open_config = false;
   bool can_show_log = false;
-  bool can_save_layout = false;
   bool can_exit = true;
-};
-
-struct NotificationAreaSaveLayoutMonitor {
-  size_t monitor_index = 0;
-  MonitorInfo monitor;
-  size_t window_count = 0;
-};
-
-enum class NotificationAreaSaveLayoutRequestKind {
-  Monitor,
-  All,
-};
-
-struct NotificationAreaSaveLayoutRequest {
-  NotificationAreaSaveLayoutRequestKind kind = NotificationAreaSaveLayoutRequestKind::Monitor;
-  size_t monitor_index = 0;
 };
 
 [[nodiscard]] NotificationAreaMenuAvailability
 get_notification_area_menu_availability(const NotificationAreaIconOptions& options);
 
-[[nodiscard]] bool should_enable_notification_area_save_layout_monitor(size_t window_count);
 [[nodiscard]] std::wstring get_notification_area_about_message();
 [[nodiscard]] std::wstring get_notification_area_about_dialog_content();
 [[nodiscard]] const wchar_t* get_notification_area_toggle_pause_menu_text(bool is_paused);
@@ -241,13 +223,9 @@ void set_notification_area_movement_mode(wintiler::MovementMode mode);
 [[nodiscard]] const wchar_t*
 get_notification_area_movement_mode_menu_text(wintiler::MovementMode mode);
 void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_options);
-void set_notification_area_save_layout_monitors(
-    const std::vector<NotificationAreaSaveLayoutMonitor>& monitors);
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] bool consume_notification_area_exit_requested();
 [[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();
-[[nodiscard]] std::optional<NotificationAreaSaveLayoutRequest>
-consume_notification_area_save_layout_request();
 [[nodiscard]] bool consume_notification_area_ignore_config_changed_request();
 [[nodiscard]] std::optional<DWORD_T> find_notification_area_process_id();
 [[nodiscard]] bool request_notification_area_exit_for_running_instance();

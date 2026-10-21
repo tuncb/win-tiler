@@ -5,7 +5,6 @@
 #include <cmath>
 #include <limits>
 #include <magic_enum/magic_enum.hpp>
-#include <set>
 
 #include "spdlog/spdlog.h"
 
@@ -141,87 +140,6 @@ std::optional<SplitResult> split_leaf(Cluster& cluster, int selected_index, size
   return SplitResult{second_child_index};
 }
 
-SplitDir to_engine_split_dir(LayoutSplitDir split_dir) {
-  switch (split_dir) {
-  case LayoutSplitDir::Vertical:
-    return SplitDir::Vertical;
-  case LayoutSplitDir::Horizontal:
-    return SplitDir::Horizontal;
-  }
-  return SplitDir::Vertical;
-}
-
-struct LayoutBuildState {
-  size_t next_leaf_id_index = 0;
-  int last_leaf_index = -1;
-};
-
-std::optional<int> build_layout_leaf(Cluster& cluster, const std::vector<size_t>& leaf_ids,
-                                     std::optional<int> parent_index, SplitDir split_dir,
-                                     LayoutBuildState& state) {
-  if (state.next_leaf_id_index >= leaf_ids.size()) {
-    return std::nullopt;
-  }
-
-  CellData leaf_data;
-  leaf_data.split_dir = split_dir;
-  leaf_data.leaf_id = leaf_ids[state.next_leaf_id_index++];
-
-  int leaf_index = cluster.tree.add_node(leaf_data, parent_index);
-  state.last_leaf_index = leaf_index;
-  return leaf_index;
-}
-
-std::optional<int> build_layout_tree(Cluster& cluster, const LayoutTreeNode& layout_node,
-                                     const std::vector<size_t>& leaf_ids,
-                                     std::optional<int> parent_index, LayoutBuildState& state) {
-  SplitDir split_dir = to_engine_split_dir(layout_node.split_dir);
-
-  CellData node_data;
-  node_data.split_dir = split_dir;
-  node_data.split_ratio = layout_node.split_ratio;
-
-  int node_index = cluster.tree.add_node(node_data, parent_index);
-
-  std::optional<int> first_child =
-      layout_node.first
-          ? build_layout_tree(cluster, *layout_node.first, leaf_ids, node_index, state)
-          : build_layout_leaf(cluster, leaf_ids, node_index, split_dir, state);
-  if (!first_child.has_value()) {
-    return std::nullopt;
-  }
-
-  std::optional<int> second_child =
-      layout_node.second
-          ? build_layout_tree(cluster, *layout_node.second, leaf_ids, node_index, state)
-          : build_layout_leaf(cluster, leaf_ids, node_index, split_dir, state);
-  if (!second_child.has_value()) {
-    return std::nullopt;
-  }
-
-  cluster.tree.set_children(node_index, *first_child, *second_child);
-  return node_index;
-}
-
-std::optional<int> rebuild_cluster_from_layout_rule(Cluster& cluster,
-                                                    const std::vector<size_t>& leaf_ids,
-                                                    const LayoutRule& layout_rule) {
-  if (count_layout_windows(layout_rule.tree) != leaf_ids.size()) {
-    return std::nullopt;
-  }
-
-  cluster.tree.clear();
-  LayoutBuildState state;
-  auto root = build_layout_tree(cluster, layout_rule.tree, leaf_ids, std::nullopt, state);
-  if (!root.has_value() || *root != 0 || state.next_leaf_id_index != leaf_ids.size()) {
-    cluster.tree.clear();
-    return std::nullopt;
-  }
-
-  cluster.zen_cell_index.reset();
-  return state.last_leaf_index;
-}
-
 void collect_leaf_ids_in_layout_order(const Cluster& cluster, int cell_index,
                                       std::vector<size_t>& leaf_ids) {
   if (!cluster.tree.is_valid_index(cell_index)) {
@@ -331,19 +249,8 @@ System create_system(const std::vector<ClusterInitInfo>& infos, SplitMode split_
 
     int selection_index = -1;
     if (!info.initial_cell_ids.empty()) {
-      if (info.initial_layout_rule.has_value()) {
-        auto layout_selection = rebuild_cluster_from_layout_rule(cluster, info.initial_cell_ids,
-                                                                 *info.initial_layout_rule);
-        if (layout_selection.has_value()) {
-          selection_index = *layout_selection;
-        } else {
-          selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode,
-                                             info.split_target);
-        }
-      } else {
-        selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode,
-                                            info.split_target);
-      }
+      selection_index = pre_create_leaves(cluster, info.initial_cell_ids, system.split_mode,
+                                          info.split_target);
     }
 
     if (!system.selection.has_value() && selection_index >= 0) {
@@ -734,32 +641,6 @@ std::vector<size_t> get_cluster_leaf_ids(const Cluster& cluster) {
     collect_leaf_ids_in_layout_order(cluster, 0, leaf_ids);
   }
   return leaf_ids;
-}
-
-std::vector<size_t> build_layout_rule_leaf_order(const Cluster& cluster,
-                                                 const std::vector<size_t>& desired_leaf_ids) {
-  std::vector<size_t> ordered_leaf_ids;
-  ordered_leaf_ids.reserve(desired_leaf_ids.size());
-
-  for (size_t leaf_id : get_cluster_leaf_ids(cluster)) {
-    bool still_exists = std::find(desired_leaf_ids.begin(), desired_leaf_ids.end(), leaf_id) !=
-                        desired_leaf_ids.end();
-    bool already_added = std::find(ordered_leaf_ids.begin(), ordered_leaf_ids.end(), leaf_id) !=
-                         ordered_leaf_ids.end();
-    if (still_exists && !already_added) {
-      ordered_leaf_ids.push_back(leaf_id);
-    }
-  }
-
-  for (size_t leaf_id : desired_leaf_ids) {
-    bool already_added = std::find(ordered_leaf_ids.begin(), ordered_leaf_ids.end(), leaf_id) !=
-                         ordered_leaf_ids.end();
-    if (!already_added) {
-      ordered_leaf_ids.push_back(leaf_id);
-    }
-  }
-
-  return ordered_leaf_ids;
 }
 
 Rect compute_subtree_minimums(const Cluster& cluster, int node_index, std::vector<Rect>& minimums,
@@ -1158,92 +1039,6 @@ bool adjust_selected_split_ratio(System& system, float delta) {
   return true;
 }
 
-std::optional<size_t> get_selected_leaf_id_for_cluster(const System& system, size_t cluster_idx) {
-  if (!system.selection.has_value() ||
-      system.selection->cluster_index != static_cast<int>(cluster_idx)) {
-    return std::nullopt;
-  }
-
-  const auto& cluster = system.clusters[cluster_idx];
-  int cell_index = system.selection->cell_index;
-  if (!cluster.tree.is_valid_index(cell_index) || !cluster.tree.is_leaf(cell_index)) {
-    return std::nullopt;
-  }
-
-  return cluster.tree[cell_index].leaf_id;
-}
-
-void select_after_layout_rebuild(System& system, size_t cluster_idx,
-                                 std::optional<size_t> preferred_leaf_id, int fallback_leaf_index) {
-  if (preferred_leaf_id.has_value()) {
-    auto preferred_cell = find_cell_by_leaf_id(system.clusters[cluster_idx], *preferred_leaf_id);
-    if (preferred_cell.has_value()) {
-      system.selection =
-          CellIndicatorByIndex{static_cast<int>(cluster_idx), static_cast<int>(*preferred_cell)};
-      return;
-    }
-  }
-
-  if (fallback_leaf_index >= 0) {
-    system.selection = CellIndicatorByIndex{static_cast<int>(cluster_idx), fallback_leaf_index};
-  } else {
-    system.selection.reset();
-  }
-}
-
-bool apply_layout_template_for_cluster(System& system, size_t cluster_idx,
-                                       const LayoutOptions& layout_options) {
-  if (cluster_idx >= system.clusters.size()) {
-    return false;
-  }
-
-  auto& cluster = system.clusters[cluster_idx];
-  std::vector<size_t> leaf_ids = get_cluster_leaf_ids(cluster);
-  auto layout_rule = find_layout_rule_for_window_count(layout_options, leaf_ids.size());
-  if (!layout_rule.has_value()) {
-    return false;
-  }
-
-  bool selection_was_in_cluster = system.selection.has_value() &&
-                                  system.selection->cluster_index == static_cast<int>(cluster_idx);
-  auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
-  auto fallback_leaf_index = rebuild_cluster_from_layout_rule(cluster, leaf_ids, *layout_rule);
-  if (!fallback_leaf_index.has_value()) {
-    return false;
-  }
-
-  if (selection_was_in_cluster || !system.selection.has_value()) {
-    select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id, *fallback_leaf_index);
-  }
-  return true;
-}
-
-bool apply_layout_templates(System& system, const LayoutOptions& layout_options) {
-  bool updated = false;
-
-  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    updated |= apply_layout_template_for_cluster(system, cluster_idx, layout_options);
-  }
-
-  return updated;
-}
-
-bool apply_layout_templates(System& system,
-                            const std::vector<ClusterTilingOptions>& cluster_options) {
-  bool updated = false;
-
-  for (size_t cluster_idx = 0; cluster_idx < system.clusters.size(); ++cluster_idx) {
-    if (cluster_idx >= cluster_options.size()) {
-      continue;
-    }
-
-    updated |= apply_layout_template_for_cluster(system, cluster_idx,
-                                                 cluster_options[cluster_idx].layoutOptions);
-  }
-
-  return updated;
-}
-
 bool sync_cluster_updates(System& system, const std::vector<ClusterCellUpdateInfo>& cluster_updates,
                  std::optional<int> redirect_cluster_index, const LayoutOptions* layout_options,
                  const std::vector<ClusterTilingOptions>* cluster_options) {
@@ -1318,28 +1113,6 @@ bool sync_cluster_updates(System& system, const std::vector<ClusterCellUpdateInf
     const LayoutOptions* cluster_layout_options = layout_options;
     if (cluster_options != nullptr && cluster_idx < cluster_options->size()) {
       cluster_layout_options = &(*cluster_options)[cluster_idx].layoutOptions;
-    }
-
-    if ((!to_delete.empty() || !to_add.empty()) && cluster_layout_options != nullptr) {
-      auto layout_rule = find_layout_rule_for_window_count(*cluster_layout_options,
-                                                           cluster_update.leaf_ids.size());
-      if (layout_rule.has_value()) {
-        bool selection_was_in_cluster =
-            system.selection.has_value() &&
-            system.selection->cluster_index == static_cast<int>(cluster_idx);
-        auto preferred_leaf_id = get_selected_leaf_id_for_cluster(system, cluster_idx);
-        auto ordered_leaf_ids = build_layout_rule_leaf_order(cluster, cluster_update.leaf_ids);
-        auto fallback_leaf_index =
-            rebuild_cluster_from_layout_rule(cluster, ordered_leaf_ids, *layout_rule);
-        if (fallback_leaf_index.has_value()) {
-          if (selection_was_in_cluster || !system.selection.has_value()) {
-            select_after_layout_rebuild(system, cluster_idx, preferred_leaf_id,
-                                        *fallback_leaf_index);
-          }
-          updated = true;
-          continue;
-        }
-      }
     }
 
     for (size_t leaf_id : to_delete) {
@@ -1488,8 +1261,7 @@ bool update_impl(System& system, const std::vector<ClusterCellUpdateInfo>& clust
     return updated;
   }
 
-  // Force local largest selection after choosing a destination, without replacing its
-  // layout rules or other settings with those of the monitor that selected this policy.
+  // Split the largest local cell after choosing the destination monitor.
   std::vector<ClusterTilingOptions> insertion_options(system.clusters.size());
   for (size_t i = 0; i < insertion_options.size(); ++i) {
     if (cluster_options != nullptr && i < cluster_options->size()) {
@@ -1871,28 +1643,6 @@ cluster_options_or_default(const std::vector<ClusterTilingOptions>& cluster_opti
   return default_options;
 }
 
-bool apply_layout_templates_for_clusters(ctrl::System& system,
-                                         const std::vector<ClusterTilingOptions>& cluster_options,
-                                         const std::vector<size_t>& cluster_indices) {
-  bool updated = false;
-  std::set<size_t> unique_cluster_indices;
-
-  for (size_t cluster_index : cluster_indices) {
-    if (cluster_index >= system.clusters.size()) {
-      continue;
-    }
-    if (!unique_cluster_indices.insert(cluster_index).second) {
-      continue;
-    }
-
-    const auto& options = cluster_options_or_default(cluster_options, cluster_index);
-    updated |=
-        ctrl::apply_layout_template_for_cluster(system, cluster_index, options.layoutOptions);
-  }
-
-  return updated;
-}
-
 float normalized_split_width_multiplier(float multiplier) {
   if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
     return kDefaultSplitWidthMultiplier;
@@ -2170,8 +1920,7 @@ update_zen_for_maximized_windows(ctrl::System& system,
 }
 
 DragResult process_completed_drag(ctrl::System& system, const CompletedDragRequest& request,
-                                  const std::vector<std::vector<ctrl::Rect>>& geometries,
-                                  const std::vector<ClusterTilingOptions>& cluster_options) {
+                                  const std::vector<std::vector<ctrl::Rect>>& geometries) {
   DragResult result;
   result.clear_drag_ended = true;
 
@@ -2190,7 +1939,6 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
   if (cluster_index < 0 || static_cast<size_t>(cluster_index) >= system.clusters.size()) {
     return result;
   }
-  size_t source_cluster_before_move = static_cast<size_t>(cluster_index);
 
   const auto& cluster = system.clusters[static_cast<size_t>(cluster_index)];
 
@@ -2231,17 +1979,6 @@ DragResult process_completed_drag(ctrl::System& system, const CompletedDragReque
     result.selection_changed = !selections_equal(previous_selection, system.selection);
     result.apply_tiles = true;
     return result;
-  }
-
-  if (!drop_result->was_exchange) {
-    auto moved_cell = find_cell_by_leaf_id(system, request.leaf_id);
-    std::vector<size_t> affected_clusters = {source_cluster_before_move};
-    if (moved_cell.has_value() && moved_cell->cluster_index >= 0) {
-      affected_clusters.push_back(static_cast<size_t>(moved_cell->cluster_index));
-    }
-    if (apply_layout_templates_for_clusters(system, cluster_options, affected_clusters)) {
-      result.layout_changed = true;
-    }
   }
 
   result.handled = true;
@@ -2563,7 +2300,7 @@ Engine::get_hover_info(float global_x, float global_y,
 
 UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                             std::optional<int> redirect_cluster_index,
-                            const LayoutOptions* layout_options, bool reapply_layout_templates) {
+                            const LayoutOptions* layout_options) {
   UpdateResult result;
   apply_split_width_multiplier(system, layout_options);
   auto previous_selection = system.selection;
@@ -2576,11 +2313,6 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
   result.topology_changed =
       ctrl::update(system, cluster_updates, redirect_cluster_index, layout_options);
 
-  bool layout_template_changed = false;
-  if (reapply_layout_templates && layout_options != nullptr) {
-    layout_template_changed = ctrl::apply_layout_templates(system, *layout_options);
-  }
-
   result.selection_changed = !selections_equal(previous_selection, system.selection);
 
   bool fullscreen_state_changed = false;
@@ -2591,16 +2323,14 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
     }
   }
 
-  result.layout_changed =
-      result.topology_changed || fullscreen_state_changed || layout_template_changed;
+  result.layout_changed = result.topology_changed || fullscreen_state_changed;
   result.apply_tiles = result.layout_changed;
   return result;
 }
 
 UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& cluster_updates,
                             std::optional<int> redirect_cluster_index,
-                            const std::vector<ClusterTilingOptions>& cluster_options,
-                            bool reapply_layout_templates) {
+                            const std::vector<ClusterTilingOptions>& cluster_options) {
   UpdateResult result;
   apply_split_width_multipliers(system, cluster_options);
   auto previous_selection = system.selection;
@@ -2613,11 +2343,6 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
   result.topology_changed =
       ctrl::update(system, cluster_updates, redirect_cluster_index, cluster_options);
 
-  bool layout_template_changed = false;
-  if (reapply_layout_templates) {
-    layout_template_changed = ctrl::apply_layout_templates(system, cluster_options);
-  }
-
   result.selection_changed = !selections_equal(previous_selection, system.selection);
 
   bool fullscreen_state_changed = false;
@@ -2628,8 +2353,7 @@ UpdateResult Engine::update(const std::vector<ctrl::ClusterCellUpdateInfo>& clus
     }
   }
 
-  result.layout_changed =
-      result.topology_changed || fullscreen_state_changed || layout_template_changed;
+  result.layout_changed = result.topology_changed || fullscreen_state_changed;
   result.apply_tiles = result.layout_changed;
   return result;
 }
@@ -2726,7 +2450,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   if (input.completed_drag.has_value()) {
     DragResult drag_result =
-        process_completed_drag(system, *input.completed_drag, drag_geometries, cluster_options);
+        process_completed_drag(system, *input.completed_drag, drag_geometries);
     output.clear_drag_ended = drag_result.clear_drag_ended;
     output.selection_changed = output.selection_changed || drag_result.selection_changed;
     output.layout_changed = output.layout_changed || drag_result.layout_changed;
@@ -2825,8 +2549,8 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
       output.selection_changed = output.selection_changed || hover_result.selection_changed;
     }
 
-    UpdateResult update_result = update(input.cluster_updates, redirect_cluster_index,
-                                        cluster_options, input.reapply_layout_templates);
+    UpdateResult update_result =
+        update(input.cluster_updates, redirect_cluster_index, cluster_options);
     output.topology_changed = output.topology_changed || update_result.topology_changed;
     output.selection_changed = output.selection_changed || update_result.selection_changed;
     output.layout_changed = output.layout_changed || update_result.layout_changed;

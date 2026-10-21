@@ -165,7 +165,6 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   frame_input.auto_zen_on_maximize = auto_zen_on_maximize;
   frame_input.update_hover_selection = true;
   frame_input.has_completed_initial_tile_pass = desktop_data.has_completed_initial_tile_pass;
-  frame_input.reapply_layout_templates = desktop_data.reapply_layout_templates;
   frame_input.layout_options = &layout_options;
   frame_input.cluster_options = cluster_options;
   frame_input.gap_h = 0.0f;

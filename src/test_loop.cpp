@@ -142,7 +142,6 @@ TEST_SUITE("loop") {
 
     LoopDesktopData desktop_data;
     desktop_data.has_completed_initial_tile_pass = true;
-    desktop_data.reapply_layout_templates = true;
     std::vector<ClusterTilingOptions> cluster_options(1);
     LayoutOptions layout_options;
     EngineFrameInput frame_input;
@@ -168,7 +167,6 @@ TEST_SUITE("loop") {
     CHECK(frame_input.hotkey_action == HotkeyAction::NavigateLeft);
     CHECK(frame_input.auto_zen_on_maximize == true);
     CHECK(frame_input.has_completed_initial_tile_pass == true);
-    CHECK(frame_input.reapply_layout_templates == true);
     REQUIRE(frame_input.completed_drag.has_value());
     CHECK(frame_input.completed_drag->leaf_id == 7);
     CHECK(frame_input.completed_drag->do_exchange == false);

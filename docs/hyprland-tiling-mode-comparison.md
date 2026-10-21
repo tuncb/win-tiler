@@ -27,11 +27,10 @@ Hyprland sources:
 
 win-tiler sources:
 
-- `README.md` - project overview, config examples, split mode descriptions, and layout rule syntax.
+- `README.md` - project overview, config examples, and split mode descriptions.
 - `src/engine.h` - `ctrl::SplitMode` enum and engine state.
-- `src/engine.cpp` - split-direction selection, tree geometry, zen geometry, layout template
-  application, and hotkey behavior.
-- `src/options.h` / `src/options.cpp` - parsed `LayoutSplitMode`, layout rules, and config values.
+- `src/engine.cpp` - split-direction selection, tree geometry, zen geometry, and hotkey behavior.
+- `src/options.h` / `src/options.cpp` - parsed `LayoutSplitMode` and config values.
 - `src/loop.cpp` - session floating state and loop-side floating filter.
 
 ## Executive Summary
@@ -51,7 +50,7 @@ win-tiler exposes three split modes inside its BSP engine:
 
 The only close name match is Hyprland `dwindle` to win-tiler `dwindle`, and even that is not exact.
 win-tiler does not currently have native equivalents for Hyprland `master`, `scrolling`, or
-`monocle`. Some behavior can be approximated with declarative layout rules, zen mode, fullscreen
+`monocle`. Some behavior can be approximated with manual split adjustments, zen mode, fullscreen
 state, or floating windows, but those are not separate layout engines.
 
 ## Hyprland Layouts
@@ -59,10 +58,10 @@ state, or floating windows, but those are not separate layout engines.
 | Hyprland layout | Core model | Notable controls | Closest win-tiler behavior |
 | --- | --- | --- | --- |
 | `dwindle` | BSP-like binary tree. Each workspace window is a member of the tree. By default, the split direction is derived dynamically from the parent node's width/height ratio. | `preserve_split`, `force_split`, `smart_split`, `split_width_multiplier`, `default_split_ratio`, `split_bias`, `splitratio`, `togglesplit`, `swapsplit`, `rotatesplit`, `preselect`, pseudo mode. | Closest to win-tiler `dwindle`, but Hyprland's default split direction remains dynamic unless `preserve_split` is enabled. win-tiler stores the selected split direction in the tree once the split is created. |
-| `master` | One or more master windows plus a slave stack. The master area can be left, right, top, bottom, or center. | `mfact`, `new_status`, `new_on_top`, `new_on_active`, `addmaster`, `removemaster`, `swapwithmaster`, `rollnext`, `rollprev`, orientation messages, per-workspace orientation rule. | No native equivalent. Fixed win-tiler layout rules can imitate specific 2-window or 3-window master-like shapes, but there is no persistent master/slave role or stack operation model. |
+| `master` | One or more master windows plus a slave stack. The master area can be left, right, top, bottom, or center. | `mfact`, `new_status`, `new_on_top`, `new_on_active`, `addmaster`, `removemaster`, `swapwithmaster`, `rollnext`, `rollprev`, orientation messages, per-workspace orientation rule. | No native equivalent. Manual splits can imitate master-like shapes, but there is no persistent master/slave role or stack operation model. |
 | `scrolling` | Windows are arranged on an infinitely growing tape, generally as columns, and the viewport moves/fits around focus. | `column_width`, `direction`, `follow_focus`, `focus_fit_method`, `move`, `colresize`, `fit`, `promote`, `swapcol`, `expel`, `consume`. | No equivalent. win-tiler computes bounded rectangles inside monitor work areas and does not model a scrollable layout viewport. |
 | `monocle` | Tiled windows take the full available area; layout messages cycle which window is active. | `cyclenext`, `cycleprev`. | Partial approximation through zen or OS fullscreen, but not the same. win-tiler zen enlarges one selected leaf to a centered percentage while the underlying BSP tree remains. |
-| Custom Lua layout | User registers a layout with `hl.layout.register(name, { recalculate, layout_msg? })`, then uses it as `lua:name`. | Programmatic placement with helpers such as `column`, `row`, `grid_cell`, and `split`. | No programmable layout engine. win-tiler has static declarative templates selected by window count. |
+| Custom Lua layout | User registers a layout with `hl.layout.register(name, { recalculate, layout_msg? })`, then uses it as `lua:name`. | Programmatic placement with helpers such as `column`, `row`, `grid_cell`, and `split`. | No programmable layout engine. win-tiler inserts windows using automatic split policies. |
 
 ## win-tiler Layout Behavior
 
@@ -88,18 +87,14 @@ Dwindle -> Vertical -> Horizontal -> Dwindle
 ```
 
 Changing split mode does not rebuild existing tree geometry by itself; it changes future split
-decisions. Existing split nodes keep their stored direction and ratio unless another action or
-layout template changes them.
+decisions. Existing split nodes keep their stored direction and ratio unless an interactive action
+changes them.
 
 ## win-tiler Features That Are Not Split Modes
 
 win-tiler has several layout-adjacent features that overlap with Hyprland behavior but should not be
 counted as direct layout modes:
 
-- Declarative layout rules: `[layout.rules]` are selected by managed window count and define a static
-  split tree with `split = "vertical"` / `"horizontal"` and `ratio`. These can imitate fixed master
-  shapes for specific window counts, but they do not create a master stack or layout-specific
-  commands.
 - Zen mode: selected leaf is drawn as a centered percentage of the monitor/cluster. This is closest
   to a temporary focus presentation mode, not Hyprland `monocle`.
 - Fullscreen awareness: the engine tracks fullscreen state so it can avoid conflicting tiling

@@ -1962,9 +1962,6 @@ std::atomic<int> g_notification_area_hotkey_action_requested{NO_NOTIFICATION_ARE
 std::atomic<bool> g_notification_area_manual_pause_active{false};
 std::atomic<bool> g_notification_area_verbose_logging_active{false};
 std::atomic<wintiler::MovementMode> g_notification_area_movement_mode{wintiler::MovementMode::Swap};
-std::mutex g_notification_area_save_layout_mutex;
-std::optional<NotificationAreaSaveLayoutRequest> g_notification_area_save_layout_request;
-std::vector<NotificationAreaSaveLayoutMonitor> g_notification_area_save_layout_monitors;
 std::mutex g_notification_area_ignore_options_mutex;
 wintiler::IgnoreOptions g_notification_area_ignore_options;
 std::atomic<bool> g_notification_area_ignore_config_changed_requested{false};
@@ -1995,10 +1992,6 @@ constexpr UINT ID_EXIT = 1008;
 constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1009;
 constexpr UINT ID_MANAGE_IGNORED_WINDOWS = 1010;
 constexpr UINT ID_TOGGLE_MOVEMENT_MODE = 1011;
-constexpr UINT ID_SAVE_LAYOUT_MONITOR_BASE = 1100;
-constexpr UINT ID_SAVE_LAYOUT_MONITOR_MAX = 1199;
-constexpr UINT ID_SAVE_LAYOUT_ALL = 1200;
-constexpr UINT ID_SAVE_LAYOUT_DISABLED = 1201;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -2878,109 +2871,6 @@ bool append_notification_menu_item(HMENU menu, UINT flags, UINT_PTR id, const wc
   return true;
 }
 
-bool append_notification_submenu(HMENU menu, UINT flags, HMENU submenu, const wchar_t* text) {
-  if (AppendMenuW(menu, flags | MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), text) == 0) {
-    spdlog::error("Failed to append notification area submenu, error={}", GetLastError());
-    return false;
-  }
-  return true;
-}
-
-std::wstring widen_ascii(std::string_view text) {
-  std::wstring result;
-  result.reserve(text.size());
-  for (char character : text) {
-    result.push_back(static_cast<wchar_t>(static_cast<unsigned char>(character)));
-  }
-  return result;
-}
-
-std::wstring format_save_layout_monitor_menu_text(
-    const NotificationAreaSaveLayoutMonitor& monitor) {
-  const auto& info = monitor.monitor;
-  std::string display_name =
-      info.deviceName.empty() ? std::string("Monitor ") + std::to_string(monitor.monitor_index)
-                              : info.deviceName;
-  std::wstring text = widen_ascii(display_name);
-  if (info.isPrimary) {
-    text += L" - Primary";
-  }
-  long width = info.rect.right - info.rect.left;
-  long height = info.rect.bottom - info.rect.top;
-  text += L" - " + std::to_wstring(width) + L"x" + std::to_wstring(height) + L" at " +
-          std::to_wstring(info.rect.left) + L"," + std::to_wstring(info.rect.top) + L" - " +
-          std::to_wstring(monitor.window_count) + L" windows";
-  return text;
-}
-
-std::vector<NotificationAreaSaveLayoutMonitor> get_sorted_save_layout_monitors_for_menu() {
-  std::scoped_lock lock(g_notification_area_save_layout_mutex);
-  auto monitors = g_notification_area_save_layout_monitors;
-  std::sort(monitors.begin(), monitors.end(),
-            [](const NotificationAreaSaveLayoutMonitor& lhs,
-               const NotificationAreaSaveLayoutMonitor& rhs) {
-              if (lhs.monitor.rect.left != rhs.monitor.rect.left) {
-                return lhs.monitor.rect.left < rhs.monitor.rect.left;
-              }
-              if (lhs.monitor.rect.top != rhs.monitor.rect.top) {
-                return lhs.monitor.rect.top < rhs.monitor.rect.top;
-              }
-              return lhs.monitor_index < rhs.monitor_index;
-            });
-  return monitors;
-}
-
-bool append_save_layout_menu(HMENU menu, bool can_save_layout) {
-  if (!can_save_layout) {
-    return append_notification_menu_item(menu, MF_STRING | MF_GRAYED, ID_SAVE_LAYOUT_DISABLED,
-                                         L"Save layout");
-  }
-
-  HMENU submenu = CreatePopupMenu();
-  if (submenu == nullptr) {
-    spdlog::error("Failed to create Save layout submenu, error={}", GetLastError());
-    return false;
-  }
-
-  bool menu_ok = true;
-  auto monitors = get_sorted_save_layout_monitors_for_menu();
-  for (const auto& monitor : monitors) {
-    UINT command_id = ID_SAVE_LAYOUT_MONITOR_BASE + static_cast<UINT>(monitor.monitor_index);
-    if (command_id > ID_SAVE_LAYOUT_MONITOR_MAX) {
-      spdlog::warn("Skipping Save layout menu item for monitor index {}: command range exceeded",
-                   monitor.monitor_index);
-      continue;
-    }
-
-    std::wstring text = format_save_layout_monitor_menu_text(monitor);
-    UINT flags = MF_STRING;
-    if (!should_enable_notification_area_save_layout_monitor(monitor.window_count)) {
-      flags |= MF_GRAYED;
-    }
-    menu_ok = append_notification_menu_item(submenu, flags, command_id, text.c_str()) && menu_ok;
-  }
-
-  if (!monitors.empty()) {
-    menu_ok = append_notification_menu_item(submenu, MF_SEPARATOR, 0, nullptr) && menu_ok;
-  }
-  menu_ok =
-      append_notification_menu_item(submenu, MF_STRING, ID_SAVE_LAYOUT_ALL, L"Save All") && menu_ok;
-
-  if (!menu_ok) {
-    if (DestroyMenu(submenu) == 0) {
-      spdlog::error("Failed to destroy Save layout submenu, error={}", GetLastError());
-    }
-    return false;
-  }
-
-  return append_notification_submenu(menu, MF_STRING, submenu, L"Save layout");
-}
-
-void request_notification_area_save_layout(NotificationAreaSaveLayoutRequest request) {
-  std::scoped_lock lock(g_notification_area_save_layout_mutex);
-  g_notification_area_save_layout_request = request;
-}
-
 HRESULT CALLBACK notification_area_about_callback(HWND hwnd, UINT notification, WPARAM,
                                                   LPARAM lParam, LONG_PTR) {
   if (notification != TDN_HYPERLINK_CLICKED) {
@@ -3019,15 +2909,6 @@ void show_notification_area_about_dialog(HWND hwnd) {
 }
 
 void handle_notification_menu_command(HWND hwnd, UINT command) {
-  if (command >= ID_SAVE_LAYOUT_MONITOR_BASE && command <= ID_SAVE_LAYOUT_MONITOR_MAX) {
-    size_t monitor_index = static_cast<size_t>(command - ID_SAVE_LAYOUT_MONITOR_BASE);
-    request_notification_area_save_layout(
-        {NotificationAreaSaveLayoutRequestKind::Monitor, monitor_index});
-    spdlog::info("Save layout requested from notification area menu for monitor {}",
-                 monitor_index);
-    return;
-  }
-
   switch (command) {
   case ID_OPEN_CONFIG:
     if (g_notification_area_icon_options.config_path.has_value()) {
@@ -3062,11 +2943,6 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
 
   case ID_MANAGE_IGNORED_WINDOWS:
     show_ignore_configuration_dialog(hwnd);
-    return;
-
-  case ID_SAVE_LAYOUT_ALL:
-    request_notification_area_save_layout({NotificationAreaSaveLayoutRequestKind::All, 0});
-    spdlog::info("Save layout for all monitors requested from notification area menu");
     return;
 
   case ID_ABOUT:
@@ -3147,7 +3023,6 @@ void show_notification_area_menu(HWND hwnd) {
       append_notification_menu_item(menu, open_config_flags, ID_OPEN_CONFIG, L"Open config file");
   menu_ok =
       append_notification_menu_item(menu, show_log_flags, ID_SHOW_LOG, L"Open log file") && menu_ok;
-  menu_ok = append_save_layout_menu(menu, availability.can_save_layout) && menu_ok;
   menu_ok = append_notification_menu_item(menu, MF_STRING, ID_MANAGE_IGNORED_WINDOWS,
                                           L"Manage ignored windows...") &&
             menu_ok;
@@ -3390,11 +3265,7 @@ bool create_notification_window() {
 NotificationAreaMenuAvailability
 get_notification_area_menu_availability(const NotificationAreaIconOptions& options) {
   bool has_config = is_non_empty_path(options.config_path);
-  return {has_config, is_non_empty_path(options.log_file_path), has_config, true};
-}
-
-bool should_enable_notification_area_save_layout_monitor(size_t window_count) {
-  return window_count >= 2;
+  return {has_config, is_non_empty_path(options.log_file_path), true};
 }
 
 static std::wstring get_notification_area_about_version_line() {
@@ -3505,12 +3376,6 @@ void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_
   g_notification_area_ignore_options = ignore_options;
 }
 
-void set_notification_area_save_layout_monitors(
-    const std::vector<NotificationAreaSaveLayoutMonitor>& monitors) {
-  std::scoped_lock lock(g_notification_area_save_layout_mutex);
-  g_notification_area_save_layout_monitors = monitors;
-}
-
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action) {
   g_notification_area_hotkey_action_requested = static_cast<int>(action);
 }
@@ -3554,13 +3419,6 @@ std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() 
 
   spdlog::error("Invalid notification area hotkey action request: {}", requested);
   return std::nullopt;
-}
-
-std::optional<NotificationAreaSaveLayoutRequest> consume_notification_area_save_layout_request() {
-  std::scoped_lock lock(g_notification_area_save_layout_mutex);
-  auto request = g_notification_area_save_layout_request;
-  g_notification_area_save_layout_request.reset();
-  return request;
 }
 
 bool consume_notification_area_ignore_config_changed_request() {

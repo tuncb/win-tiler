@@ -215,13 +215,12 @@ Recommended direction:
 
 Relevant code:
 
-- `src/options.cpp`: TOML parsing and `LayoutTreeNode` construction.
+- `src/options.cpp`: TOML parsing.
 - `src/startup.cpp`: startup registration helpers.
 
 Current behavior:
 
-These paths use strings, vectors, TOML values, `std::ostringstream`, `std::istringstream`, and
-`std::shared_ptr<LayoutTreeNode>`.
+These paths use strings, vectors, TOML values, `std::ostringstream`, and `std::istringstream`.
 
 Risk:
 
@@ -231,8 +230,6 @@ or startup-management commands. They are not the primary frame-loop allocation s
 Recommended direction:
 
 - Do not prioritize arenas here.
-- Layout parsing could eventually use value-owned tree storage instead of `shared_ptr`, but this is
-  not urgent unless config reload becomes frequent or layout rule counts become large.
 
 ## Arena And Pool Suitability
 
@@ -285,8 +282,8 @@ making allocation cheaper.
 the type as `BinaryTree<CellData>`, so allocator plumbing is not currently exposed through the
 engine model.
 
-Pooling tree nodes could help when windows are frequently added, removed, moved, or layout templates
-are reapplied. It is probably not the first target because normal desktop trees are small.
+Pooling tree nodes could help when windows are frequently added, removed, or moved. It is probably
+not the first target because normal desktop trees are small.
 
 Recommended prerequisite:
 

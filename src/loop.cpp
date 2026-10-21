@@ -19,7 +19,6 @@
 #include "multi_engine.h"
 #include "overlay.h"
 #include "runtime_support.h"
-#include "save_layout.h"
 #include "winapi.h"
 
 namespace wintiler {
@@ -403,7 +402,6 @@ void filter_session_floating_windows_from_cluster_infos(
   }
 
   for (auto& info : cluster_infos) {
-    size_t original_size = info.initial_cell_ids.size();
     info.initial_cell_ids.erase(
         std::remove_if(info.initial_cell_ids.begin(), info.initial_cell_ids.end(),
                        [&](size_t leaf_id) {
@@ -411,9 +409,6 @@ void filter_session_floating_windows_from_cluster_infos(
                              floating_state, reinterpret_cast<winapi::HWND_T>(leaf_id));
                        }),
         info.initial_cell_ids.end());
-    if (info.initial_cell_ids.size() != original_size) {
-      info.initial_layout_rule.reset();
-    }
   }
 }
 
@@ -600,20 +595,6 @@ void trace_tiling_execution_result(const ctrl::System& system, const EngineFrame
   }
 }
 
-std::vector<winapi::NotificationAreaSaveLayoutMonitor>
-make_notification_area_save_layout_monitors(const winapi::LoopInputState& input_state) {
-  std::vector<winapi::NotificationAreaSaveLayoutMonitor> result;
-  result.reserve(input_state.monitors.size());
-  for (size_t i = 0; i < input_state.monitors.size(); ++i) {
-    size_t window_count = 0;
-    if (i < input_state.windows_per_monitor.size()) {
-      window_count = input_state.windows_per_monitor[i].size();
-    }
-    result.push_back({i, input_state.monitors[i], window_count});
-  }
-  return result;
-}
-
 std::optional<HotkeyAction> poll_hotkey_action() {
   if (winapi::consume_notification_area_exit_requested()) {
     return HotkeyAction::Exit;
@@ -629,53 +610,6 @@ std::optional<HotkeyAction> poll_hotkey_action() {
     return std::nullopt;
   }
   return id_to_hotkey_action(*hotkey_id);
-}
-
-std::vector<size_t> get_save_layout_target_monitor_indices(
-    const winapi::NotificationAreaSaveLayoutRequest& request, size_t monitor_count) {
-  std::vector<size_t> result;
-  switch (request.kind) {
-  case winapi::NotificationAreaSaveLayoutRequestKind::Monitor:
-    if (request.monitor_index < monitor_count) {
-      result.push_back(request.monitor_index);
-    }
-    break;
-  case winapi::NotificationAreaSaveLayoutRequestKind::All:
-    result.reserve(monitor_count);
-    for (size_t i = 0; i < monitor_count; ++i) {
-      result.push_back(i);
-    }
-    break;
-  }
-  return result;
-}
-
-std::string get_monitor_toast_name(const winapi::MonitorInfo& monitor, size_t monitor_index) {
-  if (!monitor.deviceName.empty()) {
-    return monitor.deviceName;
-  }
-  return "Monitor " + std::to_string(monitor_index);
-}
-
-bool reload_provider_after_save(GlobalOptionsProvider& provider) {
-  if (!provider.configPath.has_value()) {
-    return false;
-  }
-
-  auto result = read_options_toml(*provider.configPath);
-  if (!result.has_value()) {
-    spdlog::error("Failed to reload config after saving layout: {}", result.error());
-    return false;
-  }
-
-  provider.options = std::move(result.value());
-  std::error_code error;
-  auto current_modified = std::filesystem::last_write_time(*provider.configPath, error);
-  if (!error) {
-    provider.lastModified = current_modified;
-  }
-  provider.nextConfigRefreshCheck = std::chrono::steady_clock::time_point::min();
-  return true;
 }
 
 bool reload_provider_after_ignore_config_edit(GlobalOptionsProvider& provider) {
@@ -712,95 +646,9 @@ void handle_ignore_config_changed_request(GlobalOptionsProvider& provider, Toast
     return;
   }
 
-  mark_all_desktops_for_layout_reapply(multi_engine);
+  mark_all_desktops_for_retile(multi_engine);
   toast.show("Ignore rules updated");
   spdlog::info("Reloaded ignore rules after notification-area dialog edit");
-}
-
-template <typename DesktopId>
-void handle_save_layout_request(
-    const winapi::NotificationAreaSaveLayoutRequest& request, GlobalOptionsProvider& provider,
-    const std::vector<winapi::MonitorInfo>& monitors, const Engine& engine, ToastState& toast,
-    MultiEngine<LoopDesktopData, DesktopId>& multi_engine) {
-  if (!provider.configPath.has_value() || provider.configPath->empty()) {
-    toast.show("No config file active");
-    spdlog::warn("Save layout requested without an active config file");
-    return;
-  }
-
-  auto target_indices = get_save_layout_target_monitor_indices(request, monitors.size());
-  if (target_indices.empty()) {
-    toast.show("No active layout");
-    spdlog::warn("Save layout requested for an unavailable monitor");
-    return;
-  }
-
-  std::vector<MonitorLayoutRuleUpdate> updates;
-  updates.reserve(target_indices.size());
-  size_t skipped_small_layouts = 0;
-  for (size_t monitor_index : target_indices) {
-    if (monitor_index >= engine.system.clusters.size()) {
-      if (request.kind == winapi::NotificationAreaSaveLayoutRequestKind::Monitor) {
-        toast.show("No active layout");
-      }
-      spdlog::warn("Cannot save layout for monitor {}: cluster is unavailable", monitor_index);
-      continue;
-    }
-
-    auto rule = build_layout_rule_from_cluster(engine.system.clusters[monitor_index]);
-    if (!rule.has_value()) {
-      if (rule.error() == "Need at least 2 tiled windows") {
-        ++skipped_small_layouts;
-        if (request.kind == winapi::NotificationAreaSaveLayoutRequestKind::Monitor) {
-          toast.show("Need at least 2 tiled windows");
-          spdlog::info("Cannot save layout for monitor {}: {}", monitor_index, rule.error());
-          return;
-        }
-        continue;
-      }
-
-      toast.show("Failed to save layout");
-      spdlog::error("Cannot save layout for monitor {}: {}", monitor_index, rule.error());
-      return;
-    }
-
-    updates.push_back({monitor_index, monitors[monitor_index], std::move(*rule)});
-  }
-
-  if (updates.empty()) {
-    if (skipped_small_layouts > 0) {
-      toast.show("Need at least 2 tiled windows");
-    } else {
-      toast.show("No active layout");
-    }
-    return;
-  }
-
-  auto save_result = save_monitor_layout_rules_to_config(*provider.configPath, monitors, updates);
-  if (!save_result.has_value()) {
-    toast.show("Failed to save layout");
-    spdlog::error("Failed to save layout rules to {}: {}", provider.configPath->string(),
-                  save_result.error());
-    return;
-  }
-
-  if (!reload_provider_after_save(provider)) {
-    toast.show("Failed to save layout");
-    return;
-  }
-
-  mark_all_desktops_for_layout_reapply(multi_engine);
-  if (request.kind == winapi::NotificationAreaSaveLayoutRequestKind::Monitor &&
-      updates.size() == 1) {
-    toast.show("Saved layout for " +
-               get_monitor_toast_name(updates[0].monitor, updates[0].monitor_index));
-  } else {
-    toast.show("Saved layouts for " + std::to_string(save_result->saved_monitor_count) +
-               " monitors");
-  }
-
-  spdlog::info("Saved layout rules for {} monitor(s) to {}", save_result->saved_monitor_count,
-               provider.configPath->string());
 }
 
 [[nodiscard]] std::optional<size_t>
@@ -1038,8 +886,6 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                                          options.visualizationOptions.renderOptions, input_state,
                                          input_handles);
     filter_session_floating_windows_from_input_state(floating_state, input_state);
-    winapi::set_notification_area_save_layout_monitors(
-        make_notification_area_save_layout_monitors(input_state));
     perf.record_stage(LoopPerfStage::GatherInput, std::chrono::steady_clock::now() - gather_start);
 
     // Virtual desktop handling via desktop_id from managed windows
@@ -1175,7 +1021,7 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     // Check for config file changes and hot-reload
     if (handle_config_refresh(provider, toast)) {
-      mark_all_desktops_for_layout_reapply(multi_engine);
+      mark_all_desktops_for_retile(multi_engine);
     }
     resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
 
@@ -1190,13 +1036,6 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                         std::chrono::steady_clock::now() - updated_geometry_start);
       spdlog::debug("=== Updated Tile Layout After Monitor Change ===");
       print_tile_layout(engine.system, geometries);
-    }
-
-    auto save_layout_request = winapi::consume_notification_area_save_layout_request();
-    if (save_layout_request.has_value()) {
-      handle_save_layout_request(*save_layout_request, provider, monitors, engine, toast,
-                                 multi_engine);
-      resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
     }
 
     auto build_frame_input_start = std::chrono::steady_clock::now();
@@ -1281,7 +1120,6 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
     current_desktop.data.has_completed_initial_tile_pass =
         frame_output.has_completed_initial_tile_pass;
-    current_desktop.data.reapply_layout_templates = false;
     geometries = std::move(frame_output.geometries);
 
     // Render using foreground observed after applying effects, not the pre-focus input snapshot.

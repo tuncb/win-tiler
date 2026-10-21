@@ -17,10 +17,6 @@ void extract_managed_window_states_from_input_into(
 
 [[nodiscard]] ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode);
 
-[[nodiscard]] ClusterTilingOptions
-resolve_monitor_tiling_options(const GlobalOptions& options, const winapi::MonitorInfo& monitor,
-                               size_t monitor_index);
-
 void resolve_cluster_tiling_options_into(const std::vector<winapi::MonitorInfo>& monitors,
                                          const GlobalOptions& options,
                                          std::vector<ClusterTilingOptions>& cluster_options);

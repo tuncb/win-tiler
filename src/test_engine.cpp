@@ -3,10 +3,8 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
-#include <memory>
 
 #include "engine.h"
-#include "save_layout.h"
 
 using namespace wintiler;
 using namespace wintiler::ctrl;
@@ -59,39 +57,6 @@ Engine create_two_window_engine() {
       {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}}};
   engine.init(infos);
   return engine;
-}
-
-LayoutRule create_two_window_vertical_layout_rule(float ratio) {
-  LayoutRule rule;
-  rule.window_count = 2;
-  rule.tree.split_dir = LayoutSplitDir::Vertical;
-  rule.tree.split_ratio = ratio;
-  return rule;
-}
-
-LayoutOptions create_two_window_vertical_layout_options(float ratio) {
-  LayoutOptions options;
-  options.rules.push_back(create_two_window_vertical_layout_rule(ratio));
-  return options;
-}
-
-LayoutRule create_three_window_vertical_right_horizontal_layout_rule() {
-  LayoutRule rule;
-  rule.window_count = 3;
-  rule.tree.split_dir = LayoutSplitDir::Vertical;
-  rule.tree.split_ratio = 0.5f;
-
-  auto right = std::make_shared<LayoutTreeNode>();
-  right->split_dir = LayoutSplitDir::Horizontal;
-  right->split_ratio = 0.5f;
-  rule.tree.second = right;
-  return rule;
-}
-
-LayoutOptions create_three_window_vertical_right_horizontal_layout_options() {
-  LayoutOptions options;
-  options.rules.push_back(create_three_window_vertical_right_horizontal_layout_rule());
-  return options;
 }
 
 Engine create_three_window_engine() {
@@ -214,61 +179,6 @@ get_leaf_center_from_geometries(const Engine& engine,
 
 } // namespace
 
-TEST_SUITE("Save layout rule serialization") {
-  TEST_CASE("builds layout rule from cluster split tree without window ids") {
-    Cluster cluster;
-    CellData root;
-    root.split_dir = SplitDir::Vertical;
-    root.split_ratio = 0.30f;
-    int root_index = cluster.tree.add_node(root);
-
-    CellData first_leaf;
-    first_leaf.leaf_id = 101;
-    int first_index = cluster.tree.add_node(first_leaf, root_index);
-
-    CellData second_split;
-    second_split.split_dir = SplitDir::Horizontal;
-    second_split.split_ratio = 0.60f;
-    int second_index = cluster.tree.add_node(second_split, root_index);
-    cluster.tree.set_children(root_index, first_index, second_index);
-
-    CellData second_first_leaf;
-    second_first_leaf.leaf_id = 202;
-    int second_first_index = cluster.tree.add_node(second_first_leaf, second_index);
-
-    CellData second_second_leaf;
-    second_second_leaf.leaf_id = 303;
-    int second_second_index = cluster.tree.add_node(second_second_leaf, second_index);
-    cluster.tree.set_children(second_index, second_first_index, second_second_index);
-
-    auto rule = build_layout_rule_from_cluster(cluster);
-
-    REQUIRE(rule.has_value());
-    CHECK(rule->window_count == 3);
-    CHECK(count_layout_windows(rule->tree) == 3);
-    CHECK(rule->tree.split_dir == LayoutSplitDir::Vertical);
-    CHECK(rule->tree.split_ratio == doctest::Approx(0.30f));
-    CHECK_FALSE(rule->tree.first);
-    REQUIRE(rule->tree.second);
-    CHECK(rule->tree.second->split_dir == LayoutSplitDir::Horizontal);
-    CHECK(rule->tree.second->split_ratio == doctest::Approx(0.60f));
-    CHECK_FALSE(rule->tree.second->first);
-    CHECK_FALSE(rule->tree.second->second);
-  }
-
-  TEST_CASE("rejects single window cluster") {
-    Cluster cluster;
-    CellData leaf;
-    leaf.leaf_id = 101;
-    cluster.tree.add_node(leaf);
-
-    auto rule = build_layout_rule_from_cluster(cluster);
-
-    CHECK(!rule.has_value());
-    CHECK(rule.error() == "Need at least 2 tiled windows");
-  }
-}
-
 // =============================================================================
 // Engine::init Tests
 // =============================================================================
@@ -318,36 +228,6 @@ TEST_SUITE("Engine::init") {
     CHECK(engine.system.clusters[0].window_width == 400.0f);
   }
 
-  TEST_CASE("init applies configured layout rule for matching window count") {
-    Engine engine;
-    std::vector<ClusterInitInfo> infos = {{0.0f,
-                                           0.0f,
-                                           800.0f,
-                                           600.0f,
-                                           0.0f,
-                                           0.0f,
-                                           800.0f,
-                                           600.0f,
-                                           {1, 2},
-                                           create_two_window_vertical_layout_rule(0.30f)}};
-
-    engine.init(infos);
-
-    const auto& cluster = engine.system.clusters[0];
-    REQUIRE(cluster.tree.size() == 3);
-    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
-    CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.30f));
-
-    auto geometries = engine.compute_geometries(0.0f, 0.0f, 0.0f);
-    auto first_leaf = find_cluster_leaf_index(cluster, 1);
-    auto second_leaf = find_cluster_leaf_index(cluster, 2);
-    REQUIRE(first_leaf.has_value());
-    REQUIRE(second_leaf.has_value());
-
-    CHECK(geometries[0][static_cast<size_t>(*first_leaf)].width == doctest::Approx(240.0f));
-    CHECK(geometries[0][static_cast<size_t>(*second_leaf)].x == doctest::Approx(240.0f));
-    CHECK(geometries[0][static_cast<size_t>(*second_leaf)].width == doctest::Approx(560.0f));
-  }
 }
 
 // =============================================================================
@@ -758,58 +638,6 @@ TEST_SUITE("Engine::update") {
     CHECK_FALSE(engine.system.clusters[1].tree.empty());
   }
 
-  TEST_CASE("applies configured layout rule when topology changes") {
-    Engine engine = create_single_cluster_engine();
-    LayoutOptions layout_options = create_two_window_vertical_layout_options(0.30f);
-
-    std::vector<ClusterCellUpdateInfo> updates = {{{1, 2}, false}};
-
-    UpdateResult result = engine.update(updates, std::nullopt, &layout_options);
-
-    CHECK(result.topology_changed == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-
-    const auto& cluster = engine.system.clusters[0];
-    REQUIRE(cluster.tree.size() == 3);
-    CHECK(cluster.tree[0].split_dir == SplitDir::Vertical);
-    CHECK(cluster.tree[0].split_ratio == doctest::Approx(0.30f));
-  }
-
-  TEST_CASE("layout rule rebuild preserves existing leaf order before appending new windows") {
-    Engine engine;
-    std::vector<ClusterInitInfo> infos = {
-        {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {40, 30, 10, 20}}};
-    engine.init(infos);
-
-    LayoutOptions layout_options = create_three_window_vertical_right_horizontal_layout_options();
-    std::vector<ClusterCellUpdateInfo> updates = {{{10, 20, 30}, false}};
-
-    UpdateResult result = engine.update(updates, std::nullopt, &layout_options);
-
-    CHECK(result.topology_changed == true);
-    CHECK(result.layout_changed == true);
-    CHECK(result.apply_tiles == true);
-
-    const auto& cluster = engine.system.clusters[0];
-    REQUIRE(cluster.tree.size() == 5);
-
-    auto left_child = cluster.tree.get_first_child(0);
-    auto right_child = cluster.tree.get_second_child(0);
-    REQUIRE(left_child.has_value());
-    REQUIRE(right_child.has_value());
-    REQUIRE(cluster.tree[*left_child].leaf_id.has_value());
-    CHECK(*cluster.tree[*left_child].leaf_id == 30);
-
-    auto right_top_child = cluster.tree.get_first_child(*right_child);
-    auto right_bottom_child = cluster.tree.get_second_child(*right_child);
-    REQUIRE(right_top_child.has_value());
-    REQUIRE(right_bottom_child.has_value());
-    REQUIRE(cluster.tree[*right_top_child].leaf_id.has_value());
-    REQUIRE(cluster.tree[*right_bottom_child].leaf_id.has_value());
-    CHECK(*cluster.tree[*right_top_child].leaf_id == 10);
-    CHECK(*cluster.tree[*right_bottom_child].leaf_id == 20);
-  }
 }
 
 // =============================================================================
@@ -817,48 +645,31 @@ TEST_SUITE("Engine::update") {
 // =============================================================================
 
 TEST_SUITE("Engine::process_frame") {
-  TEST_CASE("reapplies configured layout templates when requested") {
+  TEST_CASE("window count changes and a forced retile preserve manual split ratios") {
     Engine engine = create_two_window_engine();
-    LayoutOptions layout_options = create_two_window_vertical_layout_options(0.30f);
+    engine.system.clusters[0].tree[0].split_ratio = 0.3f;
+    REQUIRE(engine.select_leaf(2));
 
     EngineFrameInput input;
-    input.cluster_updates = build_current_cluster_updates(engine);
     input.has_completed_initial_tile_pass = true;
-    input.reapply_layout_templates = true;
-    input.layout_options = &layout_options;
-    input.gap_h = 0.0f;
-    input.gap_v = 0.0f;
+    input.update_hover_selection = false;
+    input.cluster_updates = {{{1, 2, 3}, false}};
+    auto output = engine.process_frame(input);
+    REQUIRE(output.topology_changed);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.3f));
+    REQUIRE(engine.find_leaf(1).has_value());
+    CHECK(engine.system.clusters[0].tree.get_parent(engine.find_leaf(1)->cell_index) == 0);
 
-    EngineFrameOutput output = engine.process_frame(input);
+    input.cluster_updates = {{{1, 2}, false}};
+    output = engine.process_frame(input);
+    REQUIRE(output.topology_changed);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.3f));
 
-    CHECK(output.layout_changed == true);
-    CHECK(output.apply_tiles == true);
-    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.30f));
-  }
-
-  TEST_CASE("reapplies per-cluster layout templates when requested") {
-    Engine engine;
-    std::vector<ClusterInitInfo> infos = {
-        {0.0f, 0.0f, 800.0f, 600.0f, 0.0f, 0.0f, 800.0f, 600.0f, {1, 2}},
-        {800.0f, 0.0f, 800.0f, 600.0f, 800.0f, 0.0f, 800.0f, 600.0f, {3, 4}}};
-    engine.init(infos);
-
-    std::vector<ClusterTilingOptions> cluster_options(2);
-    cluster_options[0].layoutOptions = create_two_window_vertical_layout_options(0.30f);
-    cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.70f);
-
-    EngineFrameInput input;
-    input.cluster_updates = build_current_cluster_updates(engine);
-    input.has_completed_initial_tile_pass = true;
-    input.reapply_layout_templates = true;
-    input.cluster_options = cluster_options;
-
-    EngineFrameOutput output = engine.process_frame(input);
-
-    CHECK(output.layout_changed == true);
-    CHECK(output.apply_tiles == true);
-    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.30f));
-    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.70f));
+    input.has_completed_initial_tile_pass = false;
+    output = engine.process_frame(input);
+    CHECK(output.apply_tiles);
+    CHECK_FALSE(output.topology_changed);
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.3f));
   }
 
   TEST_CASE("exit hotkey returns loop control and final geometries") {
@@ -1392,7 +1203,7 @@ TEST_SUITE("Engine::process_frame") {
     CHECK(engine.system.clusters[1].tree.empty());
   }
 
-  TEST_CASE("completed drag split reapplies per-cluster layout rule") {
+  TEST_CASE("completed drag split preserves the existing split and uses the drop target") {
     Engine engine = create_test_engine();
     auto geoms = compute_default_geometries(engine);
 
@@ -1400,8 +1211,6 @@ TEST_SUITE("Engine::process_frame") {
     const auto& target_rect = geoms[0][2];
 
     std::vector<ClusterTilingOptions> cluster_options(2);
-    cluster_options[0].layoutOptions =
-        create_three_window_vertical_right_horizontal_layout_options();
 
     EngineFrameInput input;
     input.cluster_updates = {{{1, 2, 3}, false}, {{}, false}};
@@ -2290,7 +2099,7 @@ TEST_SUITE("Engine::process_action - CycleSplitMode") {
   TEST_CASE("dwindle split mode uses split width multiplier") {
     Engine engine;
     std::vector<ClusterInitInfo> infos = {
-        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2, 3}, std::nullopt, 0.10f}};
+        {0.0f, 0.0f, 1000.0f, 400.0f, 0.0f, 0.0f, 1000.0f, 400.0f, {1, 2, 3}, 0.10f}};
     engine.init(infos, SplitMode::Dwindle);
 
     REQUIRE(engine.system.clusters.size() == 1);
@@ -2734,7 +2543,7 @@ TEST_SUITE("Automatic split targets") {
     }
   }
 
-  TEST_CASE("closed remembered focus is cleared and monitor profiles select target policy") {
+  TEST_CASE("closed remembered focus is cleared before selecting the target policy") {
     Engine engine = create_test_engine();
     EngineFrameInput input;
     input.cluster_options.resize(2);
@@ -2759,13 +2568,12 @@ TEST_SUITE("Automatic split targets") {
     CHECK_FALSE(engine.system.focused_leaf_id.has_value());
   }
 
-  TEST_CASE("matching layout rules override largest and explicit moves retain their target") {
+  TEST_CASE("largest uses equal splits and explicit moves retain their target") {
     Engine engine = create_single_cluster_engine();
-    auto options = create_two_window_vertical_layout_options(0.3f);
+    LayoutOptions options;
     options.split_target = LayoutSplitTarget::Largest;
     CHECK(engine.update({{{1, 2}, false}}, std::nullopt, &options).topology_changed);
-    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.3f));
-    options.rules.clear();
+    CHECK(engine.system.clusters[0].tree[0].split_ratio == doctest::Approx(0.5f));
     CHECK(engine.update({{{1, 2, 3}, false}}, std::nullopt, &options).topology_changed);
     auto destination = engine.find_leaf(1);
     REQUIRE(destination.has_value());
@@ -3001,17 +2809,16 @@ TEST_SUITE("Largest split target across monitors") {
           engine.system.clusters[1].tree.get_parent(engine.find_leaf(5)->cell_index));
   }
 
-  TEST_CASE("destination layout rules override splitting and insertion exits zen") {
+  TEST_CASE("insertion splits the destination equally and exits zen") {
     auto engine = create_test_engine();
     auto input = global_largest_input();
     input.foreground_leaf_id = 1;
-    input.cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.3f);
     engine.system.clusters[1].zen_cell_index = engine.find_leaf(3)->cell_index;
     input.cluster_updates[0].leaf_ids.push_back(4);
     CHECK(engine.process_frame(input).topology_changed);
     REQUIRE(engine.find_leaf(4).has_value());
     CHECK(engine.find_leaf(4)->cluster_index == 1);
-    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.3f));
+    CHECK(engine.system.clusters[1].tree[0].split_ratio == doctest::Approx(0.5f));
     CHECK_FALSE(engine.system.clusters[1].zen_cell_index.has_value());
   }
 
@@ -3030,21 +2837,6 @@ TEST_SUITE("Largest split target across monitors") {
       REQUIRE(engine.find_leaf(4).has_value());
       CHECK(engine.find_leaf(4)->cluster_index == (local_focus ? 0 : 1));
     }
-  }
-
-  TEST_CASE("batch reevaluates area after destination layout rules") {
-    auto engine = create_test_engine();
-    auto input = global_largest_input();
-    input.foreground_leaf_id = 1;
-    input.cluster_options[1].layoutOptions = create_two_window_vertical_layout_options(0.9f);
-    input.cluster_updates[0].leaf_ids = {1, 2, 4, 5};
-    CHECK(engine.process_frame(input).topology_changed);
-    REQUIRE(engine.find_leaf(4).has_value());
-    REQUIRE(engine.find_leaf(5).has_value());
-    CHECK(engine.find_leaf(4)->cluster_index == 1);
-    CHECK(engine.find_leaf(5)->cluster_index == 1);
-    CHECK(engine.system.clusters[1].tree.get_parent(engine.find_leaf(3)->cell_index) ==
-          engine.system.clusters[1].tree.get_parent(engine.find_leaf(5)->cell_index));
   }
 
   TEST_CASE("explicit redirection takes precedence over global policy") {
@@ -3350,17 +3142,12 @@ TEST_SUITE("Directional movement") {
     }
   }
 
-  TEST_CASE("explicit insertion orientation survives layout templates and the following frame") {
+  TEST_CASE("explicit insertion orientation survives the following frame") {
     Engine engine = create_test_engine();
     REQUIRE(engine.select_leaf(2));
     EngineFrameInput input;
     input.initial_movement_mode = MovementMode::Insert;
     input.cluster_options.resize(2);
-    LayoutOptions layout;
-    auto rule = create_two_window_vertical_layout_rule(0.3f);
-    rule.tree.split_dir = LayoutSplitDir::Horizontal;
-    layout.rules.push_back(rule);
-    input.cluster_options[1].layoutOptions = layout;
     input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
     input.hotkey_action = HotkeyAction::MoveRight;
     input.has_completed_initial_tile_pass = true;
@@ -3490,7 +3277,6 @@ TEST_SUITE("minimum size layout") {
   TEST_CASE("nested subtree minimums propagate both axes including gaps") {
     Engine engine;
     ClusterInitInfo info{0, 0, 800, 600, 0, 0, 800, 600, {1, 2, 3}};
-    info.initial_layout_rule = create_three_window_vertical_right_horizontal_layout_rule();
     engine.init({info});
     EngineFrameInput input;
     input.cluster_updates = build_current_cluster_updates(engine);
@@ -3549,11 +3335,7 @@ TEST_SUITE("minimum size layout") {
       const float width = horizontal ? 600.0f : 1200.0f;
       const float height = horizontal ? 1200.0f : 600.0f;
       ClusterInitInfo info{0, 0, width, height, 0, 0, width, height, {1, 2, 3}};
-      auto rule = create_three_window_vertical_right_horizontal_layout_rule();
-      rule.tree.split_dir = horizontal ? LayoutSplitDir::Horizontal : LayoutSplitDir::Vertical;
-      rule.tree.second->split_dir = rule.tree.split_dir;
-      info.initial_layout_rule = rule;
-      engine.init({info});
+      engine.init({info}, horizontal ? SplitMode::Horizontal : SplitMode::Vertical);
       EngineFrameInput input;
       input.cluster_updates = build_current_cluster_updates(engine);
       input.has_completed_initial_tile_pass = true;

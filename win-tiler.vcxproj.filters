@@ -24,9 +24,6 @@
     <ClCompile Include="src\runtime_support.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\save_layout.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\loop.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -87,9 +84,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\runtime_support.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\save_layout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\loop.h">
