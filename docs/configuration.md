@@ -149,7 +149,7 @@ Directional keyboard insertion instead uses the direction pressed.
 
 - `pointer` (default): use the monitor and cell under the pointer, preserving existing behavior.
 - `focused`: split the last focused tiled window, independently of the pointer.
-- `largest`: split the cell with the largest area on the last focused tiled window's monitor.
+- `largest`: split the cell with the largest area on the active monitor, or fill it if empty.
 - `largest_all_monitors`: choose the largest cell or empty monitor work area across eligible
   monitors on the current virtual desktop. Fullscreen monitors are excluded; ties prefer the
   focused monitor, then monitor order and tree order. Each arrival recalculates the target.
@@ -159,9 +159,20 @@ For example, set `split_target = "largest"` with `split_mode = "dwindle"` for au
 placement into large cells with an aspect-based split direction. `vertical` and `horizontal`
 also work with any target policy.
 
-Focused and largest placement remember tiled focus when a new window or an untiled window
-takes OS focus. If no tiled focus is known, windows keep their incoming monitor; focused
-placement falls back to the first leaf there. Hovering does not affect either policy.
+The active monitor is tracked independently of the last focused tiled window. Moving or
+clicking the pointer activates its monitor, including empty desktop space and the taskbar.
+A later focus change to an existing tiled window (such as Alt+Tab) or keyboard navigation
+activates that window's monitor. A stationary pointer and win-tiler's own cursor warps do
+not override it. At startup, existing tiled focus initializes the active monitor, falling
+back to the pointer. With neither available, `largest` keeps the incoming monitor.
+
+A new window taking OS focus does not change the active monitor until it has been placed.
+Untiled windows such as launchers and dialogs preserve the active monitor. Existing windows
+remain on their monitors during startup and reset; `largest` only redirects new arrivals.
+
+`focused` continues to remember the last focused tiled window even when a new or untiled
+window takes OS focus. With no remembered tiled focus, it keeps the incoming monitor and
+splits the first leaf there. Pointer activity alone does not override its remembered target.
 
 Largest uses the allocated cell area before gaps or zen expansion, including manually adjusted
 split ratios. Equal areas use first-child tree traversal order. Each new split is 50/50, and

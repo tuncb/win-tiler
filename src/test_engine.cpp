@@ -2525,7 +2525,7 @@ TEST_SUITE("Automatic split targets") {
     CHECK(rect.width * rect.height == doctest::Approx(100000.0f));
   }
 
-  TEST_CASE("without known focus non-pointer targets retain incoming monitor") {
+  TEST_CASE("without a known target non-pointer policies retain incoming monitor") {
     for (auto target : {LayoutSplitTarget::Focused, LayoutSplitTarget::Largest}) {
       Engine engine = create_test_engine();
       LayoutOptions options;
@@ -2533,7 +2533,9 @@ TEST_SUITE("Automatic split targets") {
       EngineFrameInput input;
       input.layout_options = &options;
       input.cluster_updates = {{{1, 2}, false}, {{3, 4}, false}};
-      input.cursor_pos = Point{10, 10};
+      if (target == LayoutSplitTarget::Focused) {
+        input.cursor_pos = Point{10, 10};
+      }
       input.foreground_leaf_id = 4;
       auto output = engine.process_frame(input);
       CHECK(output.topology_changed);
@@ -2584,6 +2586,243 @@ TEST_SUITE("Automatic split targets") {
     REQUIRE(third.has_value());
     CHECK(engine.system.clusters[0].tree.get_parent(first->cell_index) ==
           engine.system.clusters[0].tree.get_parent(third->cell_index));
+  }
+}
+
+TEST_SUITE("Largest split target on the active monitor") {
+  EngineFrameInput active_monitor_input() {
+    EngineFrameInput input;
+    input.cluster_options.resize(2);
+    for (auto& options : input.cluster_options) {
+      options.layoutOptions.split_target = LayoutSplitTarget::Largest;
+      options.gapOptions = {0, 0};
+    }
+    input.cluster_updates = {{{1, 2}, false}, {{3}, false}};
+    input.cursor_pos = Point{100, 100};
+    input.foreground_leaf_id = 1;
+    input.has_completed_initial_tile_pass = true;
+    return input;
+  }
+
+  TEST_CASE("pointer movement activates empty and occupied monitors including the taskbar") {
+    for (bool empty : {false, true}) {
+      for (long y : {100L, 580L}) {
+        auto engine = create_test_engine_with_secondary_taskbar();
+        auto input = active_monitor_input();
+        if (empty) {
+          input.cluster_updates[1].leaf_ids.clear();
+          REQUIRE(engine.update(input.cluster_updates).topology_changed);
+        }
+        CHECK_FALSE(engine.process_frame(input).topology_changed);
+        CHECK(engine.active_cluster_index == 0);
+        input.cursor_pos = Point{1000, y};
+        CHECK_FALSE(engine.process_frame(input).topology_changed);
+        CHECK(engine.active_cluster_index == 1);
+        CHECK(engine.system.focused_leaf_id == 1);
+        // The old tiled window still owns OS focus while the pointer is on the taskbar.
+        CHECK_FALSE(engine.process_frame(input).topology_changed);
+        CHECK(engine.active_cluster_index == 1);
+        input.cluster_updates[0].leaf_ids.push_back(4);
+        input.foreground_leaf_id = 4;
+        auto output = engine.process_frame(input);
+        REQUIRE(engine.find_leaf(4).has_value());
+        CHECK(engine.find_leaf(4)->cluster_index == 1);
+        CHECK(engine.active_cluster_index == 1);
+        if (empty) {
+          const auto& rect = output.geometries[1][engine.find_leaf(4)->cell_index];
+          CHECK(rect.width == doctest::Approx(800));
+          CHECK(rect.height == doctest::Approx(560));
+        }
+        // Report the applied placement and cursor warp on the next poll.
+        input.cluster_updates[0].leaf_ids = {1, 2};
+        input.cluster_updates[1].leaf_ids.push_back(4);
+        input.cursor_pos = output.cursor_pos;
+        CHECK_FALSE(engine.process_frame(input).topology_changed);
+        CHECK(engine.active_cluster_index == 1);
+      }
+    }
+  }
+
+  TEST_CASE("keyboard focus overrides an idle pointer and a stationary click reactivates it") {
+    for (bool click : {false, true}) {
+      auto engine = create_engine_with_empty_second_cluster();
+      auto input = active_monitor_input();
+      input.cluster_updates[1].leaf_ids.clear();
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+      input.cursor_pos = Point{1000, 580};
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+      CHECK(engine.active_cluster_index == 1);
+      input.foreground_leaf_id = 2; // Alt+Tab, with the pointer still on the empty monitor.
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+      CHECK(engine.active_cluster_index == 0);
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+      CHECK(engine.active_cluster_index == 0);
+      input.pointer_button_pressed = click;
+      CHECK_FALSE(engine.process_frame(input).topology_changed);
+      CHECK(engine.active_cluster_index == (click ? 1 : 0));
+      input.pointer_button_pressed = false;
+      input.foreground_leaf_id = 4;
+      input.cluster_updates[0].leaf_ids.push_back(4);
+      CHECK(engine.process_frame(input).topology_changed);
+      REQUIRE(engine.find_leaf(4).has_value());
+      CHECK(engine.find_leaf(4)->cluster_index == (click ? 1 : 0));
+    }
+  }
+
+  TEST_CASE("untiled focus and invalid pointer samples retain the active monitor") {
+    auto engine = create_engine_with_empty_second_cluster();
+    auto input = active_monitor_input();
+    input.cluster_updates[1].leaf_ids.clear();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cursor_pos = Point{1000, 580};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.foreground_leaf_id = 99; // Taskbar, launcher, or untiled dialog.
+    input.cursor_pos.reset();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.cursor_pos = Point{-100, -100}; // Outside every monitor.
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("topology cursor warps do not activate another monitor") {
+    auto engine = create_test_engine_with_secondary_taskbar();
+    auto input = active_monitor_input();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cursor_pos = Point{1000, 580};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.select_leaf(2));
+    input.cluster_updates[0].leaf_ids = {1};
+    auto removed = engine.process_frame(input);
+    REQUIRE(removed.cursor_pos.has_value());
+    CHECK(removed.cursor_pos->x < 800);
+    CHECK(engine.active_cluster_index == 1);
+    input.cursor_pos = removed.cursor_pos;
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("navigation activates its destination before inserting simultaneous arrivals") {
+    auto engine = create_test_engine();
+    auto input = active_monitor_input();
+    input.cursor_pos = Point{700, 300};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.select_leaf(2));
+    input.hotkey_action = HotkeyAction::NavigateRight;
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    auto output = engine.process_frame(input);
+    CHECK(output.focus_leaf_id == 3);
+    CHECK(engine.active_cluster_index == 1);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("first pointer sample supplies a monitor when there is no tiled focus") {
+    auto engine = create_test_engine();
+    auto input = active_monitor_input();
+    input.foreground_leaf_id = 4; // Not managed until this frame's insertion.
+    input.cluster_updates[1].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+  }
+
+  TEST_CASE("largest splits the largest local tile on the newly active monitor") {
+    Engine engine;
+    engine.init({{0, 0, 1600, 1000, 0, 0, 1600, 1000, {1, 2}},
+                 {1600, 0, 800, 560, 1600, 0, 800, 600, {3, 4, 5}}});
+    auto input = active_monitor_input();
+    input.cluster_updates[1].leaf_ids = {3, 4, 5};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cursor_pos = Point{2000, 580};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cluster_updates[0].leaf_ids.push_back(6);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(6).has_value());
+    REQUIRE(engine.find_leaf(3).has_value());
+    CHECK(engine.find_leaf(6)->cluster_index == 1);
+    const auto& tree = engine.system.clusters[1].tree;
+    CHECK(tree.get_parent(engine.find_leaf(6)->cell_index) ==
+          tree.get_parent(engine.find_leaf(3)->cell_index));
+  }
+
+  TEST_CASE("closing the last window leaves its empty monitor active") {
+    auto engine = create_test_engine();
+    auto input = active_monitor_input();
+    input.foreground_leaf_id = 3;
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.foreground_leaf_id.reset();
+    input.cluster_updates[1].leaf_ids.clear();
+    auto closed = engine.process_frame(input);
+    CHECK(closed.topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    if (closed.cursor_pos.has_value()) {
+      input.cursor_pos = closed.cursor_pos;
+    }
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("moving the foreground window externally activates its destination") {
+    auto engine = create_test_engine();
+    auto input = active_monitor_input();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cluster_updates = {{{2}, false}, {{1, 3}, false}};
+    auto moved = engine.process_frame(input);
+    CHECK(moved.topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.cursor_pos = moved.cursor_pos;
+    input.cluster_updates[0].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 1);
+  }
+
+  TEST_CASE("focused placement remains tied to its window despite active monitor changes") {
+    auto engine = create_engine_with_empty_second_cluster();
+    auto input = active_monitor_input();
+    for (auto& options : input.cluster_options) {
+      options.layoutOptions.split_target = LayoutSplitTarget::Focused;
+    }
+    input.cluster_updates[1].leaf_ids.clear();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cursor_pos = Point{1000, 580};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    input.foreground_leaf_id = 4;
+    input.cluster_updates[1].leaf_ids.push_back(4);
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
+  }
+
+  TEST_CASE("monitor reinitialization clears active monitor and input history") {
+    auto engine = create_test_engine();
+    auto input = active_monitor_input();
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    input.cursor_pos = Point{1000, 580};
+    CHECK_FALSE(engine.process_frame(input).topology_changed);
+    CHECK(engine.active_cluster_index == 1);
+    engine.init({{0, 0, 800, 600, 0, 0, 800, 600, {1}}});
+    CHECK_FALSE(engine.active_cluster_index.has_value());
+    CHECK_FALSE(engine.previous_foreground_leaf_id.has_value());
+    CHECK_FALSE(engine.previous_cursor_pos.has_value());
+    input.cluster_updates = {{{1, 4}, false}};
+    input.cursor_pos = Point{100, 100};
+    CHECK(engine.process_frame(input).topology_changed);
+    REQUIRE(engine.find_leaf(4).has_value());
+    CHECK(engine.find_leaf(4)->cluster_index == 0);
   }
 }
 

@@ -2258,6 +2258,8 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
   system = ctrl::create_system(infos, split_mode);
   previous_cursor_pos.reset();
+  previous_foreground_leaf_id.reset();
+  active_cluster_index.reset();
   previous_maximized_leaf_ids.assign(system.clusters.size(), std::nullopt);
   placement_correction_failures.clear();
   minimum_sizes.clear();
@@ -2378,7 +2380,39 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
   const bool pointer_moved = input.cursor_pos.has_value() &&
       (!previous_cursor_pos.has_value() || input.cursor_pos->x != previous_cursor_pos->x ||
        input.cursor_pos->y != previous_cursor_pos->y);
+  const bool observed_pointer_movement = previous_cursor_pos.has_value() && pointer_moved;
   previous_cursor_pos = input.cursor_pos;
+  const bool foreground_changed = input.foreground_leaf_id != previous_foreground_leaf_id;
+  const auto previous_foreground_cell = input.foreground_leaf_id.has_value()
+      ? find_leaf(*input.foreground_leaf_id) : std::nullopt;
+  previous_foreground_leaf_id = input.foreground_leaf_id;
+  if (active_cluster_index.has_value() &&
+      (*active_cluster_index < 0 ||
+       static_cast<size_t>(*active_cluster_index) >= system.clusters.size())) {
+    active_cluster_index.reset();
+  }
+  auto activate_leaf_monitor = [&](std::optional<size_t> leaf_id) {
+    if (leaf_id.has_value()) {
+      if (auto cell = find_leaf(*leaf_id)) {
+        active_cluster_index = cell->cluster_index;
+      }
+    }
+  };
+  // Only changes in existing tiled focus activate a monitor. A new window may already
+  // have OS focus on its incoming monitor; choose its destination before following it.
+  if (foreground_changed || !active_cluster_index.has_value()) {
+    activate_leaf_monitor(input.foreground_leaf_id);
+  }
+  // Real pointer activity wins over the sampled foreground in the same frame. A first
+  // cursor sample is only a fallback, and an idle pointer never undoes keyboard focus.
+  if (input.cursor_pos.has_value() &&
+      (observed_pointer_movement || input.pointer_button_pressed ||
+       !active_cluster_index.has_value())) {
+    if (auto hovered = find_cluster_at_global_point(
+            system, static_cast<float>(input.cursor_pos->x), static_cast<float>(input.cursor_pos->y))) {
+      active_cluster_index = static_cast<int>(*hovered);
+    }
+  }
   if (configured_movement_mode != input.initial_movement_mode) {
     configured_movement_mode = input.initial_movement_mode;
     movement_mode = input.initial_movement_mode;
@@ -2492,6 +2526,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
         output.toggle_verbose_logging || action_result.toggle_verbose_logging;
     if (action_result.focus_leaf_id.has_value()) {
       output.focus_leaf_id = action_result.focus_leaf_id;
+      activate_leaf_monitor(action_result.focus_leaf_id);
     }
     if (action_result.floating_leaf_id.has_value()) {
       output.floating_leaf_id = action_result.floating_leaf_id;
@@ -2534,7 +2569,9 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
         redirect_cluster_index = static_cast<int>(*hover_cluster_index);
       }
     }
-    if (split_target == LayoutSplitTarget::Focused || split_target == LayoutSplitTarget::Largest) {
+    if (split_target == LayoutSplitTarget::Largest) {
+      redirect_cluster_index = active_cluster_index;
+    } else if (split_target == LayoutSplitTarget::Focused) {
       redirect_cluster_index = focused_cluster_index;
     } else if (split_target == LayoutSplitTarget::Pointer && !redirect_cluster_index.has_value() &&
                system.selection.has_value()) {
@@ -2629,8 +2666,23 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
 
   output.geometries = ensure_geometries();
   remember_tiled_focus();
+  if (input.foreground_leaf_id.has_value()) {
+    if (auto cell = find_leaf(*input.foreground_leaf_id);
+        cell.has_value() &&
+        ((!previous_foreground_cell.has_value() && foreground_changed) ||
+         (previous_foreground_cell.has_value() &&
+          cell->cluster_index != previous_foreground_cell->cluster_index))) {
+      // Follow a newly placed foreground window or an explicit external monitor move.
+      active_cluster_index = cell->cluster_index;
+    }
+  }
+  if (drag_cursor_leaf_id.has_value()) {
+    activate_leaf_monitor(drag_cursor_leaf_id);
+  }
   if (output.focus_leaf_id.has_value() && find_leaf(*output.focus_leaf_id).has_value()) {
     system.focused_leaf_id = output.focus_leaf_id;
+    activate_leaf_monitor(output.focus_leaf_id);
+    previous_foreground_leaf_id = output.focus_leaf_id;
   }
   if (output.apply_tiles) {
     placement_correction_failures.clear();

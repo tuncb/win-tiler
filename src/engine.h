@@ -183,6 +183,8 @@ struct EngineFrameInput {
   std::optional<HotkeyAction> hotkey_action;
   std::optional<ctrl::Point> cursor_pos;
   std::optional<size_t> foreground_leaf_id;
+  // A button press since the last input poll, including clicks between polls.
+  bool pointer_button_pressed = false;
   // Top-level OS window under the pointer; may be outside the managed layout.
   std::optional<size_t> pointer_window_id;
   bool foreground_is_dialog = false;
@@ -236,6 +238,9 @@ struct Engine {
   MovementMode movement_mode = MovementMode::Swap;
   std::optional<MovementMode> configured_movement_mode;
   std::optional<ctrl::Point> previous_cursor_pos;
+  std::optional<size_t> previous_foreground_leaf_id;
+  // Independent of tiled focus: an empty monitor or its taskbar can be active.
+  std::optional<int> active_cluster_index;
   std::vector<std::optional<size_t>> previous_maximized_leaf_ids;
   std::vector<PlacementCorrectionFailure> placement_correction_failures;
   std::unordered_map<size_t, WindowSizeConstraint> minimum_sizes;

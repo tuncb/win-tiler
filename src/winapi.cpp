@@ -1865,10 +1865,12 @@ void process_pending_non_hotkey_messages() {
 }
 
 bool wait_for_messages_or_timeout(unsigned long timeout_ms) {
+  // Drain raw pointer events on the next poll rather than running the tiling loop at
+  // the mouse's polling rate. Button presses remain queued even for short clicks.
   DWORD result =
       MsgWaitForMultipleObjectsEx(0,       // No handles to wait on
                                   nullptr, // No handle array
-                                  timeout_ms, QS_HOTKEY | QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+                                  timeout_ms, QS_ALLINPUT & ~QS_RAWINPUT, MWMO_INPUTAVAILABLE);
   return result == WAIT_OBJECT_0; // Messages available
 }
 
@@ -1953,6 +1955,8 @@ static const GUID GUID_CONSOLE_DISPLAY_STATE_LOCAL = {
 // Hidden window for receiving notifications
 constexpr int NO_NOTIFICATION_AREA_HOTKEY_ACTION = -1;
 HWND g_notification_hwnd = nullptr;
+std::atomic<bool> g_pointer_button_pressed{false};
+bool g_pointer_input_registered = false;
 HPOWERNOTIFY g_power_notify_handle = nullptr;
 NOTIFYICONDATAW g_notification_area_icon = {};
 bool g_notification_area_icon_added = false;
@@ -3156,6 +3160,23 @@ LRESULT CALLBACK notification_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
   }
 
   switch (msg) {
+  case WM_INPUT: {
+    RAWINPUT input{};
+    UINT size = sizeof(input);
+    const UINT read = GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input,
+                                      &size, sizeof(RAWINPUTHEADER));
+    if (read == static_cast<UINT>(-1)) {
+      spdlog::error("Failed to read pointer input, error={}", GetLastError());
+    } else if (input.header.dwType == RIM_TYPEMOUSE &&
+               (input.data.mouse.usButtonFlags &
+                (RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_RIGHT_BUTTON_DOWN |
+                 RI_MOUSE_MIDDLE_BUTTON_DOWN | RI_MOUSE_BUTTON_4_DOWN | RI_MOUSE_BUTTON_5_DOWN))) {
+      g_pointer_button_pressed = true;
+    }
+    // DefWindowProc performs the required cleanup for foreground raw input.
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+  }
+
   case WM_WINTILER_NOTIFICATION_ICON:
     if (should_show_notification_area_menu(lParam)) {
       show_notification_area_menu(hwnd);
@@ -3312,6 +3333,14 @@ void register_session_power_notifications() {
     return;
   }
 
+  // Raw button events retain short clicks between loop polls without intercepting them.
+  const RAWINPUTDEVICE pointer_device{0x01, 0x02, RIDEV_INPUTSINK, g_notification_hwnd};
+  g_pointer_input_registered =
+      RegisterRawInputDevices(&pointer_device, 1, sizeof(pointer_device)) != FALSE;
+  if (!g_pointer_input_registered) {
+    spdlog::error("Failed to register pointer input, error={}", GetLastError());
+  }
+
   // Register for session notifications (lock/unlock)
   if (!WTSRegisterSessionNotification(g_notification_hwnd, NOTIFY_FOR_THIS_SESSION)) {
     spdlog::error("Failed to register session notifications, error={}", GetLastError());
@@ -3456,6 +3485,15 @@ bool request_notification_area_exit_for_running_instance() {
 
 void unregister_session_power_notifications() {
   unregister_notification_area_icon();
+
+  if (g_pointer_input_registered) {
+    const RAWINPUTDEVICE pointer_device{0x01, 0x02, RIDEV_REMOVE, nullptr};
+    if (!RegisterRawInputDevices(&pointer_device, 1, sizeof(pointer_device))) {
+      spdlog::error("Failed to unregister pointer input, error={}", GetLastError());
+    }
+    g_pointer_input_registered = false;
+  }
+  g_pointer_button_pressed = false;
 
   if (g_notification_hwnd) {
     WTSUnRegisterSessionNotification(g_notification_hwnd);
@@ -3681,6 +3719,7 @@ void gather_loop_input_state_into(const wintiler::IgnoreOptions& ignore_options,
   state.is_any_window_being_moved = is_any_window_being_moved();
   state.drag_info = get_drag_info();
   state.cursor_pos = get_cursor_pos();
+  state.pointer_button_pressed = g_pointer_button_pressed.exchange(false);
   state.pointer_window = nullptr;
   state.pointer_window_enabled = true;
   state.pointer_blocking_dialog = nullptr;

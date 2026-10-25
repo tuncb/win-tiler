@@ -144,6 +144,7 @@ void fill_engine_frame_input(const winapi::LoopInputState& input_state,
   extract_managed_window_states_from_input_into(input_state, frame_input.managed_windows);
   frame_input.hotkey_action = hotkey_action;
   frame_input.cursor_pos.reset();
+  frame_input.pointer_button_pressed = input_state.pointer_button_pressed;
   frame_input.foreground_leaf_id.reset();
   frame_input.pointer_window_id.reset();
   frame_input.foreground_is_dialog = input_state.foreground_is_dialog;

@@ -130,6 +130,7 @@ TEST_SUITE("loop") {
     input.windows_per_monitor[0].push_back({reinterpret_cast<winapi::HWND_T>(7), false, true, false,
                                             winapi::WindowPosition{10, 20, 300, 400}});
     input.cursor_pos = winapi::Point{100, 200};
+    input.pointer_button_pressed = true;
     input.foreground_window = reinterpret_cast<winapi::HWND_T>(7);
     input.pointer_window = reinterpret_cast<winapi::HWND_T>(7);
     input.foreground_is_dialog = true;
@@ -157,6 +158,7 @@ TEST_SUITE("loop") {
     CHECK(frame_input.managed_windows[0][0].is_maximized == true);
     REQUIRE(frame_input.cursor_pos.has_value());
     CHECK(frame_input.cursor_pos->x == 100);
+    CHECK(frame_input.pointer_button_pressed);
     CHECK(frame_input.foreground_leaf_id == 7);
     CHECK(frame_input.pointer_window_id == 7);
     CHECK(frame_input.foreground_is_dialog);
@@ -174,6 +176,7 @@ TEST_SUITE("loop") {
     CHECK(frame_input.completed_drag->actual_window_rect->x == doctest::Approx(10.0f));
     CHECK(frame_input.completed_drag->actual_window_rect->height == doctest::Approx(400.0f));
     input.foreground_window = nullptr;
+    input.pointer_button_pressed = false;
     input.pointer_window = nullptr;
     input.foreground_is_dialog = false;
     input.foreground_is_owned_popup = false;
@@ -183,6 +186,7 @@ TEST_SUITE("loop") {
     fill_engine_frame_input(input, desktop_data, cluster_options, true, std::nullopt,
                             layout_options, MouseDragDropAction::Exchange, frame_input);
     CHECK_FALSE(frame_input.foreground_leaf_id.has_value());
+    CHECK_FALSE(frame_input.pointer_button_pressed);
     CHECK_FALSE(frame_input.pointer_window_id.has_value());
     CHECK_FALSE(frame_input.foreground_is_dialog);
     CHECK_FALSE(frame_input.foreground_is_owned_popup);

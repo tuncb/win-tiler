@@ -395,11 +395,17 @@ std::string get_options_toml_documentation() {
 # split_target: target for automatic insertion; explicit moves take precedence.
 # - "pointer": use the monitor and cell under the pointer (default).
 # - "focused": split the last focused tiled window, independent of the pointer.
-# - "largest": split the largest cell by area on the last focused tiled window's monitor.
+# - "largest": split the largest cell by area on the active monitor, or fill it if empty.
 # - "largest_all_monitors": use the largest cell or empty monitor work area across eligible
 # monitors on the current virtual desktop.
-# Focused/largest use the incoming monitor when no tiled focus is known; focused then uses
-# the first leaf. Equal largest areas use first-child tree order. Each insertion is 50/50.
+# Moving or clicking the pointer activates its monitor, including the desktop and taskbar.
+# A later tiled-window focus change or navigation activates that window's monitor. An idle
+# pointer and win-tiler's own cursor warps do not override it. New windows taking OS focus
+# keep the preceding active monitor until placement. Untiled focus preserves that monitor.
+# At startup, use existing tiled focus, then the pointer if no tiled focus is available.
+# Focused uses the incoming monitor when no tiled focus is known, then the first leaf.
+# Largest uses the incoming monitor when no active monitor is known.
+# Equal largest areas use first-child tree order. Each insertion is 50/50.
 # Largest is recalculated for every new window, including startup and batches.
 # For largest_all_monitors, an empty monitor's entire work area competes with existing cells;
 # choosing it places the new window there without splitting. Fullscreen monitors are excluded.
