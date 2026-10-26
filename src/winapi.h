@@ -83,6 +83,7 @@ struct WindowManagementSnapshot {
   std::string process_name;
   std::optional<Rect> rect;
   bool is_currently_managed = false;
+  bool is_child_or_owned = false;
   bool is_ignored_by_user_configuration = false;
   bool is_rejected_by_runtime_or_system_filter = false;
   bool matches_ignored_process = false;
@@ -217,6 +218,7 @@ get_notification_area_menu_availability(const NotificationAreaIconOptions& optio
 
 void register_notification_area_icon(const NotificationAreaIconOptions& options);
 void unregister_notification_area_icon();
+[[nodiscard]] std::optional<std::filesystem::path> get_notification_area_config_path();
 void set_notification_area_manual_pause_active(bool is_paused);
 void set_notification_area_verbose_logging_active(bool is_enabled);
 void set_notification_area_movement_mode(wintiler::MovementMode mode);

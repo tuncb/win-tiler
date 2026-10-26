@@ -1016,6 +1016,21 @@ GlobalOptionsProvider::GlobalOptionsProvider(std::optional<std::filesystem::path
   }
 }
 
+tl::expected<void, std::string>
+GlobalOptionsProvider::reload_from(const std::filesystem::path& path) {
+  auto result = read_options_toml(path);
+  if (!result)
+    return tl::unexpected(result.error());
+  options = std::move(*result);
+  configPath = path;
+  std::error_code error;
+  const auto modified = std::filesystem::last_write_time(path, error);
+  if (!error)
+    lastModified = modified;
+  nextConfigRefreshCheck = std::chrono::steady_clock::time_point::min();
+  return {};
+}
+
 bool GlobalOptionsProvider::refresh() {
   if (!configPath.has_value()) {
     return false; // No file to monitor

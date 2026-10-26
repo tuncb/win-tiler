@@ -1,0 +1,1786 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>win-tiler · Window rule menus</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      body {
+        font:
+          14px/1.5 "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button,
+      summary {
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 3px;
+      }
+      #prototype {
+        --canvas: #0b1726;
+        --surface: #112235;
+        --raised: #162b40;
+        --selected: #173d58;
+        --text: #e8f0fa;
+        --muted-text: #a7bacd;
+        --line: #2c4358;
+        --accent: #36c5f0;
+        --accent-text: #06213a;
+        --focus: #36c5f0;
+        --good: #a7bacd;
+        --warn: #a7bacd;
+        --danger: #ff9caa;
+        --radius: 12px;
+        color: var(--text);
+        color-scheme: dark;
+      }
+      #prototype[data-theme="light"] {
+        --canvas: #fbfaf6;
+        --surface: #f4f1e8;
+        --raised: #ffffff;
+        --selected: #fff0cd;
+        --text: #2b251a;
+        --muted-text: #6d6253;
+        --line: #ddd4c5;
+        --accent: #ffb020;
+        --accent-text: #261900;
+        --focus: #8a5500;
+        --good: #526859;
+        --warn: #8a5500;
+        --danger: #b52d43;
+        color-scheme: light;
+      }
+      .preview-tools {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding-bottom: 12px;
+        color: var(--muted-foreground, #938798);
+        font-size: 12px;
+      }
+      .preview-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+      .preview-controls button,
+      .preview-controls select {
+        color: var(--text);
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        font-size: 12px;
+        padding: 5px 9px;
+      }
+      .dialog {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 22px;
+      }
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .brand {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted-text);
+        margin-bottom: 12px;
+      }
+      .brand-mark {
+        display: grid;
+        grid-template-columns: 6px 6px;
+        gap: 3px;
+      }
+      .brand-mark span {
+        width: 6px;
+        height: 6px;
+        border: 1px solid currentColor;
+        border-radius: 1px;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 23px;
+        font-weight: 600;
+        letter-spacing: -0.6px;
+        line-height: 1.25;
+      }
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      .subtitle {
+        color: var(--muted-text);
+        font-size: 13px;
+      }
+      .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--text);
+        background: var(--raised);
+      }
+      .btn:hover:not(:disabled) {
+        background: var(--selected);
+      }
+      .btn.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--muted-text);
+      }
+      .btn.ghost:hover {
+        background: var(--surface);
+        color: var(--text);
+      }
+      .icon-only {
+        width: 34px;
+        padding: 7px;
+        flex: none;
+      }
+      .primary {
+        background: var(--accent);
+        color: var(--accent-text);
+        border-color: transparent;
+      }
+      .nav {
+        display: flex;
+        gap: 24px;
+        border-bottom: 1px solid var(--line);
+        margin: 22px 0 18px;
+      }
+      .nav button {
+        border: 0;
+        background: none;
+        color: var(--muted-text);
+        padding: 0 0 12px;
+        position: relative;
+      }
+      .nav button[aria-pressed="true"] {
+        color: var(--text);
+      }
+      .nav button[aria-pressed="true"]::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        height: 2px;
+        left: 0;
+        right: 0;
+        background: var(--focus);
+        border-radius: 2px;
+      }
+      .count {
+        color: var(--muted-text);
+        font-size: 11px;
+        margin-left: 5px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .search {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        min-width: 150px;
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--muted-text);
+        padding: 8px 10px;
+      }
+      .search input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font-size: 13px;
+      }
+      input::placeholder {
+        color: var(--muted-text);
+      }
+      .filters {
+        display: flex;
+        gap: 3px;
+      }
+      .filters button {
+        padding: 5px 9px;
+        border: 0;
+        border-radius: 6px;
+        color: var(--muted-text);
+        background: none;
+        font-size: 12px;
+      }
+      .filters button[aria-pressed="true"] {
+        color: var(--text);
+        background: var(--selected);
+      }
+      .column-labels {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 165px 36px;
+        gap: 12px;
+        padding: 0 12px 9px;
+        color: var(--muted-text);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+      }
+      .column-labels span:nth-child(2) {
+        text-align: right;
+      }
+      .items {
+        min-height: 420px;
+        position: relative;
+      }
+      .item {
+        position: relative;
+        border-radius: 9px;
+        margin-bottom: 3px;
+      }
+      .item.open {
+        background: var(--selected);
+        z-index: 2;
+      }
+      .item-head {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) 165px 34px;
+        gap: 12px;
+        align-items: center;
+        padding: 11px 10px;
+        min-height: 66px;
+      }
+      .app-icon {
+        width: 32px;
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: var(--muted-text);
+        background: color-mix(in srgb, var(--text) 4%, transparent);
+      }
+      .item-text {
+        min-width: 0;
+      }
+      .item-name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .item-meta {
+        display: block;
+        font-size: 11px;
+        color: var(--muted-text);
+        margin-top: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .behavior {
+        min-width: 0;
+        text-align: right;
+      }
+      .behavior strong {
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .behavior strong.ignored {
+        color: var(--focus);
+      }
+      .behavior small {
+        display: block;
+        font-size: 11px;
+        color: var(--muted-text);
+        margin-top: 3px;
+        overflow-wrap: anywhere;
+      }
+      .item-menu-trigger {
+        color: var(--muted-text);
+        border-color: transparent;
+        background: transparent;
+      }
+      .item-menu-trigger:hover,
+      .item-menu-trigger[aria-expanded="true"] {
+        color: var(--text);
+        background: var(--surface);
+        border-color: var(--line);
+      }
+      .menu {
+        position: absolute;
+        top: calc(100% - 2px);
+        right: 8px;
+        width: 342px;
+        max-width: calc(100% - 16px);
+        background: var(--raised);
+        color: var(--text);
+        padding: 16px;
+        border: 1px solid color-mix(in srgb, var(--focus) 25%, var(--line));
+        border-radius: 12px;
+        box-shadow: 0 14px 36px #0004;
+        z-index: 5;
+      }
+      .menu.up {
+        top: auto;
+        bottom: calc(100% - 2px);
+      }
+      .menu-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 3px;
+      }
+      .menu-heading h2 {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .menu-target {
+        color: var(--muted-text);
+        font-size: 11px;
+        overflow-wrap: anywhere;
+        margin-bottom: 12px;
+      }
+      .section-label {
+        color: var(--muted-text);
+        font-size: 10px;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        padding: 8px 8px 6px;
+        border-top: 1px solid var(--line);
+        margin-top: 6px;
+      }
+      .choice {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        width: 100%;
+        padding: 9px 7px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        color: var(--text);
+        background: transparent;
+        text-align: left;
+      }
+      .choice:hover:not(:disabled) {
+        background: var(--selected);
+      }
+      .choice[aria-checked="true"] {
+        background: var(--selected);
+      }
+      .choice-mark {
+        display: grid;
+        place-items: center;
+        width: 18px;
+        height: 20px;
+        flex: none;
+        color: var(--focus);
+      }
+      .choice-copy {
+        flex: 1;
+        min-width: 0;
+      }
+      .choice-copy strong {
+        font-size: 12px;
+        font-weight: 500;
+        display: block;
+      }
+      .choice-copy small {
+        color: var(--muted-text);
+        font-size: 11px;
+        line-height: 1.4;
+        display: block;
+        margin-top: 2px;
+      }
+      .choice-count {
+        font-size: 10px;
+        color: var(--muted-text);
+        white-space: nowrap;
+        align-self: flex-start;
+        margin-top: 4px;
+      }
+      .menu-foot {
+        margin-top: 10px;
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+      }
+      .menu-note {
+        color: var(--muted-text);
+        font-size: 10px;
+        line-height: 1.6;
+        margin-top: 9px;
+      }
+      .menu-link {
+        color: var(--muted-text);
+        width: 100%;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        padding: 7px;
+        font-size: 12px;
+      }
+      .menu-link:hover {
+        color: var(--text);
+        background: var(--selected);
+      }
+      .menu-link.danger {
+        color: var(--danger);
+      }
+      .target-select {
+        display: grid;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted-text);
+        margin: 9px 0 12px;
+      }
+      .target-select select {
+        width: 100%;
+        border: 1px solid var(--line);
+        color: var(--text);
+        background: var(--surface);
+        padding: 7px;
+        border-radius: 6px;
+        font-size: 11px;
+      }
+      .notice {
+        color: var(--warn);
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        font-size: 12px;
+        margin-bottom: 14px;
+      }
+      .notice.error {
+        color: var(--danger);
+        margin: 10px 0 0;
+      }
+      .notice strong {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 3px;
+      }
+      .details {
+        font-size: 11px;
+        color: var(--muted-text);
+        margin-top: 8px;
+      }
+      .details-grid {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 6px;
+        margin: 10px 0;
+      }
+      .details-grid dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+        color: var(--text);
+      }
+      .details-grid dt {
+        color: var(--muted-text);
+      }
+      .edit-fields {
+        display: grid;
+        gap: 11px;
+        margin-top: 14px;
+      }
+      .edit-fields label {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+        color: var(--muted-text);
+      }
+      .edit-fields input {
+        width: 100%;
+        min-width: 0;
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 8px;
+        font-size: 12px;
+      }
+      .edit-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .edit-note {
+        color: var(--muted-text);
+        font-size: 11px;
+        margin-top: 12px;
+      }
+      .footer {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 17px;
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+      .footer-info {
+        min-width: 0;
+      }
+      .config-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 0;
+        padding: 0;
+        background: none;
+        color: var(--muted-text);
+        font-size: 12px;
+      }
+      .config-button:hover {
+        color: var(--text);
+        text-decoration: underline;
+      }
+      .feedback {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 4px;
+        color: var(--muted-text);
+        font-size: 11px;
+      }
+      #undo {
+        padding: 0;
+        border: 0;
+        background: none;
+        font-size: 11px;
+        color: var(--focus);
+        text-decoration: underline;
+      }
+      .empty {
+        text-align: center;
+        padding: 42px 16px;
+        color: var(--muted-text);
+        font-size: 13px;
+      }
+      .config-view {
+        padding: 16px;
+        margin-top: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      .config-view summary {
+        font-size: 12px;
+        color: var(--muted-text);
+      }
+      .config-view pre {
+        font-size: 11px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .reopen {
+        text-align: center;
+        background: var(--canvas);
+        padding: 40px 20px;
+        border-radius: var(--radius);
+      }
+      .reopen p {
+        color: var(--muted-text);
+        margin: 8px 0 16px;
+      }
+      @media (max-width: 620px) {
+        .dialog {
+          padding: 16px;
+        }
+        .toolbar {
+          gap: 8px;
+        }
+        .search {
+          flex-basis: calc(100% - 48px);
+        }
+        .filters {
+          order: 3;
+          flex-basis: 100%;
+        }
+        .column-labels {
+          grid-template-columns: minmax(0, 1fr) 112px 32px;
+          gap: 8px;
+          padding-inline: 8px;
+        }
+        .item-head {
+          grid-template-columns: 28px minmax(0, 1fr) 112px 32px;
+          gap: 8px;
+          padding: 10px 8px;
+        }
+        .app-icon {
+          width: 28px;
+          height: 30px;
+        }
+        .item-name {
+          white-space: normal;
+        }
+        .behavior strong {
+          font-size: 11px;
+        }
+        .behavior small {
+          font-size: 10px;
+        }
+      }
+      @media (max-width: 460px) {
+        .item-head {
+          grid-template-columns: 26px minmax(0, 1fr) 32px;
+          gap: 8px;
+        }
+        .item-text {
+          grid-column: 2;
+        }
+        .item-menu-trigger {
+          grid-column: 3;
+          grid-row: 1;
+        }
+        .behavior {
+          grid-column: 2/4;
+          grid-row: 2;
+          display: flex;
+          align-items: baseline;
+          text-align: left;
+          gap: 7px;
+          margin-top: -5px;
+        }
+        .behavior small {
+          margin: 0;
+        }
+        .behavior small::before {
+          content: "· ";
+        }
+        .column-labels {
+          grid-template-columns: 1fr;
+        }
+        .column-labels span:nth-child(2) {
+          display: none;
+        }
+        .menu,
+        .menu.up {
+          position: relative;
+          top: auto;
+          bottom: auto;
+          right: auto;
+          width: 100%;
+          max-width: none;
+          box-shadow: none;
+          margin: 2px 0 12px;
+        }
+        .items {
+          min-height: 0;
+        }
+      }
+      @media (pointer: coarse) {
+        .btn,
+        .item-menu-trigger,
+        .menu-link,
+        .preview-controls button,
+        .preview-controls select {
+          min-height: 44px;
+        }
+        .choice {
+          min-height: 50px;
+        }
+        input {
+          font-size: 16px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="prototype" data-theme="dark">
+      <div class="preview-tools">
+        <span>Interactive concept · item actions</span>
+        <div class="preview-controls">
+          <select id="scenario" aria-label="Preview scenario">
+            <option value="normal">Normal state</option>
+            <option value="no-config">No config file</option>
+            <option value="write-error">Save fails</option></select
+          ><button id="theme-toggle" type="button">Light theme</button
+          ><button id="reset" type="button">Reset demo</button>
+        </div>
+      </div>
+      <section class="dialog" id="dialog" aria-label="Ignored windows">
+        <div class="header">
+          <div>
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"
+                ><span></span><span></span><span></span><span></span></span
+              >win-tiler
+            </div>
+            <h1>Ignored windows</h1>
+            <p class="subtitle">Set how each window fits into your layout.</p>
+          </div>
+          <button
+            id="close"
+            type="button"
+            class="btn ghost icon-only"
+            aria-label="Close dialog"
+          ></button>
+        </div>
+        <nav class="nav" aria-label="Manage windows or rules">
+          <button id="windows-tab" type="button" aria-pressed="true">
+            Open windows <span class="count" id="window-count"></span></button
+          ><button id="rules-tab" type="button" aria-pressed="false">
+            Saved rules <span class="count" id="rule-count"></span>
+          </button>
+        </nav>
+        <div class="notice" id="config-notice" hidden>
+          <strong>No config file is active</strong>You can inspect windows.
+          Create a config to change their rules.<br /><button
+            id="create-config"
+            class="btn ghost"
+            type="button"
+          >
+            Create default config
+          </button>
+        </div>
+        <div class="toolbar">
+          <label class="search"
+            ><span id="search-icon" aria-hidden="true"></span
+            ><input
+              id="search"
+              aria-label="Search windows"
+              placeholder="Search apps or window titles"
+          /></label>
+          <div class="filters" aria-label="Filter items">
+            <button type="button" data-filter="all" aria-pressed="true">
+              All</button
+            ><button type="button" data-filter="managed" aria-pressed="false">
+              Tiled</button
+            ><button type="button" data-filter="ignored" aria-pressed="false">
+              Ignored
+            </button>
+          </div>
+          <button
+            id="refresh"
+            type="button"
+            class="btn ghost icon-only"
+            aria-label="Refresh windows"
+          ></button>
+        </div>
+        <div class="column-labels">
+          <span id="item-heading">Window</span
+          ><span id="behavior-heading">Behavior</span>
+        </div>
+        <div class="items" id="items"></div>
+        <details class="config-view" id="config-view" hidden>
+          <summary>Demo config · in the app, this opens your editor</summary>
+          <pre id="config-text"></pre>
+        </details>
+        <div class="footer">
+          <div class="footer-info">
+            <button
+              id="open-config"
+              type="button"
+              class="config-button"
+            ></button>
+            <div class="feedback">
+              <span id="feedback" role="status" aria-live="polite"
+                >Sample data · rules save immediately · Undo available</span
+              ><button id="undo" type="button" hidden>Undo</button>
+            </div>
+          </div>
+          <button id="done" type="button" class="btn primary">Done</button>
+        </div>
+      </section>
+      <div class="reopen" id="reopen-panel" hidden>
+        <h2>Dialog closed</h2>
+        <p>Your demo changes are still here.</p>
+        <button class="btn" id="reopen" type="button">Reopen dialog</button>
+      </div>
+    </div>
+    <script>
+      (() => {
+        "use strict";
+        const root = document.getElementById("prototype"),
+          $ = (id) => document.getElementById(id);
+        const esc = (v) =>
+          String(v).replace(
+            /[&<>"']/g,
+            (c) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[c],
+          );
+        const shapes = {
+          menu: '<path d="M5 6h14M5 12h14M5 18h14"/>',
+          close: '<path d="m6 6 12 12M18 6 6 18"/>',
+          window:
+            '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
+          search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
+          refresh:
+            '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15"/>',
+          check: '<path d="m5 12 4 4L19 6"/>',
+          file: '<path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h5"/>',
+          lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+          edit: '<path d="m14 5 5 5M4 20l5-1L20 8l-5-5L4 14z"/>',
+          trash:
+            '<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/>',
+        };
+        const icon = (name) =>
+          '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">' +
+          shapes[name] +
+          "</svg>";
+        const windows = [
+          {
+            id: "figma",
+            title: "Design review – Figma",
+            app: "Figma",
+            process: "Figma.exe",
+            className: "Chrome_WidgetWin_1",
+            monitor: "Display 1",
+            size: "1280 × 920",
+          },
+          {
+            id: "code",
+            title: "win-tiler – Visual Studio Code",
+            app: "Visual Studio Code",
+            process: "Code.exe",
+            className: "Chrome_WidgetWin_1",
+            monitor: "Display 1",
+            size: "1560 × 1040",
+          },
+          {
+            id: "browser",
+            title: "Project notes – Google Chrome",
+            app: "Google Chrome",
+            process: "chrome.exe",
+            className: "Chrome_WidgetWin_1",
+            monitor: "Display 2",
+            size: "1380 × 960",
+          },
+          {
+            id: "browser2",
+            title: "Pull requests – Google Chrome",
+            app: "Google Chrome",
+            process: "chrome.exe",
+            className: "Chrome_WidgetWin_1",
+            monitor: "Display 2",
+            size: "1380 × 960",
+          },
+          {
+            id: "spotify",
+            title: "Spotify Premium",
+            app: "Spotify",
+            process: "Spotify.exe",
+            className: "Chrome_WidgetWin_0",
+            monitor: "Display 2",
+            size: "900 × 760",
+          },
+          {
+            id: "settings",
+            title: "Settings",
+            app: "Windows Settings",
+            process: "SystemSettings.exe",
+            className: "ApplicationFrameWindow",
+            monitor: "Display 1",
+            size: "1080 × 800",
+          },
+          {
+            id: "figma-dialog",
+            title: "Export settings",
+            app: "Figma",
+            process: "Figma.exe",
+            owned: true,
+            className: "Chrome_WidgetWin_1",
+            monitor: "Display 1",
+            size: "540 × 460",
+          },
+        ];
+        const initialRules = [
+          {
+            id: "spotify-rule",
+            kind: "process",
+            process: "Spotify.exe",
+            title: "",
+            source: "user",
+          },
+          {
+            id: "settings-rule",
+            kind: "pair",
+            process: "SystemSettings.exe",
+            title: "Settings",
+            source: "built-in",
+          },
+          {
+            id: "offline-rule",
+            kind: "pair",
+            process: "Teams.exe",
+            title: "Meeting controls",
+            source: "user",
+          },
+        ];
+        const scopes = [
+          {
+            kind: "pair",
+            label: "Ignore app + exact title",
+            short: "App + title",
+            description: "Only this app with this title.",
+          },
+          {
+            kind: "process",
+            label: "Ignore the entire app",
+            short: "Entire app",
+            description: "All its windows, now and in the future.",
+          },
+          {
+            kind: "title",
+            label: "Ignore this title everywhere",
+            short: "Exact title",
+            description: "This exact title, even in other apps.",
+          },
+          {
+            kind: "children",
+            label: "Ignore owned windows",
+            short: "Owned windows",
+            description: "Only child / owned windows from this app.",
+          },
+        ];
+        const scope = (kind) => scopes.find((s) => s.kind === kind);
+        let state;
+        function matches(rule, win) {
+          if (rule.kind === "process")
+            return rule.process.toLowerCase() === win.process.toLowerCase();
+          if (rule.kind === "title") return rule.title === win.title;
+          if (rule.kind === "children")
+            return (
+              !!win.owned &&
+              rule.process.toLowerCase() === win.process.toLowerCase()
+            );
+          return (
+            rule.process.toLowerCase() === win.process.toLowerCase() &&
+            rule.title.toLowerCase() === win.title.toLowerCase()
+          );
+        }
+        const rulesFor = (win) => state.rules.filter((r) => matches(r, win));
+        const countFor = (rule) =>
+          windows.filter((w) => matches(rule, w)).length;
+        const valueLabel = (rule) =>
+          [
+            rule.kind !== "title" && rule.process,
+            ["pair", "title"].includes(rule.kind) && rule.title,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+        const equalRule = (a, b) =>
+          a.kind === b.kind &&
+          (a.kind === "title" ||
+            a.process.toLowerCase() === b.process.toLowerCase()) &&
+          (!["pair", "title"].includes(a.kind) ||
+            (a.kind === "pair"
+              ? a.title.toLowerCase() === b.title.toLowerCase()
+              : a.title === b.title));
+        function reset() {
+          state = {
+            tab: "windows",
+            filter: "all",
+            query: "",
+            rules: structuredClone(initialRules),
+            menu: { itemId: "figma", ruleId: null, mode: "states" },
+            undo: null,
+            scenario: "normal",
+            error: "",
+            pending: null,
+            nextId: 1,
+          };
+          $("scenario").value = "normal";
+          $("search").value = "";
+          $("config-view").hidden = true;
+          $("dialog").hidden = false;
+          $("reopen-panel").hidden = true;
+          render();
+          announce("Sample data · rules save immediately · Undo available");
+        }
+        function announce(text) {
+          $("feedback").textContent = text;
+          $("undo").hidden = !state.undo;
+          $("undo").disabled = state.scenario === "no-config";
+        }
+        function availableRules(win) {
+          return state.rules.filter(
+            (r) =>
+              matches(r, win) ||
+              (r.kind === "children" &&
+                r.process.toLowerCase() === win.process.toLowerCase()),
+          );
+        }
+        function context() {
+          if (!state.menu) return null;
+          const win =
+              state.tab === "windows"
+                ? windows.find((w) => w.id === state.menu.itemId)
+                : null,
+            rule = state.rules.find((r) => r.id === state.menu.ruleId) || null,
+            values = win || rule || { process: "", title: "" };
+          return {
+            win,
+            rule,
+            process: values.process,
+            title: values.title,
+            related: win ? availableRules(win) : rule ? [rule] : [],
+          };
+        }
+        function openMenu(itemId, focus = true) {
+          const win = windows.find((w) => w.id === itemId),
+            related =
+              state.tab === "windows"
+                ? availableRules(win)
+                : [state.rules.find((r) => r.id === itemId)],
+            current = related.find((r) => r.source === "user") || related[0];
+          state.menu = { itemId, ruleId: current?.id || null, mode: "states" };
+          state.error = "";
+          state.pending = null;
+          render();
+          if (focus) focusMenu();
+        }
+        function focusMenu() {
+          const menu = $("row-menu");
+          const active =
+            menu?.querySelector(
+              '[role="menuitemradio"][aria-checked="true"]:not(:disabled)',
+            ) ||
+            menu?.querySelector(
+              '[role="menuitemradio"]:not(:disabled), .menu-link:not(:disabled), input',
+            );
+          active?.focus({ preventScroll: true });
+        }
+        function closeMenu(restore = true) {
+          const id = state.menu?.itemId;
+          state.menu = null;
+          state.error = "";
+          state.pending = null;
+          render();
+          if (restore) $("menu-" + id)?.focus({ preventScroll: true });
+        }
+        function visibleItems() {
+          const q = state.query.toLowerCase();
+          return (state.tab === "windows" ? windows : state.rules).filter(
+            (item) => {
+              const isWindow = state.tab === "windows",
+                text = isWindow
+                  ? [item.title, item.app, item.process].join(" ")
+                  : valueLabel(item) + " " + scope(item.kind).short,
+                ignored = isWindow
+                  ? rulesFor(item).length > 0
+                  : item.source === "built-in";
+              return (
+                text.toLowerCase().includes(q) &&
+                (state.filter === "all" ||
+                  (state.filter === "ignored" ? ignored : !ignored))
+              );
+            },
+          );
+        }
+        function render() {
+          $("windows-tab").setAttribute(
+            "aria-pressed",
+            String(state.tab === "windows"),
+          );
+          $("rules-tab").setAttribute(
+            "aria-pressed",
+            String(state.tab === "rules"),
+          );
+          $("window-count").textContent = windows.length;
+          $("rule-count").textContent = state.rules.length;
+          $("config-notice").hidden = state.scenario !== "no-config";
+          $("open-config").disabled = state.scenario === "no-config";
+          $("open-config").innerHTML =
+            icon("file") +
+            (state.scenario === "no-config"
+              ? "No config file"
+              : "win-tiler.toml ↗");
+          $("search").placeholder =
+            state.tab === "windows"
+              ? "Search apps or window titles"
+              : "Search saved rules";
+          $("search").setAttribute(
+            "aria-label",
+            state.tab === "windows" ? "Search windows" : "Search saved rules",
+          );
+          $("item-heading").textContent =
+            state.tab === "windows" ? "Window" : "Saved rule";
+          $("behavior-heading").textContent =
+            state.tab === "windows" ? "Behavior" : "Match";
+          const labels =
+            state.tab === "windows"
+              ? ["All", "Tiled", "Ignored"]
+              : ["All", "Yours", "Built-in"];
+          root.querySelectorAll("[data-filter]").forEach((b, i) => {
+            b.textContent = labels[i];
+            b.setAttribute(
+              "aria-pressed",
+              String(b.dataset.filter === state.filter),
+            );
+          });
+          const items = visibleItems();
+          if (state.menu && !items.some((i) => i.id === state.menu.itemId))
+            state.menu = null;
+          $("items").style.paddingBottom = "";
+          $("items").innerHTML = items.length
+            ? items
+                .map((item) => {
+                  const isWindow = state.tab === "windows",
+                    matched = isWindow ? rulesFor(item) : [item],
+                    ignored = matched.length > 0,
+                    related = isWindow ? availableRules(item) : [item],
+                    active = state.menu?.itemId === item.id;
+                  const title = isWindow
+                      ? item.title
+                      : item.process || item.title,
+                    meta = isWindow
+                      ? item.process
+                      : item.title
+                        ? item.title
+                        : "Every window from this app",
+                    status = isWindow
+                      ? ignored
+                        ? "Ignored"
+                        : "Tiled"
+                      : scope(item.kind).short;
+                  const caption = isWindow
+                    ? matched.length > 1
+                      ? matched.length + " matching rules"
+                      : matched.length
+                        ? scope(matched[0].kind).short +
+                          (matched[0].source === "built-in"
+                            ? " · Built-in"
+                            : "")
+                        : related.length
+                          ? "Owned windows ignored"
+                          : "No ignore rule"
+                    : countFor(item) +
+                      " open · " +
+                      (item.source === "built-in" ? "Built-in" : "Your rule");
+                  return (
+                    '<article class="item ' +
+                    (active ? "open" : "") +
+                    '" data-item="' +
+                    esc(item.id) +
+                    '"><div class="item-head"><span class="app-icon">' +
+                    icon(isWindow ? "window" : "file") +
+                    '</span><div class="item-text"><span class="item-name">' +
+                    esc(title) +
+                    '</span><span class="item-meta">' +
+                    esc(meta) +
+                    '</span></div><div class="behavior"><strong class="' +
+                    (isWindow && ignored ? "ignored" : "") +
+                    '">' +
+                    esc(status) +
+                    "</strong><small>" +
+                    esc(caption) +
+                    '</small></div><button type="button" class="btn icon-only item-menu-trigger" id="menu-' +
+                    esc(item.id) +
+                    '" data-open-menu="' +
+                    esc(item.id) +
+                    '" aria-label="Rule actions for ' +
+                    esc(title) +
+                    '" aria-haspopup="menu" aria-expanded="' +
+                    active +
+                    '"' +
+                    (active ? ' aria-controls="row-menu"' : "") +
+                    ">" +
+                    icon("menu") +
+                    "</button></div>" +
+                    (active ? menuMarkup() : "") +
+                    "</article>"
+                  );
+                })
+                .join("")
+            : '<div class="empty">No matches. Try a different search or filter.</div>';
+          root
+            .querySelectorAll("[data-open-menu]")
+            .forEach(
+              (b) =>
+                (b.onclick = () =>
+                  state.menu?.itemId === b.dataset.openMenu
+                    ? closeMenu()
+                    : openMenu(b.dataset.openMenu)),
+            );
+          wireMenu();
+          positionMenu();
+          $("undo").hidden = !state.undo;
+          $("undo").disabled = state.scenario === "no-config";
+          if (!$("config-view").hidden) updateConfig();
+        }
+        function makeRule(kind, c = context()) {
+          return { kind, process: c.process, title: c.title, source: "user" };
+        }
+        function valid(rule) {
+          return (
+            (rule.kind === "title" || !!rule.process.trim()) &&
+            (!["pair", "title"].includes(rule.kind) || !!rule.title.trim())
+          );
+        }
+        function menuMarkup() {
+          const c = context();
+          if (!c) return "";
+          if (state.menu.mode === "edit") return editMarkup(c);
+          const locked = c.rule?.source === "built-in",
+            heading = locked
+              ? "Built-in rule"
+              : c.rule
+                ? "Change rule"
+                : "Assign a rule";
+          const selector =
+            c.related.length > 1
+              ? '<label class="target-select">Rule to change<select id="rule-target">' +
+                c.related
+                  .map(
+                    (r) =>
+                      '<option value="' +
+                      esc(r.id) +
+                      '" ' +
+                      (r.id === c.rule?.id ? "selected" : "") +
+                      ">" +
+                      esc(
+                        scope(r.kind).short +
+                          " · " +
+                          valueLabel(r) +
+                          (r.source === "built-in" ? " · Built-in" : ""),
+                      ) +
+                      "</option>",
+                  )
+                  .join("") +
+                '<option value="new" ' +
+                (!c.rule ? "selected" : "") +
+                ">Create another rule</option></select></label>"
+              : "";
+          const noRuleDesc = c.rule
+            ? c.related.length > 1
+              ? "Remove this rule; other matching rules stay."
+              : "Remove this rule and allow matching windows to tile."
+            : "No saved exclusion for this window.";
+          let options =
+            '<button class="choice" type="button" role="menuitemradio" aria-checked="' +
+            !c.rule +
+            '" data-state="none" ' +
+            (locked || state.scenario === "no-config" ? "disabled" : "") +
+            '><span class="choice-mark">' +
+            (!c.rule ? icon("check") : "") +
+            '</span><span class="choice-copy"><strong>' +
+            (state.tab === "rules"
+              ? "Remove rule"
+              : c.related.length > 1
+                ? "Remove this rule"
+                : "Tile normally") +
+            "</strong><small>" +
+            noRuleDesc +
+            "</small></span>" +
+            (c.rule
+              ? '<span class="choice-count">' +
+                countFor(c.rule) +
+                " open</span>"
+              : "") +
+            '</button><div class="section-label" role="presentation">Ignore matching windows</div>';
+          options += scopes
+            .map((s) => {
+              const rule = makeRule(s.kind, c),
+                enabled =
+                  valid(rule) && !locked && state.scenario !== "no-config",
+                selected = c.rule?.kind === s.kind,
+                note = valid(rule)
+                  ? s.description
+                  : !rule.process
+                    ? "Needs an app name. Edit matching values first."
+                    : "Needs a title. Edit matching values first.";
+              return (
+                '<button class="choice" type="button" role="menuitemradio" aria-checked="' +
+                selected +
+                '" data-state="' +
+                s.kind +
+                '" ' +
+                (!enabled ? "disabled" : "") +
+                '><span class="choice-mark">' +
+                (selected ? icon("check") : "") +
+                '</span><span class="choice-copy"><strong>' +
+                s.label +
+                "</strong><small>" +
+                note +
+                '</small></span><span class="choice-count">' +
+                (valid(rule) ? countFor(rule) + " open" : "") +
+                "</span></button>"
+              );
+            })
+            .join("");
+          const action =
+              state.tab === "rules" && c.rule && !locked
+                ? '<button type="button" class="menu-link" id="edit-values">' +
+                  icon("edit") +
+                  "Edit matching values…</button>"
+                : "",
+            removal = "";
+          const footer = locked
+            ? "This default stays active. Manage built-in defaults in the config file."
+            : c.rule
+              ? "Choosing a state replaces this rule. Other rules stay. Changes apply to all matches; Undo is available."
+              : "Choose once to create a rule. Applies to future matches too. Undo is available.";
+          return (
+            '<section id="row-menu" class="menu" aria-label="Rule actions"><div class="menu-heading"><h2>' +
+            heading +
+            "</h2>" +
+            (locked ? icon("lock") : "") +
+            '</div><p class="menu-target">' +
+            esc(
+              c.win ? c.win.process + " · " + c.win.title : valueLabel(c.rule),
+            ) +
+            "</p>" +
+            selector +
+            '<div role="menu" aria-label="Assign rule state">' +
+            options +
+            "</div>" +
+            errorMarkup() +
+            '<div class="menu-foot">' +
+            action +
+            removal +
+            (c.win
+              ? '<details class="details"><summary>Window details</summary>' +
+                detailsMarkup(c.win) +
+                "</details>"
+              : "") +
+            '<p class="menu-note">' +
+            footer +
+            "</p></div></section>"
+          );
+        }
+        function detailsMarkup(win) {
+          return (
+            '<dl class="details-grid"><dt>Process</dt><dd>' +
+            esc(win.process) +
+            "</dd><dt>Title</dt><dd>" +
+            esc(win.title) +
+            "</dd><dt>Class</dt><dd>" +
+            esc(win.className) +
+            "</dd><dt>Display</dt><dd>" +
+            esc(win.monitor) +
+            "</dd><dt>Size</dt><dd>" +
+            esc(win.size) +
+            '</dd></dl><button type="button" id="copy-details" class="menu-link">Copy details</button>'
+          );
+        }
+        function editMarkup(c) {
+          const draft = state.menu.draft;
+          return (
+            '<section id="row-menu" class="menu" aria-label="Edit rule values"><div class="menu-heading"><h2>Edit matching values</h2></div><p class="menu-target">' +
+            scope(c.rule.kind).short +
+            '</p><form id="edit-form"><div class="edit-fields"><label>App executable<input id="edit-process" autocomplete="off" value="' +
+            esc(draft.process) +
+            '" placeholder="Example.exe" ' +
+            (c.rule.kind !== "title" ? "required" : "") +
+            '></label><label>Exact window title<input id="edit-title" autocomplete="off" value="' +
+            esc(draft.title) +
+            '" placeholder="Window title" ' +
+            (["pair", "title"].includes(c.rule.kind) ? "required" : "") +
+            '></label></div><p class="edit-note">' +
+            (c.rule.kind === "process" || c.rule.kind === "children"
+              ? "The title is optional context for switching to a title-based rule."
+              : "The selected rule state determines which values match.") +
+            "</p>" +
+            errorMarkup() +
+            '<div class="edit-actions"><button type="button" class="btn ghost" id="cancel-edit">Back</button><button type="submit" class="btn primary" ' +
+            (state.scenario === "no-config" ? "disabled" : "") +
+            ">Save values</button></div></form></section>"
+          );
+        }
+        function errorMarkup() {
+          return state.error
+            ? '<div class="notice error" role="alert"><strong>Change not saved</strong>' +
+                esc(state.error) +
+                '<button type="button" class="menu-link" id="retry">Retry</button></div>'
+            : "";
+        }
+        function positionMenu() {
+          const menu = $("row-menu");
+          if (!menu || innerWidth <= 460) return;
+          menu.classList.remove("up");
+          const list = $("items").getBoundingClientRect(),
+            rect = menu.getBoundingClientRect();
+          if (rect.bottom > list.bottom && rect.top - list.top > rect.height)
+            menu.classList.add("up");
+          const placed = menu.getBoundingClientRect();
+          if (placed.bottom > list.bottom)
+            $("items").style.paddingBottom =
+              Math.ceil(placed.bottom - list.bottom + 12) + "px";
+        }
+        function wireMenu() {
+          if (!$("row-menu")) return;
+          root
+            .querySelectorAll("[data-state]")
+            .forEach((b) => (b.onclick = () => assign(b.dataset.state)));
+          root
+            .querySelectorAll("[data-remove]")
+            .forEach((b) => (b.onclick = () => assign("none")));
+          if ($("rule-target"))
+            $("rule-target").onchange = (e) => {
+              state.menu.ruleId =
+                e.target.value === "new" ? null : e.target.value;
+              state.error = "";
+              state.pending = null;
+              render();
+              focusMenu();
+            };
+          if ($("edit-values"))
+            $("edit-values").onclick = () => {
+              const c = context();
+              state.menu.mode = "edit";
+              state.menu.draft = { process: c.process, title: c.title };
+              state.error = "";
+              render();
+              $("edit-process").focus();
+            };
+          if ($("cancel-edit"))
+            $("cancel-edit").onclick = () => {
+              state.menu.mode = "states";
+              state.error = "";
+              render();
+              focusMenu();
+            };
+          if ($("edit-form")) {
+            for (const key of ["process", "title"])
+              $("edit-" + key).oninput = (e) =>
+                (state.menu.draft[key] = e.target.value);
+            $("edit-form").onsubmit = (e) => {
+              e.preventDefault();
+              saveValues();
+            };
+          }
+          if ($("retry"))
+            $("retry").onclick = () =>
+              state.pending?.type === "values"
+                ? saveValues()
+                : state.pending?.type === "assign"
+                  ? assign(state.pending.kind)
+                  : null;
+          if ($("copy-details"))
+            $("copy-details").onclick = async () => {
+              const w = context().win;
+              try {
+                await navigator.clipboard.writeText(
+                  "Title: " +
+                    w.title +
+                    "\nProcess: " +
+                    w.process +
+                    "\nClass: " +
+                    w.className,
+                );
+                announce("Window details copied.");
+              } catch {
+                announce(
+                  "Clipboard unavailable here. Details are visible in the menu.",
+                );
+              }
+            };
+          $("row-menu")
+            .querySelector("details")
+            ?.addEventListener("toggle", positionMenu);
+        }
+        function blocked(action) {
+          if (state.scenario === "no-config") return true;
+          if (state.scenario !== "write-error") return false;
+          state.error =
+            "win-tiler.toml is read-only. The current rule is unchanged.";
+          state.pending = action;
+          render();
+          announce("Save failed. Your current rules are unchanged.");
+          return true;
+        }
+        function commitRules(next, message) {
+          const triggerId = state.menu?.itemId;
+          state.undo = structuredClone(state.rules);
+          state.rules = next;
+          state.menu = null;
+          state.error = "";
+          state.pending = null;
+          render();
+          announce(message);
+          ($("menu-" + triggerId) || $("undo")).focus({ preventScroll: true });
+        }
+        function assign(kind) {
+          const c = context();
+          if (!c || c.rule?.source === "built-in") return;
+          if (kind === "none") {
+            if (!c.rule) {
+              closeMenu();
+              return;
+            }
+            if (blocked({ type: "assign", kind })) return;
+            const count = countFor(c.rule);
+            commitRules(
+              state.rules.filter((r) => r.id !== c.rule.id),
+              "Rule removed · " +
+                count +
+                " open window(s) re-evaluated. Other rules still apply.",
+            );
+            return;
+          }
+          const next = makeRule(kind, c);
+          if (!valid(next)) return;
+          if (c.rule && equalRule(c.rule, next)) {
+            closeMenu();
+            return;
+          }
+          if (blocked({ type: "assign", kind })) return;
+          const previous = c.rule ? countFor(c.rule) : 0,
+            remaining = state.rules.filter((r) => r.id !== c.rule?.id);
+          // Replace only the selected rule; merge an identical existing target without duplication.
+          if (!remaining.some((r) => equalRule(r, next)))
+            remaining.push({
+              ...next,
+              id: c.rule?.id || "new-" + state.nextId++,
+            });
+          commitRules(
+            remaining,
+            (c.rule ? "Rule changed" : "Rule created") +
+              " · " +
+              scope(kind).short +
+              " · " +
+              countFor(next) +
+              " open match(es)" +
+              (c.rule ? " · previously " + previous : "") +
+              ".",
+          );
+        }
+        function saveValues() {
+          const c = context();
+          if (!c?.rule || c.rule.source === "built-in") return;
+          const draft = state.menu.draft,
+            next = {
+              ...c.rule,
+              process: draft.process.trim(),
+              title: draft.title,
+            };
+          if (!valid(next)) return;
+          if (blocked({ type: "values" })) return;
+          const remaining = state.rules.filter((r) => r.id !== c.rule.id);
+          if (!remaining.some((r) => equalRule(r, next))) remaining.push(next);
+          commitRules(
+            remaining,
+            "Matching values updated · " + countFor(next) + " open match(es).",
+          );
+        }
+        function updateConfig() {
+          const user = state.rules.filter((r) => r.source === "user");
+          $("config-text").textContent = [
+            "# Demo data only — no files are modified.",
+            "[ignore]",
+            "processes = " +
+              JSON.stringify(
+                user.filter((r) => r.kind === "process").map((r) => r.process),
+              ),
+            "window_titles = " +
+              JSON.stringify(
+                user.filter((r) => r.kind === "title").map((r) => r.title),
+              ),
+            "process_title_pairs = " +
+              JSON.stringify(
+                user
+                  .filter((r) => r.kind === "pair")
+                  .map((r) => [r.process, r.title]),
+              ),
+            "ignore_children_of_processes = " +
+              JSON.stringify(
+                user.filter((r) => r.kind === "children").map((r) => r.process),
+              ),
+          ].join("\n");
+        }
+        $("search-icon").innerHTML = icon("search");
+        $("refresh").innerHTML = icon("refresh");
+        $("close").innerHTML = icon("close");
+        $("theme-toggle").onclick = () => {
+          root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+          $("theme-toggle").textContent =
+            root.dataset.theme === "dark" ? "Light theme" : "Dark theme";
+        };
+        $("scenario").onchange = (e) => {
+          state.scenario = e.target.value;
+          state.error = "";
+          state.pending = null;
+          render();
+          announce(
+            state.scenario === "write-error"
+              ? "Demo: the next rule change will fail."
+              : "Sample data · rules save immediately · Undo available",
+          );
+        };
+        $("reset").onclick = reset;
+        ["windows", "rules"].forEach(
+          (tab) =>
+            ($(tab + "-tab").onclick = () => {
+              Object.assign(state, {
+                tab,
+                filter: "all",
+                query: "",
+                menu: null,
+                error: "",
+                pending: null,
+              });
+              $("search").value = "";
+              render();
+            }),
+        );
+        root.querySelectorAll("[data-filter]").forEach(
+          (b) =>
+            (b.onclick = () => {
+              state.filter = b.dataset.filter;
+              state.menu = null;
+              render();
+            }),
+        );
+        $("search").oninput = (e) => {
+          state.query = e.target.value;
+          state.menu = null;
+          render();
+        };
+        $("refresh").onclick = () => {
+          render();
+          announce("Sample windows refreshed. Current rules preserved.");
+        };
+        $("create-config").onclick = () => {
+          state.scenario = "normal";
+          $("scenario").value = "normal";
+          render();
+          announce("Demo config created. Rule changes are now available.");
+        };
+        $("undo").onclick = () => {
+          if (!state.undo || state.scenario === "no-config") return;
+          if (state.scenario === "write-error") {
+            announce(
+              "Undo could not be saved. Your current rules are unchanged.",
+            );
+            return;
+          }
+          state.rules = state.undo;
+          state.undo = null;
+          state.menu = null;
+          state.error = "";
+          render();
+          announce("Last rule change undone.");
+        };
+        $("open-config").onclick = () => {
+          state.menu = null;
+          render();
+          $("config-view").hidden = false;
+          $("config-view").open = true;
+          updateConfig();
+        };
+        const close = () => {
+          state.menu = null;
+          $("dialog").hidden = true;
+          $("reopen-panel").hidden = false;
+          $("reopen").focus();
+        };
+        $("close").onclick = close;
+        $("done").onclick = close;
+        $("reopen").onclick = () => {
+          $("dialog").hidden = false;
+          $("reopen-panel").hidden = true;
+          render();
+          $("close").focus();
+        };
+        document.addEventListener("click", (e) => {
+          if (
+            state.menu &&
+            !e.target.closest("#row-menu") &&
+            !e.target.closest("[data-open-menu]") &&
+            !e.target.closest(".preview-controls")
+          )
+            closeMenu(false);
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && !$("dialog").hidden) {
+            e.preventDefault();
+            if (state.menu) closeMenu();
+            else close();
+            return;
+          }
+          if (!e.target.closest('#row-menu [role="menu"]')) return;
+          const choices = [
+              ...$("row-menu").querySelectorAll(
+                '[role="menuitemradio"]:not(:disabled)',
+              ),
+            ],
+            index = choices.indexOf(document.activeElement);
+          let next;
+          if (e.key === "ArrowDown")
+            next = choices[(index + 1) % choices.length];
+          if (e.key === "ArrowUp")
+            next = choices[(index - 1 + choices.length) % choices.length];
+          if (e.key === "Home") next = choices[0];
+          if (e.key === "End") next = choices.at(-1);
+          if (next) {
+            e.preventDefault();
+            next.focus();
+          }
+        });
+        window.addEventListener("resize", () => {
+          if (state.menu) {
+            $("items").style.paddingBottom = "";
+            positionMenu();
+          }
+        });
+        reset();
+      })();
+    </script>
+  </body>
+</html>

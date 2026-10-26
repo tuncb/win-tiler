@@ -63,6 +63,9 @@
     <ClCompile Include="src\ignore_config.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\ignore_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\ui_theme.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\test_ignore_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\multi_cell_renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -110,6 +113,8 @@
     <ClInclude Include="src\ignore_config.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\ignore_dialog.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\ui_theme.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\track_windows.h">
       <Filter>Header Files</Filter>
     </ClInclude>

@@ -114,13 +114,13 @@ queries receives the same focus protection.
 
 ### Tray And Dialog Actions
 
-Right-click the `win-tiler` notification-area icon to open the tray menu.
+Right-click the `win-tiler` notification-area icon to open the tray menu. The menu follows the Windows system light/dark setting; the ignored-windows dialog follows the app setting. Dark mode uses navy and cyan; light mode uses warm light surfaces and amber. Both respect high contrast.
 
 | Action | Mouse input | What it does |
 | --- | --- | --- |
 | Open config file | Tray menu `Open config file`. | Opens the active TOML configuration file, when one is active. |
 | Open log file | Tray menu `Open log file`. | Opens the active log file. |
-| Manage ignored windows | Tray menu `Manage ignored windows...`. | Opens a dialog for adding or removing ignore rules. Select a row, then use `Add rule...` or `Remove rule...`; the dialog also has `Refresh`, `Copy details`, `Open config`, and `Close`. |
+| Manage ignored windows | Tray menu `Manage ignored windows...`. | Opens a searchable window list. Use a row's three-line menu to assign, change, or remove a rule. `Saved rules` includes closed apps and marks built-in defaults. Changes save immediately, creating the config on the first rule if needed, with `Undo` and `Retry` on failure. Press Enter on a row for actions, Ctrl+F to search, or F5 to refresh. |
 | Pause or unpause | Tray menu `Pause` or `Unpause`. | Same as `TogglePause`. |
 | Reset | Tray menu `Reset`. | Same as `RestartSystem`. |
 | Verbose logging | Tray menu `Verbose logging`. | Same as `ToggleVerboseLogging`; the menu item is checked while verbose logging is active. |

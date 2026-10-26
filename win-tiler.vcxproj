@@ -231,6 +231,9 @@
     <ClCompile Include="src\argument_parser.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\ignore_config.cpp" />
+    <ClCompile Include="src\ignore_dialog.cpp" />
+    <ClCompile Include="src\ui_theme.cpp" />
+    <ClCompile Include="src\test_ignore_dialog.cpp" />
     <ClCompile Include="src\installer.cpp" />
     <ClCompile Include="src\loop.cpp" />
     <ClCompile Include="src\loop_coordinator.cpp" />
@@ -259,6 +262,8 @@
     <ClInclude Include="src\binary_tree.h" />
     <ClInclude Include="src\engine.h" />
     <ClInclude Include="src\ignore_config.h" />
+    <ClInclude Include="src\ignore_dialog.h" />
+    <ClInclude Include="src\ui_theme.h" />
     <ClInclude Include="src\installer.h" />
     <ClInclude Include="src\argument_parser.h" />
     <ClInclude Include="src\resource.h" />

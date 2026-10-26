@@ -187,6 +187,9 @@ public:
 
   explicit GlobalOptionsProvider(std::optional<std::filesystem::path> configPath = std::nullopt);
 
+  // Adopt a newly created config, or immediately reload one edited by the dialog.
+  [[nodiscard]] tl::expected<void, std::string> reload_from(const std::filesystem::path& path);
+
   // Check for file changes and reload if necessary. Returns true if options changed.
   bool refresh();
 };

@@ -613,24 +613,18 @@ std::optional<HotkeyAction> poll_hotkey_action() {
 }
 
 bool reload_provider_after_ignore_config_edit(GlobalOptionsProvider& provider) {
-  if (!provider.configPath.has_value()) {
+  const auto path =
+      provider.configPath ? provider.configPath : winapi::get_notification_area_config_path();
+  if (!path)
     return false;
-  }
 
-  auto result = read_options_toml(*provider.configPath);
+  auto result = provider.reload_from(*path);
   if (!result.has_value()) {
     spdlog::error("Failed to reload config after ignore rule edit: {}", result.error());
     return false;
   }
 
-  provider.options = std::move(result.value());
   winapi::set_notification_area_ignore_options(provider.options.ignoreOptions);
-  std::error_code error;
-  auto current_modified = std::filesystem::last_write_time(*provider.configPath, error);
-  if (!error) {
-    provider.lastModified = current_modified;
-  }
-  provider.nextConfigRefreshCheck = std::chrono::steady_clock::time_point::min();
   return true;
 }
 
