@@ -21,6 +21,10 @@
 #include <string_view>
 #include <unordered_map>
 
+#ifndef DOCTEST_CONFIG_DISABLE
+#include <doctest/doctest.h>
+#endif
+
 #include "ignore_config.h"
 #include "installer.h"
 #include "options.h"
@@ -1646,6 +1650,72 @@ bool set_cursor_pos(long x, long y) {
   return true;
 }
 
+namespace {
+
+template <typename SendInputFunction, typename SetForegroundFunction>
+bool set_foreground_with_input(HWND target, SendInputFunction send_input,
+                               SetForegroundFunction set_foreground) {
+  // An empty mouse event helps acquire foreground permission without pressing a key,
+  // moving the pointer, or changing mouse buttons. A zero-key press can execute menu
+  // commands with no assigned shortcut in Delphi VCL applications (issue #56).
+  INPUT input = {};
+  input.type = INPUT_MOUSE;
+  if (send_input(1, &input, sizeof(INPUT)) != 1) {
+    spdlog::error("Failed to send foreground activation input, error={}", GetLastError());
+  }
+
+  // Input injection can be blocked even when activation is already permitted.
+  return set_foreground(target) != 0;
+}
+
+#ifndef DOCTEST_CONFIG_DISABLE
+TEST_SUITE("winapi focus") {
+  TEST_CASE("foreground activation sends no keyboard input or mouse actions") {
+    bool input_accepted = true;
+    SUBCASE("input is accepted") {}
+    SUBCASE("blocked input still attempts activation") { input_accepted = false; }
+
+    for (BOOL foreground_result : {FALSE, TRUE}) {
+      CAPTURE(input_accepted);
+      CAPTURE(foreground_result);
+      const auto target = reinterpret_cast<HWND>(static_cast<UINT_PTR>(123));
+      int input_calls = 0;
+      int foreground_calls = 0;
+      const bool result = set_foreground_with_input(
+          target,
+          [&](UINT count, LPINPUT inputs, int input_size) -> UINT {
+            ++input_calls;
+            CHECK(foreground_calls == 0);
+            REQUIRE(count == 1);
+            REQUIRE(inputs != nullptr);
+            CHECK(input_size == static_cast<int>(sizeof(INPUT)));
+            REQUIRE(inputs[0].type == INPUT_MOUSE);
+            CHECK(inputs[0].mi.dwFlags == 0);
+            CHECK(inputs[0].mi.dx == 0);
+            CHECK(inputs[0].mi.dy == 0);
+            CHECK(inputs[0].mi.mouseData == 0);
+            if (!input_accepted) {
+              SetLastError(ERROR_ACCESS_DENIED);
+            }
+            return input_accepted ? 1u : 0u;
+          },
+          [&](HWND hwnd) -> BOOL {
+            ++foreground_calls;
+            CHECK(input_calls == 1);
+            CHECK(hwnd == target);
+            return foreground_result;
+          });
+
+      CHECK(input_calls == 1);
+      CHECK(foreground_calls == 1);
+      CHECK(result == (foreground_result != 0));
+    }
+  }
+}
+#endif
+
+} // namespace
+
 bool set_foreground_window(HWND_T hwnd) {
   HWND targetHwnd = reinterpret_cast<HWND>(hwnd);
   HWND foregroundHwnd = GetForegroundWindow();
@@ -1662,11 +1732,7 @@ bool set_foreground_window(HWND_T hwnd) {
     attached = AttachThreadInput(currentThreadId, foregroundThreadId, TRUE) != 0;
   }
 
-  // Simulate a "null" keyboard event — a keypress with no actual key.
-  // This satisfies condition: your process becomes the one that "received the last input event,"
-  // which grants it permission to call SetForegroundWindow successfully.
-  keybd_event(0, 0, 0, 0);
-  bool result = SetForegroundWindow(targetHwnd) != 0;
+  bool result = set_foreground_with_input(targetHwnd, SendInput, SetForegroundWindow);
 
   if (attached) {
     AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
