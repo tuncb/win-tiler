@@ -176,8 +176,13 @@ struct CompletedDragRequest {
   bool do_exchange = false;
 };
 
+[[nodiscard]] ctrl::SplitMode to_engine_split_mode(LayoutSplitMode mode);
+[[nodiscard]] LayoutSplitMode to_layout_split_mode(ctrl::SplitMode mode);
+
 struct EngineFrameInput {
   MovementMode initial_movement_mode = MovementMode::Swap;
+  std::optional<MovementMode> requested_movement_mode;
+  std::optional<LayoutSplitMode> requested_split_mode;
   std::vector<ctrl::ClusterCellUpdateInfo> cluster_updates;
   std::vector<std::vector<ManagedWindowState>> managed_windows;
   std::optional<HotkeyAction> hotkey_action;
@@ -204,6 +209,7 @@ struct EngineFrameInput {
 };
 
 struct EngineFrameOutput {
+  LayoutSplitMode split_mode = LayoutSplitMode::Dwindle;
   MovementMode movement_mode = MovementMode::Swap;
   LoopControl control = LoopControl::Continue;
   bool topology_changed = false;
@@ -237,6 +243,7 @@ struct Engine {
   ctrl::System system;
   MovementMode movement_mode = MovementMode::Swap;
   std::optional<MovementMode> configured_movement_mode;
+  std::optional<LayoutSplitMode> configured_split_mode;
   std::optional<ctrl::Point> previous_cursor_pos;
   std::optional<size_t> previous_foreground_leaf_id;
   // Independent of tiled focus: an empty monitor or its taskbar can be active.

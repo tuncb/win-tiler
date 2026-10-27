@@ -26,11 +26,10 @@ Download the latest from releases page and then run the executable:
 win-tiler.exe
 ```
 
-You will start using win-tiler directly. Check out the tray icon for more options:
+You will start using win-tiler directly. Use the tray icon to control tiling, placement,
+movement, and outlines. See [Tray and dialog actions](#tray-and-dialog-actions) for details.
 
-![Tray](assets/tray.png)
-
-You can do a per-user installation and by using the Install option. The app can be uninstalled from the add/remove programs system setting in Windows.
+For a per-user installation, choose **Tools & help > Startup & installation** in the tray menu. The app can be uninstalled from the add/remove programs system setting in Windows.
 
 ## Configuration
 
@@ -63,7 +62,7 @@ configuration file.
 | `MoveDown` | `super+alt+shift+j` | Move the selected window down using the current movement mode. |
 | `MoveUp` | `super+alt+shift+k` | Move the selected window up using the current movement mode. |
 | `MoveRight` | `super+alt+shift+l` | Move the selected window right using the current movement mode. |
-| `ToggleMovementMode` | `super+alt+shift+,` | Toggle directional movement between Swap and Insert (also available in the tray). |
+| `ToggleMovementMode` | `super+alt+shift+,` | Toggle directional movement between Swap and Insert (explicit choices are also available in the tray). |
 | `SplitIncrease` | `super+shift+pageup` | Give the selected tile more space in its parent split. |
 | `SplitDecrease` | `super+shift+pagedown` | Give the selected tile less space in its parent split. |
 | `ExchangeSiblings` | `super+shift+e` | Swap the selected tile with its sibling in the same parent split. |
@@ -71,7 +70,7 @@ configuration file.
 | `ResetSplitRatio` | `super+shift+home` | Reset the selected tile's parent split to 50/50. |
 | `TogglePause` | `super+shift+\` or tray menu | Pause or resume automatic tiling. |
 | `DumpWindowManagement` | `super+shift+d` | Write the current window management state to the log. |
-| `RestartSystem` | `super+shift+r` or tray menu `Reset` | Rebuild tiling state from the current monitors and windows. |
+| `RestartSystem` | `super+shift+r` or tray menu `Rebuild layout` | Rebuild tiling state from the current monitors and windows. |
 | `ToggleFloating` | `super+shift+f` | Temporarily remove the selected or foreground window from tiling for this session; run it again to tile that window again. |
 | `ToggleVerboseLogging` | `super+shift+v` or tray menu | Toggle verbose runtime logging. |
 | `Exit` | `super+shift+escape` or tray menu | Exit `win-tiler`. |
@@ -81,7 +80,7 @@ configuration file.
 Use `Win+Alt+Shift+H/J/K/L` to move left/down/up/right. Selection and focus follow the
 moved window, so the shortcut can be repeated. Navigation remains `Win+Shift+H/J/K/L`.
 
-`Win+Alt+Shift+,` toggles the mode and shows a toast; the tray also displays and toggles it:
+`Win+Alt+Shift+,` toggles the mode and shows a toast; the tray also displays it and offers explicit Swap / Insert choices:
 
 - **Swap** (default): exchange positions with the nearest window in that direction.
 - **Insert**: remove the window from its old split and insert it on the requested side of
@@ -118,13 +117,17 @@ Right-click the `win-tiler` notification-area icon to open the tray menu. The me
 
 | Action | Mouse input | What it does |
 | --- | --- | --- |
-| Open config file | Tray menu `Open config file`. | Opens the active TOML configuration file, when one is active. |
-| Open log file | Tray menu `Open log file`. | Opens the active log file. |
-| Manage ignored windows | Tray menu `Manage ignored windows...`. | Opens a searchable window list. Use a row's three-line menu to assign, change, or remove a rule. `Saved rules` includes closed apps and marks built-in defaults. Changes save immediately, creating the config on the first rule if needed, with `Undo` and `Retry` on failure. Press Enter on a row for actions, Ctrl+F to search, or F5 to refresh. |
-| Pause or unpause | Tray menu `Pause` or `Unpause`. | Same as `TogglePause`. |
-| Reset | Tray menu `Reset`. | Same as `RestartSystem`. |
-| Verbose logging | Tray menu `Verbose logging`. | Same as `ToggleVerboseLogging`; the menu item is checked while verbose logging is active. |
-| Install or uninstall | Tray menu `Install...`. | Opens the installer dialog. From there you can install, uninstall, apply Start Menu or auto-start options, or close the dialog. |
-| Check updates | Tray menu `Check updates...`. | Checks the installed app for an available update. |
-| About | Tray menu `About...`. | Shows the app version and repository link. |
-| Exit | Tray menu `Exit`. | Exits `win-tiler`. |
+| Pause or resume tiling | Tray menu `Pause tiling` / `Resume tiling`. | Same as `TogglePause`. |
+| Rebuild layout | Tray menu `Rebuild layout`. | Rebuilds tiling state from current monitors and windows; does not reset configuration. Disabled while paused or when no desktop is available. |
+| New windows | Tray submenu `New windows`. | Choose placement and split direction. Changes save to configuration and apply to subsequent insertions without rearranging existing splits. |
+| Keyboard movement | Tray submenu `Keyboard movement: Swap` / `Insert`. | Explicitly select Swap or Insert for this virtual desktop and session. Does not save to configuration. Disabled while paused or when no desktop is available. |
+| Window outlines | Tray submenu `Window outlines`. | Choose All windows, Active window only, or Off. Changes save immediately. Enabling restores a zero border width to 3px; process suppression still applies. |
+| Ignored windows | Tray menu `Ignored windows...`. | Opens a searchable window list. Use a row's three-line menu to assign, change, or remove a rule. `Saved rules` includes closed apps and marks built-in defaults. Changes save immediately, creating the config on the first rule if needed, with `Undo` and `Retry` on failure. Press Enter on a row for actions, Ctrl+F to search, or F5 to refresh. |
+| Edit or create configuration | Tray menu `Edit configuration...` / `Create configuration...`. | Opens the active TOML configuration. Creates a documented starter file if missing. |
+| Tools and help | Tray submenu `Tools & help`. | Open the log, toggle verbose logging, write diagnostics, manage startup and installation, check for updates, or view About. File logging actions are disabled when no log file is available. |
+| Exit | Tray menu `Exit win-tiler`. | Exits `win-tiler`. |
+
+Tray preference changes preserve comments and unrelated settings. With no configuration file,
+the first saved preference creates `win-tiler.toml` next to the executable (or at the supplied
+`--config` path). Save failures are reported without changing the running preferences. Preferences
+can be saved while paused and take effect when tiling resumes.

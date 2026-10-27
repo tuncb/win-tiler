@@ -27,10 +27,11 @@
 
 #include "ignore_config.h"
 #include "ignore_dialog.h"
-#include "ui_theme.h"
 #include "installer.h"
 #include "options.h"
 #include "resource.h"
+#include "tray_menu.h"
+#include "ui_theme.h"
 #include "version.h"
 
 // Link with Psapi.lib
@@ -2040,7 +2041,10 @@ std::atomic<bool> g_notification_area_verbose_logging_active{false};
 std::atomic<wintiler::MovementMode> g_notification_area_movement_mode{wintiler::MovementMode::Swap};
 std::mutex g_notification_area_ignore_options_mutex;
 wintiler::IgnoreOptions g_notification_area_ignore_options;
-std::atomic<bool> g_notification_area_ignore_config_changed_requested{false};
+std::atomic<bool> g_notification_area_config_changed_requested{false};
+wintiler::TrayMenuState g_notification_area_menu_state;
+std::atomic<int> g_notification_area_movement_request{-1};
+std::atomic<int> g_notification_area_split_request{-1};
 UINT g_taskbar_created_message = 0;
 
 // Pause state flags (atomic for thread safety)
@@ -2057,17 +2061,7 @@ HANDLE g_resume_event = nullptr;
 const wchar_t* NOTIFICATION_WINDOW_CLASS = L"WinTilerNotificationWindow";
 constexpr UINT WM_WINTILER_NOTIFICATION_ICON = WM_APP + 1;
 constexpr UINT_PTR NOTIFICATION_AREA_ICON_ID = 1;
-constexpr UINT ID_OPEN_CONFIG = 1001;
-constexpr UINT ID_SHOW_LOG = 1002;
-constexpr UINT ID_TOGGLE_PAUSE = 1003;
-constexpr UINT ID_RESET = 1004;
-constexpr UINT ID_ABOUT = 1005;
-constexpr UINT ID_INSTALLER = 1006;
-constexpr UINT ID_CHECK_UPDATES = 1007;
-constexpr UINT ID_EXIT = 1008;
-constexpr UINT ID_TOGGLE_VERBOSE_LOGGING = 1009;
-constexpr UINT ID_MANAGE_IGNORED_WINDOWS = 1010;
-constexpr UINT ID_TOGGLE_MOVEMENT_MODE = 1011;
+using namespace wintiler;
 constexpr const wchar_t* GITHUB_REPOSITORY_URL = L"https://github.com/tuncb/win-tiler";
 const GUID NOTIFICATION_AREA_ICON_GUID = {
     0x7b3f9c9c, 0xbdc7, 0x4e83, {0x90, 0xcb, 0xef, 0x64, 0x53, 0x6d, 0xae, 0xdb}};
@@ -2108,7 +2102,7 @@ void show_ignore_configuration_dialog(HWND owner) {
   wintiler::show_ignore_dialog(owner, g_notification_area_icon_options.config_path,
       get_notification_area_ignore_options_copy(), [](const wintiler::IgnoreOptions& options) {
         set_notification_area_ignore_options(options);
-        g_notification_area_ignore_config_changed_requested = true;
+        g_notification_area_config_changed_requested = true;
       });
 }
 
@@ -2179,13 +2173,60 @@ void show_notification_area_about_dialog(HWND hwnd) {
   }
 }
 
+void report_tray_error(HWND hwnd, const std::string& error) {
+  spdlog::error("Tray action failed: {}", error);
+  const auto message = wintiler::ui::wide(error);
+  MessageBoxW(hwnd, message.c_str(), L"win-tiler", MB_OK | MB_ICONERROR);
+}
+
+std::filesystem::path tray_config_path() {
+  if (is_non_empty_path(g_notification_area_icon_options.config_path))
+    return *g_notification_area_icon_options.config_path;
+  auto executable = get_module_file_path();
+  return executable.empty() ? std::filesystem::path{}
+                            : executable.parent_path() / L"win-tiler.toml";
+}
+
 void handle_notification_menu_command(HWND hwnd, UINT command) {
-  switch (command) {
-  case ID_OPEN_CONFIG:
-    if (g_notification_area_icon_options.config_path.has_value()) {
-      shell_open_path(hwnd, *g_notification_area_icon_options.config_path, "config file");
-    }
+  if (auto movement = tray_movement_choice(command)) {
+    request_notification_area_movement_mode(*movement);
     return;
+  }
+  if (is_tray_config_command(command)) {
+    const auto path = tray_config_path();
+    if (path.empty()) {
+      report_tray_error(hwnd, "Cannot determine the configuration path.");
+      return;
+    }
+    auto saved = save_tray_setting(path, command);
+    if (!saved) {
+      report_tray_error(hwnd, saved.error());
+      return;
+    }
+    g_notification_area_icon_options.config_path = path;
+    g_notification_area_config_changed_requested = true;
+    if (auto split = tray_split_choice(command))
+      g_notification_area_split_request = static_cast<int>(*split);
+    return;
+  }
+  switch (command) {
+  case ID_OPEN_CONFIG: {
+    const auto path = tray_config_path();
+    if (path.empty()) {
+      report_tray_error(hwnd, "Cannot determine the configuration path.");
+      return;
+    }
+    auto created = ensure_tray_config(path);
+    if (!created) {
+      report_tray_error(hwnd, created.error());
+      return;
+    }
+    g_notification_area_icon_options.config_path = path;
+    g_notification_area_config_changed_requested = true;
+    if (!shell_open_path(hwnd, path, "configuration"))
+      report_tray_error(hwnd, "Could not open the configuration file: " + path.string());
+    return;
+  }
 
   case ID_SHOW_LOG:
     if (g_notification_area_icon_options.log_file_path.has_value()) {
@@ -2203,8 +2244,8 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
     spdlog::info("Reset requested from notification area menu");
     return;
 
-  case ID_TOGGLE_MOVEMENT_MODE:
-    request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleMovementMode);
+  case ID_DUMP_DIAGNOSTICS:
+    request_notification_area_hotkey_action(wintiler::HotkeyAction::DumpWindowManagement);
     return;
 
   case ID_TOGGLE_VERBOSE_LOGGING:
@@ -2276,23 +2317,16 @@ void handle_notification_menu_command(HWND hwnd, UINT command) {
 void show_notification_area_menu(HWND hwnd) {
   wintiler::ui::PopupMenu menu(hwnd, wintiler::ui::ThemeSurface::System);
   const auto availability = get_notification_area_menu_availability(g_notification_area_icon_options);
-  menu.append(ID_OPEN_CONFIG, L"Open config file", {}, availability.can_open_config);
-  menu.append(ID_SHOW_LOG, L"Open log file", {}, availability.can_show_log);
-  menu.append(ID_MANAGE_IGNORED_WINDOWS, L"Manage ignored windows...");
-  menu.separator();
-  menu.append(ID_TOGGLE_PAUSE,
-      get_notification_area_toggle_pause_menu_text(g_notification_area_manual_pause_active.load()));
-  menu.append(ID_RESET, L"Reset");
-  menu.append(ID_TOGGLE_MOVEMENT_MODE,
-      get_notification_area_movement_mode_menu_text(g_notification_area_movement_mode.load()));
-  menu.append(ID_TOGGLE_VERBOSE_LOGGING, L"Verbose logging", {}, true,
-      g_notification_area_verbose_logging_active.load());
-  menu.separator();
-  menu.append(ID_INSTALLER, L"Install...");
-  menu.append(ID_CHECK_UPDATES, L"Check updates...");
-  menu.append(ID_ABOUT, L"About...");
-  menu.separator();
-  menu.append(ID_EXIT, L"Exit");
+  auto state = g_notification_area_menu_state;
+  state.paused = g_notification_area_manual_pause_active.load();
+  state.verbose_logging = g_notification_area_verbose_logging_active.load();
+  state.movement_mode = g_notification_area_movement_mode.load();
+  std::error_code config_error;
+  state.has_config =
+      availability.can_open_config &&
+      std::filesystem::is_regular_file(*g_notification_area_icon_options.config_path, config_error);
+  state.has_log = availability.can_show_log;
+  populate_tray_menu(menu, state);
 
   POINT cursor{};
   if (!GetCursorPos(&cursor)) {
@@ -2531,7 +2565,7 @@ std::wstring get_notification_area_about_dialog_content() {
 }
 
 const wchar_t* get_notification_area_toggle_pause_menu_text(bool is_paused) {
-  return is_paused ? L"Unpause" : L"Pause";
+  return is_paused ? L"Resume tiling" : L"Pause tiling";
 }
 
 void register_session_power_notifications() {
@@ -2610,8 +2644,36 @@ void set_notification_area_manual_pause_active(bool is_paused) {
 }
 
 const wchar_t* get_notification_area_movement_mode_menu_text(wintiler::MovementMode mode) {
-  return mode == wintiler::MovementMode::Swap ? L"Movement: Swap (toggle)"
-                                              : L"Movement: Insert (toggle)";
+  return mode == wintiler::MovementMode::Swap ? L"Keyboard movement: Swap"
+                                              : L"Keyboard movement: Insert";
+}
+
+void set_notification_area_options(const wintiler::GlobalOptions& options) {
+  g_notification_area_menu_state.layout = options.layoutOptions;
+  g_notification_area_menu_state.render = options.visualizationOptions.renderOptions;
+  set_notification_area_ignore_options(options.ignoreOptions);
+}
+
+void set_notification_area_has_desktop(bool has_desktop) {
+  g_notification_area_menu_state.has_desktop = has_desktop;
+}
+
+void set_notification_area_split_mode(wintiler::LayoutSplitMode mode) {
+  g_notification_area_menu_state.layout.split_mode = mode;
+}
+
+void request_notification_area_movement_mode(wintiler::MovementMode mode) {
+  g_notification_area_movement_request = static_cast<int>(mode);
+}
+
+std::optional<wintiler::MovementMode> consume_notification_area_movement_mode_request() {
+  const int value = g_notification_area_movement_request.exchange(-1);
+  return value == -1 ? std::nullopt : std::optional(static_cast<wintiler::MovementMode>(value));
+}
+
+std::optional<wintiler::LayoutSplitMode> consume_notification_area_split_mode_request() {
+  const int value = g_notification_area_split_request.exchange(-1);
+  return value == -1 ? std::nullopt : std::optional(static_cast<wintiler::LayoutSplitMode>(value));
 }
 
 void set_notification_area_movement_mode(wintiler::MovementMode mode) {
@@ -2672,8 +2734,8 @@ std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action() 
   return std::nullopt;
 }
 
-bool consume_notification_area_ignore_config_changed_request() {
-  return g_notification_area_ignore_config_changed_requested.exchange(false);
+bool consume_notification_area_config_changed_request() {
+  return g_notification_area_config_changed_requested.exchange(false);
 }
 
 std::optional<DWORD_T> find_notification_area_process_id() {

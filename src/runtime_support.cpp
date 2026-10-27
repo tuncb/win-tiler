@@ -113,17 +113,6 @@ void extract_managed_window_states_from_input_into(
   }
 }
 
-ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode) {
-  switch (split_mode) {
-  case LayoutSplitMode::Dwindle:
-    return ctrl::SplitMode::Dwindle;
-  case LayoutSplitMode::Vertical:
-    return ctrl::SplitMode::Vertical;
-  case LayoutSplitMode::Horizontal:
-    return ctrl::SplitMode::Horizontal;
-  }
-  return ctrl::SplitMode::Dwindle;
-}
 
 void resolve_cluster_tiling_options_into(const std::vector<winapi::MonitorInfo>& monitors,
                                          const GlobalOptions& options,

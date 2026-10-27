@@ -25,6 +25,31 @@ Ignore lists merge with the built-in defaults by default. Set the relevant
 Invalid numeric values fall back to defaults unless noted otherwise.
 `visualization.render.zen_percentage` is clamped to the `0.1` to `1.0` range.
 
+## Tray preferences
+
+The tray's **New windows** submenu saves `layout.split_target` and `layout.split_mode`.
+Placement choices are Under pointer, At focused window, Largest space on active monitor,
+and Largest space across monitors. Split directions are Automatic (Dwindle), Side by side
+(`vertical`), and Stacked (`horizontal`). They affect new insertions; existing splits retain
+their geometry. The cycle shortcut remains a session override, preserved across unrelated
+configuration reloads. An explicit tray direction choice restores the selected mode.
+
+**Window outlines** maps All windows / Active window only / Off onto `show_rectangles`
+and `show_only_active_window`. Choosing Off preserves the previous active-only preference.
+Enabling outlines restores a zero `border_width` to the default 3px; positive custom widths,
+colors, and process suppression rules are preserved. The menu reports Off for a zero-width
+border, even when `show_rectangles` is true. Process-based suppression can temporarily hide
+outlines while an enabled mode is selected.
+
+These choices save immediately, preserving comments and unrelated settings. A missing config
+is created with documented defaults at the active config path, or next to the executable.
+Failures leave the running settings unchanged and show an error. Saved preferences can be changed
+while paused; tiling remains paused until Resume tiling is selected.
+
+**Keyboard movement** chooses Swap or Insert explicitly for the current virtual desktop and
+session, without writing `keyboard.movement_mode`. The initial mode is still read from config.
+The tray disables movement and Rebuild layout while paused or without an available desktop.
+
 ## Sections
 
 | Section | Purpose |
@@ -63,7 +88,7 @@ window with its directional neighbor; `"insert"` removes it from its old positio
 the neighbor's space, placing it on the requested side. Invalid values fall back to `"swap"`.
 
 `MoveLeft`, `MoveDown`, `MoveUp`, and `MoveRight` default to `Win+Alt+Shift+H/J/K/L`.
-`ToggleMovementMode` defaults to `Win+Alt+Shift+,`; a toast and the tray menu show the current mode.
+`ToggleMovementMode` defaults to `Win+Alt+Shift+,`; a toast and the tray menu show the current mode. The tray offers explicit Swap / Insert choices.
 The toggle is session-only and tracked per virtual desktop. A changed configured mode takes
 effect on the desktop's next frame; unrelated config reloads preserve the toggled mode.
 

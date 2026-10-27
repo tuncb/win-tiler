@@ -18,6 +18,15 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\config_file.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\tray_menu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\test_tray_menu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\app_console.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -83,6 +92,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\config_file.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\tray_menu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\app_console.h">
       <Filter>Header Files</Filter>
     </ClInclude>

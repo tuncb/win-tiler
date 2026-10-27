@@ -184,19 +184,20 @@ void PopupMenu::style_menu(HMENU menu) {
 }
 
 void PopupMenu::append(UINT id, std::wstring label, std::wstring description, bool enabled,
-                       bool checked, HMENU parent) {
+                       bool checked, HMENU parent, bool radio) {
   if (!parent)
     parent = handle;
   auto item = std::make_unique<MenuItem>();
   item->label = std::move(label);
   item->description = std::move(description);
+  item->radio = radio;
   item->accessible.dwMSAASignature = MSAA_MENU_SIG;
   item->accessible.cchWText = static_cast<DWORD>(item->label.size());
   item->accessible.pszWText = item->label.data();
   MENUITEMINFOW info{};
   info.cbSize = sizeof(info);
   info.fMask = MIIM_FTYPE | MIIM_ID | MIIM_DATA | MIIM_STRING | MIIM_STATE;
-  info.fType = MFT_OWNERDRAW;
+  info.fType = MFT_OWNERDRAW | (radio ? MFT_RADIOCHECK : 0);
   info.wID = id;
   info.dwItemData = reinterpret_cast<ULONG_PTR>(item.get());
   info.dwTypeData = item->label.data();
@@ -312,7 +313,7 @@ void PopupMenu::draw(const DRAWITEMSTRUCT& drawn) {
     label.bottom = label.top + scale(21, dpi);
   }
   text(drawn.hDC, label, item->label, font, foreground,
-       DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+       DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
   if (!item->description.empty()) {
     RECT description = label;
     description.top = label.bottom;
@@ -325,7 +326,8 @@ void PopupMenu::draw(const DRAWITEMSTRUCT& drawn) {
   if (drawn.itemState & ODS_CHECKED) {
     RECT check = rect;
     check.right = check.left + scale(30, dpi);
-    text(drawn.hDC, check, L"\x2713", font, foreground, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    text(drawn.hDC, check, item->radio ? L"\x2022" : L"\x2713", font, foreground,
+         DT_SINGLELINE | DT_VCENTER | DT_CENTER);
   }
   if (item->submenu) {
     RECT arrow = rect;

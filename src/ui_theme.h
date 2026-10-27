@@ -41,6 +41,7 @@ struct MenuItem {
   std::wstring description;
   bool separator = false;
   bool submenu = false;
+  bool radio = false;
 };
 
 // A native HMENU retains Windows keyboard/navigation/accessibility behavior.
@@ -62,7 +63,7 @@ struct PopupMenu {
   PopupMenu(const PopupMenu&) = delete;
   PopupMenu& operator=(const PopupMenu&) = delete;
   void append(UINT id, std::wstring label, std::wstring description = {}, bool enabled = true,
-              bool checked = false, HMENU parent = nullptr);
+              bool checked = false, HMENU parent = nullptr, bool radio = false);
   void separator(HMENU parent = nullptr);
   [[nodiscard]] HMENU submenu(std::wstring label, HMENU parent = nullptr);
   [[nodiscard]] UINT track(POINT point);

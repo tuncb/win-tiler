@@ -325,7 +325,8 @@ std::string get_options_toml_documentation() {
 # [keyboard]
 # movement_mode = "swap"
 # movement_mode: initial directional movement behavior, "swap" or "insert".
-# ToggleMovementMode changes it for the current desktop session without writing config.
+# ToggleMovementMode and tray Keyboard movement choices affect only the current desktop session.
+# Neither writes movement_mode to config.
 # MoveLeft/Down/Up/Right use Win+Alt+Shift+H/J/K/L; toggle uses Win+Alt+Shift+comma.
 # Insert follows the direction (left/right: side by side; up/down: stacked).
 # With no neighbor in that direction, movement does nothing.
@@ -382,6 +383,8 @@ std::string get_options_toml_documentation() {
 # toggle_zen_on_window_maximize: true toggles zen when a tiled window is maximized.
 # mouse_drag_drop: "exchange" swaps windows, "split" inserts as a split.
 #
+# Tray New windows choices save split_target/split_mode here and apply without restarting.
+# CycleSplitMode is a session override; unrelated config edits preserve that override.
 # Layout options (apply to every monitor):
 # [layout]
 # split_mode = "dwindle"
@@ -432,6 +435,8 @@ std::string get_options_toml_documentation() {
 # hide_rectangles_when_processes_open = ["ScreenShare.exe"]
 #
 # toast_duration_ms: how long status toast messages stay visible.
+# Tray Window outlines saves show_rectangles and show_only_active_window.
+# Enabling outlines restores border_width to 3.0 if it was zero; suppression rules still apply.
 # show_rectangles: whether overlay rectangles are visible. Toast messages are unaffected.
 # show_only_active_window: draw only the foreground tiled window using selected_color.
 # Defaults to false. No rectangle is drawn when the foreground window is not tiled.
@@ -507,125 +512,133 @@ std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_o
   return std::nullopt;
 }
 
+std::string format_options_toml(const GlobalOptions& options) {
+  toml::table root;
+
+  // Build ignore section
+  toml::table ignore;
+
+  // Write merge flags
+  ignore.insert("merge_processes_with_defaults", options.ignoreOptions.merge_processes);
+  ignore.insert("merge_window_titles_with_defaults", options.ignoreOptions.merge_window_titles);
+  ignore.insert("merge_process_title_pairs_with_defaults",
+                options.ignoreOptions.merge_process_title_pairs);
+  ignore.insert("merge_ignore_children_of_processes_with_defaults",
+                options.ignoreOptions.merge_ignore_children_of_processes);
+
+  toml::array processes;
+  for (const auto& p : options.ignoreOptions.ignored_processes) {
+    processes.push_back(p);
+  }
+  ignore.insert("processes", processes);
+
+  toml::array window_titles;
+  for (const auto& t : options.ignoreOptions.ignored_window_titles) {
+    window_titles.push_back(t);
+  }
+  ignore.insert("window_titles", window_titles);
+
+  toml::array process_title_pairs;
+  for (const auto& [process, title] : options.ignoreOptions.ignored_process_title_pairs) {
+    toml::table pair;
+    pair.insert("process", process);
+    pair.insert("title", title);
+    process_title_pairs.push_back(pair);
+  }
+  ignore.insert("process_title_pairs", process_title_pairs);
+
+  toml::array ignore_children_of_processes;
+  for (const auto& p : options.ignoreOptions.ignore_children_of_processes) {
+    ignore_children_of_processes.push_back(p);
+  }
+  ignore.insert("ignore_children_of_processes", ignore_children_of_processes);
+
+  if (options.ignoreOptions.small_window_barrier) {
+    toml::table barrier;
+    barrier.insert("width", options.ignoreOptions.small_window_barrier->width);
+    barrier.insert("height", options.ignoreOptions.small_window_barrier->height);
+    ignore.insert("small_window_barrier", barrier);
+  }
+
+  root.insert("ignore", ignore);
+
+  // Build keyboard section
+  toml::table keyboard;
+  keyboard.insert("movement_mode",
+                  options.keyboardOptions.movement_mode == MovementMode::Swap ? "swap" : "insert");
+  toml::array bindings;
+  for (const auto& binding : options.keyboardOptions.bindings) {
+    toml::table b;
+    b.insert("action", hotkey_action_to_string(binding.action));
+    b.insert("hotkey", binding.hotkey);
+    bindings.push_back(b);
+  }
+  keyboard.insert("bindings", bindings);
+  root.insert("keyboard", keyboard);
+
+  // Build gap section
+  toml::table gap;
+  gap.insert("horizontal", options.gapOptions.horizontal);
+  gap.insert("vertical", options.gapOptions.vertical);
+  root.insert("gap", gap);
+
+  // Build loop section
+  toml::table loop;
+  loop.insert("interval_ms", options.loopOptions.intervalMs);
+  loop.insert("config_refresh_interval_ms", options.loopOptions.configRefreshIntervalMs);
+  loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
+  loop.insert("mouse_drag_drop",
+              mouse_drag_drop_action_to_string(options.loopOptions.mouse_drag_drop));
+  root.insert("loop", loop);
+
+  // Build layout section
+  root.insert("layout", layout_options_to_toml(options.layoutOptions));
+
+  // Build visualization section with nested render
+  toml::table visualization;
+  toml::table render;
+  auto colorToArray = [](const overlay::Color& c) {
+    toml::array arr;
+    arr.push_back(static_cast<int64_t>(c.r));
+    arr.push_back(static_cast<int64_t>(c.g));
+    arr.push_back(static_cast<int64_t>(c.b));
+    arr.push_back(static_cast<int64_t>(c.a));
+    return arr;
+  };
+  const auto& ro = options.visualizationOptions.renderOptions;
+  render.insert("show_rectangles", ro.show_rectangles);
+  render.insert("show_only_active_window", ro.show_only_active_window);
+  render.insert("normal_color", colorToArray(ro.normal_color));
+  render.insert("selected_color", colorToArray(ro.selected_color));
+  render.insert("border_width", ro.border_width);
+  render.insert("toast_font_size", ro.toast_font_size);
+  render.insert("zen_percentage", ro.zen_percentage);
+  toml::array hide_rectangles_when_processes_open;
+  for (const auto& process : ro.hide_rectangles_when_processes_open) {
+    hide_rectangles_when_processes_open.push_back(process);
+  }
+  render.insert("hide_rectangles_when_processes_open", hide_rectangles_when_processes_open);
+  visualization.insert("render", render);
+  visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
+  root.insert("visualization", visualization);
+
+  std::ostringstream stream;
+  stream << get_options_toml_documentation() << root;
+  return stream.str();
+}
+
 tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
                                                    const std::filesystem::path& filepath) {
   try {
-    toml::table root;
-
-    // Build ignore section
-    toml::table ignore;
-
-    // Write merge flags
-    ignore.insert("merge_processes_with_defaults", options.ignoreOptions.merge_processes);
-    ignore.insert("merge_window_titles_with_defaults", options.ignoreOptions.merge_window_titles);
-    ignore.insert("merge_process_title_pairs_with_defaults",
-                  options.ignoreOptions.merge_process_title_pairs);
-    ignore.insert("merge_ignore_children_of_processes_with_defaults",
-                  options.ignoreOptions.merge_ignore_children_of_processes);
-
-    toml::array processes;
-    for (const auto& p : options.ignoreOptions.ignored_processes) {
-      processes.push_back(p);
-    }
-    ignore.insert("processes", processes);
-
-    toml::array window_titles;
-    for (const auto& t : options.ignoreOptions.ignored_window_titles) {
-      window_titles.push_back(t);
-    }
-    ignore.insert("window_titles", window_titles);
-
-    toml::array process_title_pairs;
-    for (const auto& [process, title] : options.ignoreOptions.ignored_process_title_pairs) {
-      toml::table pair;
-      pair.insert("process", process);
-      pair.insert("title", title);
-      process_title_pairs.push_back(pair);
-    }
-    ignore.insert("process_title_pairs", process_title_pairs);
-
-    toml::array ignore_children_of_processes;
-    for (const auto& p : options.ignoreOptions.ignore_children_of_processes) {
-      ignore_children_of_processes.push_back(p);
-    }
-    ignore.insert("ignore_children_of_processes", ignore_children_of_processes);
-
-    if (options.ignoreOptions.small_window_barrier) {
-      toml::table barrier;
-      barrier.insert("width", options.ignoreOptions.small_window_barrier->width);
-      barrier.insert("height", options.ignoreOptions.small_window_barrier->height);
-      ignore.insert("small_window_barrier", barrier);
-    }
-
-    root.insert("ignore", ignore);
-
-    // Build keyboard section
-    toml::table keyboard;
-    keyboard.insert("movement_mode", options.keyboardOptions.movement_mode == MovementMode::Swap
-                                         ? "swap"
-                                         : "insert");
-    toml::array bindings;
-    for (const auto& binding : options.keyboardOptions.bindings) {
-      toml::table b;
-      b.insert("action", hotkey_action_to_string(binding.action));
-      b.insert("hotkey", binding.hotkey);
-      bindings.push_back(b);
-    }
-    keyboard.insert("bindings", bindings);
-    root.insert("keyboard", keyboard);
-
-    // Build gap section
-    toml::table gap;
-    gap.insert("horizontal", options.gapOptions.horizontal);
-    gap.insert("vertical", options.gapOptions.vertical);
-    root.insert("gap", gap);
-
-    // Build loop section
-    toml::table loop;
-    loop.insert("interval_ms", options.loopOptions.intervalMs);
-    loop.insert("config_refresh_interval_ms", options.loopOptions.configRefreshIntervalMs);
-    loop.insert("toggle_zen_on_window_maximize", options.loopOptions.toggle_zen_on_window_maximize);
-    loop.insert("mouse_drag_drop",
-                mouse_drag_drop_action_to_string(options.loopOptions.mouse_drag_drop));
-    root.insert("loop", loop);
-
-    // Build layout section
-    root.insert("layout", layout_options_to_toml(options.layoutOptions));
-
-    // Build visualization section with nested render
-    toml::table visualization;
-    toml::table render;
-    auto colorToArray = [](const overlay::Color& c) {
-      toml::array arr;
-      arr.push_back(static_cast<int64_t>(c.r));
-      arr.push_back(static_cast<int64_t>(c.g));
-      arr.push_back(static_cast<int64_t>(c.b));
-      arr.push_back(static_cast<int64_t>(c.a));
-      return arr;
-    };
-    const auto& ro = options.visualizationOptions.renderOptions;
-    render.insert("show_rectangles", ro.show_rectangles);
-    render.insert("show_only_active_window", ro.show_only_active_window);
-    render.insert("normal_color", colorToArray(ro.normal_color));
-    render.insert("selected_color", colorToArray(ro.selected_color));
-    render.insert("border_width", ro.border_width);
-    render.insert("toast_font_size", ro.toast_font_size);
-    render.insert("zen_percentage", ro.zen_percentage);
-    toml::array hide_rectangles_when_processes_open;
-    for (const auto& process : ro.hide_rectangles_when_processes_open) {
-      hide_rectangles_when_processes_open.push_back(process);
-    }
-    render.insert("hide_rectangles_when_processes_open", hide_rectangles_when_processes_open);
-    visualization.insert("render", render);
-    visualization.insert("toast_duration_ms", options.visualizationOptions.toastDurationMs);
-    root.insert("visualization", visualization);
-
     // Write to file
     std::ofstream file(filepath);
     if (!file) {
       return tl::unexpected("Failed to open file for writing: " + filepath.string());
     }
-    file << get_options_toml_documentation() << root;
+    file << format_options_toml(options);
+    file.close();
+    if (!file)
+      return tl::unexpected("Failed to write config file: " + filepath.string());
     return {};
   } catch (const std::exception& e) {
     return tl::unexpected(std::string("Error writing TOML: ") + e.what());

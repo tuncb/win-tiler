@@ -612,7 +612,7 @@ std::optional<HotkeyAction> poll_hotkey_action() {
   return id_to_hotkey_action(*hotkey_id);
 }
 
-bool reload_provider_after_ignore_config_edit(GlobalOptionsProvider& provider) {
+bool reload_provider_after_tray_config_edit(GlobalOptionsProvider& provider) {
   const auto path =
       provider.configPath ? provider.configPath : winapi::get_notification_area_config_path();
   if (!path)
@@ -620,29 +620,35 @@ bool reload_provider_after_ignore_config_edit(GlobalOptionsProvider& provider) {
 
   auto result = provider.reload_from(*path);
   if (!result.has_value()) {
-    spdlog::error("Failed to reload config after ignore rule edit: {}", result.error());
+    spdlog::error("Failed to reload config after tray edit: {}", result.error());
     return false;
   }
 
-  winapi::set_notification_area_ignore_options(provider.options.ignoreOptions);
+  winapi::set_notification_area_options(provider.options);
   return true;
 }
 
 template <typename DesktopId>
-void handle_ignore_config_changed_request(GlobalOptionsProvider& provider, ToastState& toast,
-                                          MultiEngine<LoopDesktopData, DesktopId>& multi_engine) {
-  if (!winapi::consume_notification_area_ignore_config_changed_request()) {
+void handle_tray_config_changed_request(GlobalOptionsProvider& provider, ToastState& toast,
+                                        MultiEngine<LoopDesktopData, DesktopId>& multi_engine) {
+  if (!winapi::consume_notification_area_config_changed_request()) {
     return;
   }
 
-  if (!reload_provider_after_ignore_config_edit(provider)) {
-    toast.show("Failed to reload ignore config");
+  if (!reload_provider_after_tray_config_edit(provider)) {
+    if (winapi::consume_notification_area_split_mode_request().has_value())
+      spdlog::error("Discarded tray split request because configuration could not be reloaded");
+    toast.show("Failed to reload configuration");
     return;
   }
 
+  unregister_navigation_hotkeys(provider.options.keyboardOptions);
+  register_navigation_hotkeys(provider.options.keyboardOptions);
+  toast.set_duration(
+      std::chrono::milliseconds(provider.options.visualizationOptions.toastDurationMs));
   mark_all_desktops_for_retile(multi_engine);
-  toast.show("Ignore rules updated");
-  spdlog::info("Reloaded ignore rules after notification-area dialog edit");
+  toast.show("Configuration updated");
+  spdlog::info("Reloaded configuration after notification-area edit");
 }
 
 [[nodiscard]] std::optional<size_t>
@@ -669,6 +675,7 @@ apply_frame_output(const EngineFrameOutput& output, const ctrl::System& system,
   }
 
   winapi::set_notification_area_movement_mode(output.movement_mode);
+  winapi::set_notification_area_split_mode(output.split_mode);
   if (output.toast_message.has_value()) {
     toast.show(*output.toast_message);
   }
@@ -705,7 +712,7 @@ bool handle_config_refresh(GlobalOptionsProvider& provider, ToastState& toast) {
   const auto& options = provider.options;
   unregister_navigation_hotkeys(options.keyboardOptions);
   register_navigation_hotkeys(options.keyboardOptions);
-  winapi::set_notification_area_ignore_options(options.ignoreOptions);
+  winapi::set_notification_area_options(options);
   toast.set_duration(std::chrono::milliseconds(options.visualizationOptions.toastDurationMs));
   spdlog::info("Config hot-reloaded");
   return true;
@@ -791,7 +798,9 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
 
   winapi::register_notification_area_icon({run_options.config_path, run_options.log_file_path});
   winapi::set_notification_area_manual_pause_active(false);
-  winapi::set_notification_area_ignore_options(options.ignoreOptions);
+  winapi::set_notification_area_options(options);
+  winapi::set_notification_area_movement_mode(options.keyboardOptions.movement_mode);
+  winapi::set_notification_area_has_desktop(false);
   RuntimeLoggingState logging_state{spdlog::get_level(), false};
   winapi::set_notification_area_verbose_logging_active(false);
 
@@ -838,7 +847,11 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
     // Wait for messages (hotkeys) or timeout - responds immediately to hotkeys
     winapi::wait_for_messages_or_timeout(options.loopOptions.intervalMs);
     winapi::process_pending_non_hotkey_messages();
-    handle_ignore_config_changed_request(provider, toast, multi_engine);
+    handle_tray_config_changed_request(provider, toast, multi_engine);
+    // Check for config file changes and hot-reload
+    if (handle_config_refresh(provider, toast)) {
+      mark_all_desktops_for_retile(multi_engine);
+    }
 
     // Block if session is paused (locked, sleeping, or display off)
     if (winapi::is_session_paused()) {
@@ -881,6 +894,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                                          input_handles);
     filter_session_floating_windows_from_input_state(floating_state, input_state);
     perf.record_stage(LoopPerfStage::GatherInput, std::chrono::steady_clock::now() - gather_start);
+
+    winapi::set_notification_area_has_desktop(input_state.desktop_id.has_value());
 
     // Virtual desktop handling via desktop_id from managed windows
     if (!input_state.desktop_id.has_value()) {
@@ -1013,10 +1028,6 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
       continue;
     }
 
-    // Check for config file changes and hot-reload
-    if (handle_config_refresh(provider, toast)) {
-      mark_all_desktops_for_retile(multi_engine);
-    }
     resolve_cluster_tiling_options_into(monitors, provider.options, cluster_options);
 
     // Check for monitor configuration changes
@@ -1038,6 +1049,8 @@ void run_loop_mode(GlobalOptionsProvider& provider, const LoopRunOptions& run_op
                             poll_hotkey_action(), provider.options.layoutOptions,
                             provider.options.loopOptions.mouse_drag_drop, frame_input);
     frame_input.initial_movement_mode = provider.options.keyboardOptions.movement_mode;
+    frame_input.requested_movement_mode = winapi::consume_notification_area_movement_mode_request();
+    frame_input.requested_split_mode = winapi::consume_notification_area_split_mode_request();
     perf.record_stage(LoopPerfStage::BuildFrameInput,
                       std::chrono::steady_clock::now() - build_frame_input_start);
 

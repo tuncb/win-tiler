@@ -170,6 +170,9 @@ std::optional<std::string> find_hotkey_binding(const KeyboardOptions& keyboard_o
 // Get default ignore options (convenience function)
 IgnoreOptions get_default_ignore_options();
 
+// Format a complete configuration with generated documentation.
+[[nodiscard]] std::string format_options_toml(const GlobalOptions& options);
+
 // Write GlobalOptions to a TOML file
 tl::expected<void, std::string> write_options_toml(const GlobalOptions& options,
                                                    const std::filesystem::path& filepath);

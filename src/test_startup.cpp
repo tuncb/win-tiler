@@ -570,8 +570,10 @@ TEST_SUITE("winapi") {
   }
 
   TEST_CASE("notification area pause menu text reflects manual pause state") {
-    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(false)) == L"Pause");
-    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(true)) == L"Unpause");
+    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(false)) ==
+          L"Pause tiling");
+    CHECK(std::wstring(winapi::get_notification_area_toggle_pause_menu_text(true)) ==
+          L"Resume tiling");
   }
 
   TEST_CASE("application icon resource is available") {
@@ -583,9 +585,9 @@ TEST_SUITE("winapi") {
 
 TEST_CASE("movement mode tray text and action reflect the two modes") {
   CHECK(std::wstring(winapi::get_notification_area_movement_mode_menu_text(
-            wintiler::MovementMode::Swap)) == L"Movement: Swap (toggle)");
+            wintiler::MovementMode::Swap)) == L"Keyboard movement: Swap");
   CHECK(std::wstring(winapi::get_notification_area_movement_mode_menu_text(
-            wintiler::MovementMode::Insert)) == L"Movement: Insert (toggle)");
+            wintiler::MovementMode::Insert)) == L"Keyboard movement: Insert");
   winapi::request_notification_area_hotkey_action(wintiler::HotkeyAction::ToggleMovementMode);
   CHECK(winapi::consume_notification_area_hotkey_action() ==
         wintiler::HotkeyAction::ToggleMovementMode);

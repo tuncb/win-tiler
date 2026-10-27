@@ -2255,8 +2255,33 @@ find_placement_correction_leaf_ids(const ctrl::System& system,
 
 } // namespace
 
+ctrl::SplitMode to_engine_split_mode(LayoutSplitMode split_mode) {
+  switch (split_mode) {
+  case LayoutSplitMode::Dwindle:
+    return ctrl::SplitMode::Dwindle;
+  case LayoutSplitMode::Vertical:
+    return ctrl::SplitMode::Vertical;
+  case LayoutSplitMode::Horizontal:
+    return ctrl::SplitMode::Horizontal;
+  }
+  return ctrl::SplitMode::Dwindle;
+}
+
+LayoutSplitMode to_layout_split_mode(ctrl::SplitMode mode) {
+  switch (mode) {
+  case ctrl::SplitMode::Dwindle:
+    return LayoutSplitMode::Dwindle;
+  case ctrl::SplitMode::Vertical:
+    return LayoutSplitMode::Vertical;
+  case ctrl::SplitMode::Horizontal:
+    return LayoutSplitMode::Horizontal;
+  }
+  return LayoutSplitMode::Dwindle;
+}
+
 void Engine::init(const std::vector<ctrl::ClusterInitInfo>& infos, ctrl::SplitMode split_mode) {
   system = ctrl::create_system(infos, split_mode);
+  configured_split_mode = to_layout_split_mode(split_mode);
   previous_cursor_pos.reset();
   previous_foreground_leaf_id.reset();
   active_cluster_index.reset();
@@ -2417,7 +2442,19 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     configured_movement_mode = input.initial_movement_mode;
     movement_mode = input.initial_movement_mode;
   }
+  if (input.requested_movement_mode) {
+    movement_mode = *input.requested_movement_mode;
+    output.toast_message =
+        movement_mode == MovementMode::Swap ? "Movement: Swap" : "Movement: Insert";
+  }
+  if (input.layout_options && configured_split_mode != input.layout_options->split_mode) {
+    configured_split_mode = input.layout_options->split_mode;
+    system.split_mode = to_engine_split_mode(*configured_split_mode);
+  }
+  if (input.requested_split_mode)
+    system.split_mode = to_engine_split_mode(*input.requested_split_mode);
   output.movement_mode = movement_mode;
+  output.split_mode = to_layout_split_mode(system.split_mode);
   output.has_completed_initial_tile_pass = input.has_completed_initial_tile_pass;
   std::vector<ClusterTilingOptions> cluster_options = input.cluster_options;
   if (cluster_options.empty()) {
@@ -2507,6 +2544,7 @@ EngineFrameOutput Engine::process_frame(const EngineFrameInput& input) {
     ActionResult action_result =
         process_action(*input.hotkey_action, ensure_geometries(), cluster_options);
     output.movement_mode = movement_mode;
+    output.split_mode = to_layout_split_mode(system.split_mode);
     // Window snapshots still describe the positions before this keyboard move.
     if (action_result.success && (*input.hotkey_action == HotkeyAction::MoveLeft ||
                                   *input.hotkey_action == HotkeyAction::MoveRight ||

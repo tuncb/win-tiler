@@ -222,13 +222,21 @@ void unregister_notification_area_icon();
 void set_notification_area_manual_pause_active(bool is_paused);
 void set_notification_area_verbose_logging_active(bool is_enabled);
 void set_notification_area_movement_mode(wintiler::MovementMode mode);
+void set_notification_area_options(const wintiler::GlobalOptions& options);
+void set_notification_area_has_desktop(bool has_desktop);
+void set_notification_area_split_mode(wintiler::LayoutSplitMode mode);
+void request_notification_area_movement_mode(wintiler::MovementMode mode);
+[[nodiscard]] std::optional<wintiler::MovementMode>
+consume_notification_area_movement_mode_request();
+[[nodiscard]] std::optional<wintiler::LayoutSplitMode>
+consume_notification_area_split_mode_request();
 [[nodiscard]] const wchar_t*
 get_notification_area_movement_mode_menu_text(wintiler::MovementMode mode);
 void set_notification_area_ignore_options(const wintiler::IgnoreOptions& ignore_options);
 void request_notification_area_hotkey_action(wintiler::HotkeyAction action);
 [[nodiscard]] bool consume_notification_area_exit_requested();
 [[nodiscard]] std::optional<wintiler::HotkeyAction> consume_notification_area_hotkey_action();
-[[nodiscard]] bool consume_notification_area_ignore_config_changed_request();
+[[nodiscard]] bool consume_notification_area_config_changed_request();
 [[nodiscard]] std::optional<DWORD_T> find_notification_area_process_id();
 [[nodiscard]] bool request_notification_area_exit_for_running_instance();
 

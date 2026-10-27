@@ -1,5 +1,7 @@
 #include "ignore_config.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -10,7 +12,8 @@
 #include <toml++/toml.hpp>
 #include <utility>
 #include <vector>
-#include <windows.h>
+
+#include "config_file.h"
 
 namespace wintiler {
 namespace {
@@ -56,79 +59,6 @@ struct KeyRange {
 [[nodiscard]] bool pairs_match(const std::pair<std::string, std::string>& pair,
                                std::string_view process, std::string_view title) {
   return iequals(pair.first, process) && iequals(pair.second, title);
-}
-
-[[nodiscard]] tl::expected<std::string, std::string>
-read_file_text(const std::filesystem::path& path) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    return tl::unexpected("Failed to open config file for reading: " + path.string());
-  }
-
-  std::ostringstream stream;
-  stream << file.rdbuf();
-  return stream.str();
-}
-
-[[nodiscard]] tl::expected<void, std::string>
-write_text_atomically(const std::filesystem::path& path, const std::string& text,
-                      std::optional<std::string_view> expected = std::nullopt,
-                      bool create_new = false) {
-  static std::atomic<unsigned long> sequence{0};
-  std::filesystem::path temp_path = path;
-  temp_path +=
-      ".tmp." + std::to_string(GetCurrentProcessId()) + "." + std::to_string(sequence.fetch_add(1));
-  HANDLE file = CreateFileW(temp_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                            FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (file == INVALID_HANDLE_VALUE) {
-    return tl::unexpected("Cannot create temporary config: " + std::to_string(GetLastError()));
-  }
-  DWORD written = 0;
-  bool wrote = text.size() <= (std::numeric_limits<DWORD>::max)() &&
-               WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr) &&
-               written == text.size() && FlushFileBuffers(file);
-  DWORD write_error = wrote ? ERROR_SUCCESS : GetLastError();
-  if (!CloseHandle(file)) {
-    spdlog::error("Failed to close temporary config handle: {}", GetLastError());
-    wrote = false;
-  }
-  auto cleanup = [&] {
-    if (!DeleteFileW(temp_path.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND) {
-      spdlog::error("Failed to remove temporary config '{}': {}", temp_path.string(),
-                    GetLastError());
-    }
-  };
-  if (!wrote) {
-    cleanup();
-    return tl::unexpected("Could not write config: " + std::to_string(write_error));
-  }
-  if (create_new) {
-    // Publish the complete first rule in one operation. Without REPLACE_EXISTING,
-    // a config created by another process wins and remains untouched.
-    if (!MoveFileExW(temp_path.c_str(), path.c_str(), MOVEFILE_WRITE_THROUGH)) {
-      const DWORD error = GetLastError();
-      cleanup();
-      return tl::unexpected("Could not create config (already exists or not writable): " +
-                            std::to_string(error));
-    }
-    return {};
-  }
-  if (expected.has_value()) {
-    auto current = read_file_text(path);
-    if (!current || *current != *expected) {
-      cleanup();
-      return tl::unexpected("The config changed while saving. Refresh and try again.");
-    }
-  }
-  // Never fall back to copying over the live file: a failed copy can leave a
-  // partially written configuration. ReplaceFile also retains the original ACL.
-  if (!ReplaceFileW(path.c_str(), temp_path.c_str(), nullptr, 0, nullptr, nullptr)) {
-    DWORD error = GetLastError();
-    cleanup();
-    return tl::unexpected("Could not replace config (read-only or in use): " +
-                          std::to_string(error));
-  }
-  return {};
 }
 
 [[nodiscard]] std::vector<TextLine> split_lines(std::string_view text) {
@@ -416,7 +346,7 @@ update_ignore_string_list_config(const std::filesystem::path& config_path, std::
     return tl::unexpected("Ignore value must be non-empty");
   }
 
-  auto text = read_file_text(config_path);
+  auto text = read_config_text(config_path);
   if (!text.has_value()) {
     return tl::unexpected(text.error());
   }
@@ -464,7 +394,7 @@ update_ignore_string_list_config(const std::filesystem::path& config_path, std::
     return tl::unexpected(validation.error());
   }
 
-  auto write_result = write_text_atomically(config_path, updated_text);
+  auto write_result = write_config_text_atomically(config_path, updated_text);
   if (!write_result.has_value()) {
     return tl::unexpected(write_result.error());
   }
@@ -480,7 +410,7 @@ update_ignore_process_title_pair_config(const std::filesystem::path& config_path
     return tl::unexpected("Process and title must both be non-empty");
   }
 
-  auto text = read_file_text(config_path);
+  auto text = read_config_text(config_path);
   if (!text.has_value()) {
     return tl::unexpected(text.error());
   }
@@ -525,7 +455,7 @@ update_ignore_process_title_pair_config(const std::filesystem::path& config_path
     return tl::unexpected(validation.error());
   }
 
-  auto write_result = write_text_atomically(config_path, updated_text);
+  auto write_result = write_config_text_atomically(config_path, updated_text);
   if (!write_result.has_value()) {
     return tl::unexpected(write_result.error());
   }
@@ -644,22 +574,6 @@ tl::expected<std::vector<IgnoreRule>, std::string> rules_from_table(const toml::
   return rules;
 }
 
-// toml++ source columns count Unicode codepoints, not UTF-8 bytes.
-size_t source_offset(std::string_view text, toml::source_position position) {
-  size_t offset = 0;
-  for (size_t line = 1; line < position.line && offset < text.size(); ++line) {
-    auto end = text.find('\n', offset);
-    offset = end == std::string_view::npos ? text.size() : end + 1;
-  }
-  for (size_t column = 1; column < position.column && offset < text.size(); ++column) {
-    ++offset;
-    while (offset < text.size() && (static_cast<unsigned char>(text[offset]) & 0xc0) == 0x80) {
-      ++offset;
-    }
-  }
-  return offset;
-}
-
 tl::expected<std::string, std::string> rewrite_rule_array(std::string text, IgnoreRuleKind kind,
                                                           const std::vector<IgnoreRule>& rules) {
   auto parsed = parse_existing_config(text);
@@ -683,19 +597,19 @@ tl::expected<std::string, std::string> rewrite_rule_array(std::string text, Igno
   if (!ignore) {
     text += "\n[ignore]\n" + line + "\n";
   } else if (const auto* node = ignore->get(rule_key(kind))) {
-    const size_t begin = source_offset(text, node->source().begin);
-    const size_t end = source_offset(text, node->source().end);
+    const size_t begin = config_source_offset(text, node->source().begin);
+    const size_t end = config_source_offset(text, node->source().end);
     if (begin >= end || text.compare(begin, 2, "[[") == 0) {
       return tl::unexpected("This rule uses array-of-table syntax. Edit it in the config file.");
     }
     text.replace(begin, end - begin, value);
   } else if (ignore->is_inline()) {
-    const size_t end = source_offset(text, ignore->source().end);
+    const size_t end = config_source_offset(text, ignore->source().end);
     if (end == 0 || text[end - 1] != '}')
       return tl::unexpected("Cannot locate inline ignore table.");
     text.insert(end - 1, (ignore->empty() ? " " : ", ") + line + " ");
   } else {
-    const size_t begin = source_offset(text, ignore->source().begin);
+    const size_t begin = config_source_offset(text, ignore->source().begin);
     if (begin < text.size() && text[begin] == '[') {
       const size_t end = text.find('\n', begin);
       if (end == std::string::npos)
@@ -716,7 +630,7 @@ tl::expected<std::string, std::string> rewrite_rule_array(std::string text, Igno
 
 tl::expected<std::vector<IgnoreRule>, std::string>
 read_user_ignore_rules(const std::filesystem::path& config_path) {
-  auto text = read_file_text(config_path);
+  auto text = read_config_text(config_path);
   if (!text)
     return tl::unexpected(text.error());
   auto parsed = parse_existing_config(*text);
@@ -735,10 +649,10 @@ edit_ignore_rules(const std::filesystem::path& config_path, const std::vector<Ig
   std::error_code error;
   const bool create_new = create_if_missing && remove.empty() && !add.empty() &&
                           !std::filesystem::exists(config_path, error) && !error;
-  auto original = create_new
-      ? tl::expected<std::string, std::string>(
-            "# win-tiler configuration. Unspecified options use defaults.\n[ignore]\n")
-      : read_file_text(config_path);
+  auto original =
+      create_new ? tl::expected<std::string, std::string>(
+                       "# win-tiler configuration. Unspecified options use defaults.\n[ignore]\n")
+                 : read_config_text(config_path);
   if (!original)
     return tl::unexpected(original.error());
   auto parsed = parse_existing_config(*original);
@@ -784,7 +698,7 @@ edit_ignore_rules(const std::filesystem::path& config_path, const std::vector<Ig
       return tl::unexpected(rewritten.error());
     updated = std::move(*rewritten);
   }
-  auto saved = write_text_atomically(config_path, updated, *original, create_new);
+  auto saved = write_config_text_atomically(config_path, updated, *original, create_new);
   if (!saved)
     return tl::unexpected(saved.error());
   return edit;
