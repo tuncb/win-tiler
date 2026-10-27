@@ -126,6 +126,8 @@ struct DialogState {
   std::optional<PendingEdit> pending;
   bool saved_view = false, loading = false, readable = false, exists = false;
   int filter = 0;
+  std::optional<bool> displayed_saved_view;
+  int displayed_filter = -1;
   std::wstring query,
       message = L"Choose a row's menu to create or change a rule. Changes save immediately.";
   bool error = false;
@@ -137,6 +139,11 @@ std::wstring window_text(HWND control) {
   int copied = GetWindowTextW(control, result.data(), static_cast<int>(result.size()));
   result.resize(static_cast<size_t>((std::max)(0, copied)));
   return result;
+}
+
+void set_control_text(HWND control, const std::wstring& text) {
+  if (window_text(control) != text)
+    SetWindowTextW(control, text.c_str());
 }
 
 std::string rule_identity(const IgnoreRuleEntry& entry) {
@@ -174,6 +181,12 @@ std::optional<Row> selected_row(const DialogState& state) {
   return state.rows[static_cast<size_t>(index)];
 }
 
+void select_row(const DialogState& state, int index) {
+  if (SendMessageW(state.list, LB_GETCURSEL, 0, 0) != index &&
+      SendMessageW(state.list, LB_SETCURSEL, index, 0) == LB_ERR)
+    spdlog::error("Could not select ignore dialog row");
+}
+
 void layout(DialogState& state);
 void rebuild_rows(DialogState& state);
 
@@ -190,6 +203,7 @@ void feedback(DialogState& state, std::wstring message, bool error = false) {
 }
 
 void refresh(DialogState& state) {
+  const bool had_config_banner = state.path && !state.exists;
   std::vector<IgnoreRule> user;
   state.readable = false;
   state.exists = false;
@@ -221,20 +235,25 @@ void refresh(DialogState& state) {
   EnableWindow(state.buttons[id_config], state.path && state.exists);
   EnableWindow(state.buttons[id_undo], state.readable && state.undo.has_value());
   rebuild_rows(state);
-  layout(state);
+  if (had_config_banner != (state.path && !state.exists))
+    layout(state);
 }
 
 void rebuild_rows(DialogState& state) {
   auto selection = selected_row(state);
   std::string selected = selection ? selection->identity : "";
-  state.rows.clear();
+  const LRESULT top = SendMessageW(state.list, LB_GETTOPINDEX, 0, 0);
+  const std::string top_identity = top >= 0 && static_cast<size_t>(top) < state.rows.size()
+                                       ? state.rows[static_cast<size_t>(top)].identity
+                                       : "";
+  std::vector<Row> rows;
   auto add = [&](Row row) {
     if (!contains_query(row.name + L" " + row.detail + L" " + row.scope, state.query))
       return;
     bool category = state.saved_view ? row.entry->built_in : row.ignored;
     if ((state.filter == 1 && category) || (state.filter == 2 && !category))
       return;
-    state.rows.push_back(std::move(row));
+    rows.push_back(std::move(row));
   };
   if (state.saved_view) {
     for (const auto& entry : state.rules) {
@@ -286,35 +305,66 @@ void rebuild_rows(DialogState& state) {
       add(std::move(row));
     }
   }
+  const bool rows_changed = !std::equal(
+      state.rows.begin(), state.rows.end(), rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+        return std::tie(a.identity, a.name, a.detail, a.behavior, a.scope, a.ignored) ==
+               std::tie(b.identity, b.name, b.detail, b.behavior, b.scope, b.ignored);
+      });
   state.loading = true;
-  SendMessageW(state.list, WM_SETREDRAW, FALSE, 0);
-  SendMessageW(state.list, LB_RESETCONTENT, 0, 0);
-  int selected_index = -1;
-  for (size_t i = 0; i < state.rows.size(); ++i) {
-    const auto& row = state.rows[i];
-    std::wstring accessible = row.name + L", " + row.detail + L", " + row.behavior + L", " +
-                              row.scope + L". Press Enter for rule actions.";
-    if (SendMessageW(state.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(accessible.c_str())) ==
-        LB_ERR)
-      spdlog::error("Failed to add ignore dialog row");
-    if (row.identity == selected)
-      selected_index = static_cast<int>(i);
+  if (rows_changed)
+    SendMessageW(state.list, WM_SETREDRAW, FALSE, 0);
+  // Menu validation and details still need fresh metadata even when nothing visible changed.
+  state.rows = std::move(rows);
+  if (rows_changed) {
+    SendMessageW(state.list, LB_RESETCONTENT, 0, 0);
+    int selected_index = -1, top_index = -1;
+    for (size_t i = 0; i < state.rows.size(); ++i) {
+      const auto& row = state.rows[i];
+      std::wstring accessible = row.name + L", " + row.detail + L", " + row.behavior + L", " +
+                                row.scope + L". Press Enter for rule actions.";
+      if (SendMessageW(state.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(accessible.c_str())) ==
+          LB_ERR)
+        spdlog::error("Failed to add ignore dialog row");
+      if (row.identity == selected)
+        selected_index = static_cast<int>(i);
+      if (row.identity == top_identity)
+        top_index = static_cast<int>(i);
+    }
+    if (!state.rows.empty())
+      select_row(state, selected_index >= 0 ? selected_index : 0);
+    RECT client{};
+    GetClientRect(state.list, &client);
+    const LRESULT row_height = SendMessageW(state.list, LB_GETITEMHEIGHT, 0, 0);
+    // Keep the viewport stable unless a reorder would hide the selected menu's row.
+    if (top_index >= 0 && selected_index >= top_index && row_height > 0 &&
+        (selected_index - top_index) * row_height < client.bottom)
+      SendMessageW(state.list, LB_SETTOPINDEX, top_index, 0);
+    SendMessageW(state.list, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(state.list, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME);
+  } else if (state.rows.empty()) {
+    // The empty-state message also depends on whether a search is active.
+    InvalidateRect(state.list, nullptr, FALSE);
   }
-  if (!state.rows.empty())
-    SendMessageW(state.list, LB_SETCURSEL, selected_index >= 0 ? selected_index : 0, 0);
-  SendMessageW(state.list, WM_SETREDRAW, TRUE, 0);
-  InvalidateRect(state.list, nullptr, TRUE);
   state.loading = false;
-  SetWindowTextW(state.buttons[id_windows],
-                 (L"Open windows  " + std::to_wstring(state.windows.size())).c_str());
-  SetWindowTextW(state.buttons[id_rules],
-                 (L"Saved rules  " + std::to_wstring(state.rules.size())).c_str());
-  SetWindowTextW(state.buttons[id_tiled], state.saved_view ? L"Yours" : L"Tiled");
-  SetWindowTextW(state.buttons[id_ignored], state.saved_view ? L"Built-in" : L"Ignored");
-  SendMessageW(state.search, EM_SETCUEBANNER, FALSE,
-               reinterpret_cast<LPARAM>(state.saved_view ? L"Search saved rules"
-                                                         : L"Search apps or window titles"));
-  InvalidateRect(state.hwnd, nullptr, FALSE);
+  set_control_text(state.buttons[id_windows],
+                   L"Open windows  " + std::to_wstring(state.windows.size()));
+  set_control_text(state.buttons[id_rules], L"Saved rules  " + std::to_wstring(state.rules.size()));
+  const bool view_changed = state.displayed_saved_view != state.saved_view;
+  if (view_changed) {
+    set_control_text(state.buttons[id_tiled], state.saved_view ? L"Yours" : L"Tiled");
+    set_control_text(state.buttons[id_ignored], state.saved_view ? L"Built-in" : L"Ignored");
+    SendMessageW(state.search, EM_SETCUEBANNER, FALSE,
+                 reinterpret_cast<LPARAM>(state.saved_view ? L"Search saved rules"
+                                                           : L"Search apps or window titles"));
+    for (int id : {id_windows, id_rules})
+      InvalidateRect(state.buttons[id], nullptr, FALSE);
+    InvalidateRect(state.hwnd, nullptr, FALSE);
+  }
+  if (view_changed || state.displayed_filter != state.filter)
+    for (int id : {id_all, id_tiled, id_ignored})
+      InvalidateRect(state.buttons[id], nullptr, FALSE);
+  state.displayed_saved_view = state.saved_view;
+  state.displayed_filter = state.filter;
 }
 
 bool open_config(DialogState& state) {
@@ -756,7 +806,7 @@ void populate_row_menu(const DialogState& state, const Row& row, ui::PopupMenu& 
 void show_row_menu(DialogState& state, int index, std::optional<POINT> location = std::nullopt) {
   if (index < 0 || static_cast<size_t>(index) >= state.rows.size())
     return;
-  SendMessageW(state.list, LB_SETCURSEL, index, 0);
+  select_row(state, index);
   Row old_row = state.rows[static_cast<size_t>(index)];
   // Re-read the file and window metadata before offering actions. HWND alone is
   // not an identity; it may have been recycled by the time the menu is invoked.
@@ -773,7 +823,7 @@ void show_row_menu(DialogState& state, int index, std::optional<POINT> location 
     return;
   }
   index = static_cast<int>(std::distance(state.rows.begin(), found));
-  SendMessageW(state.list, LB_SETCURSEL, index, 0);
+  select_row(state, index);
   POINT point{};
   if (location)
     point = *location;
@@ -1224,6 +1274,149 @@ LRESULT CALLBACK dialog_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
   return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 #ifndef DOCTEST_CONFIG_DISABLE
+struct IgnoreListFixture {
+  DialogState state;
+  int resets = 0, selections = 0, placements = 0;
+
+  IgnoreListFixture() {
+    state.hwnd = CreateWindowExW(0, L"STATIC", L"Ignore list regression", WS_OVERLAPPEDWINDOW,
+                                  0, 0, 960, 780, nullptr, nullptr, GetModuleHandleW(nullptr),
+                                  nullptr);
+    REQUIRE(state.hwnd != nullptr);
+    state.list = CreateWindowExW(
+        0, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOINTEGRALHEIGHT,
+        0, 0, 800, 192, state.hwnd, nullptr, nullptr, nullptr);
+    REQUIRE(state.list != nullptr);
+    REQUIRE(SendMessageW(state.list, LB_SETITEMHEIGHT, 0, 64) != LB_ERR);
+    state.search = CreateWindowExW(0, L"EDIT", L"", WS_CHILD, 0, 0, 100, 24, state.hwnd,
+                                    nullptr, nullptr, nullptr);
+    REQUIRE(state.search != nullptr);
+    for (int id : {id_windows, id_rules, id_all, id_tiled, id_ignored, id_refresh, id_config,
+                   id_undo, id_create, id_retry, IDCANCEL}) {
+      state.buttons[id] = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD, 0, 0, 80, 32,
+                                           state.hwnd, nullptr, nullptr, nullptr);
+      REQUIRE(state.buttons[id] != nullptr);
+    }
+    REQUIRE(SetWindowSubclass(state.list, observe, 1, reinterpret_cast<DWORD_PTR>(this)) != FALSE);
+  }
+
+  ~IgnoreListFixture() {
+    if (state.hwnd && !DestroyWindow(state.hwnd))
+      spdlog::error("Could not destroy ignore list test window: {}", GetLastError());
+  }
+
+  static LRESULT CALLBACK observe(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
+                                   UINT_PTR, DWORD_PTR data) {
+    auto& fixture = *reinterpret_cast<IgnoreListFixture*>(data);
+    if (message == LB_RESETCONTENT)
+      ++fixture.resets;
+    if (message == LB_SETCURSEL)
+      ++fixture.selections;
+    if (message == WM_WINDOWPOSCHANGING)
+      ++fixture.placements;
+    return DefSubclassProc(hwnd, message, wparam, lparam);
+  }
+
+  void populate() {
+    for (uintptr_t i = 0; i < 20; ++i) {
+      winapi::WindowManagementSnapshot window;
+      window.handle = reinterpret_cast<winapi::HWND_T>(i + 1);
+      window.pid = 42;
+      window.process_name = "app.exe";
+      window.title = "Window " + std::to_string(i);
+      state.windows.push_back(window);
+    }
+    rebuild_rows(state);
+    REQUIRE(SendMessageW(state.list, LB_SETCURSEL, 8, 0) != LB_ERR);
+    REQUIRE(SendMessageW(state.list, LB_SETTOPINDEX, 7, 0) != LB_ERR);
+    resets = selections = placements = 0;
+  }
+};
+
+TEST_CASE("Ignore list refresh keeps unchanged rows and refreshes their menu metadata") {
+  IgnoreListFixture fixture;
+  fixture.populate();
+  auto& state = fixture.state;
+  state.windows[8].class_name = "UpdatedClass";
+  state.windows[8].rect = winapi::Rect{10, 20, 640, 480};
+  rebuild_rows(state);
+  CHECK(fixture.resets == 0);
+  CHECK(fixture.selections == 0);
+  CHECK(SendMessageW(state.list, LB_GETTOPINDEX, 0, 0) == 7);
+  CHECK(SendMessageW(state.list, LB_GETCURSEL, 0, 0) == 8);
+  REQUIRE(state.rows[8].window.has_value());
+  CHECK(state.rows[8].window->class_name == "UpdatedClass");
+  REQUIRE(state.rows[8].window->rect.has_value());
+  CHECK(state.rows[8].window->rect->left == 10);
+}
+
+TEST_CASE("Ignore list refresh preserves visible row and selection when rows change") {
+  IgnoreListFixture fixture;
+  fixture.populate();
+  auto& state = fixture.state;
+  const auto selected = state.rows[8].identity;
+  const auto top = state.rows[7].identity;
+  state.windows.erase(state.windows.begin());
+  state.windows[7].title = "Updated title";
+  rebuild_rows(state);
+  REQUIRE(SendMessageW(state.list, LB_GETCOUNT, 0, 0) == 19);
+  CHECK(SendMessageW(state.list, LB_GETCURSEL, 0, 0) == 7);
+  CHECK(SendMessageW(state.list, LB_GETTOPINDEX, 0, 0) == 6);
+  CHECK(state.rows[6].identity == top);
+  CHECK(state.rows[7].identity == selected);
+  std::vector<wchar_t> text(static_cast<size_t>(SendMessageW(state.list, LB_GETTEXTLEN, 7, 0)) + 1);
+  REQUIRE(SendMessageW(state.list, LB_GETTEXT, 7, reinterpret_cast<LPARAM>(text.data())) != LB_ERR);
+  CHECK(std::wstring(text.data()).find(L"Updated title") != std::wstring::npos);
+}
+
+TEST_CASE("Ignore list refresh does not relayout an unchanged dialog") {
+  IgnoreListFixture fixture;
+  fixture.state.options = get_default_ignore_options();
+  fixture.state.options.merge_processes = false;
+  fixture.state.options.merge_window_titles = false;
+  fixture.state.options.merge_process_title_pairs = false;
+  fixture.state.options.merge_ignore_children_of_processes = false;
+  fixture.state.saved_view = true;
+  refresh(fixture.state);
+  fixture.resets = fixture.selections = fixture.placements = 0;
+  refresh(fixture.state);
+  CHECK(fixture.resets == 0);
+  CHECK(fixture.selections == 0);
+  CHECK(fixture.placements == 0);
+}
+
+TEST_CASE("Ignore list menu selection does not deselect an already selected row") {
+  IgnoreListFixture fixture;
+  fixture.populate();
+  select_row(fixture.state, 8);
+  CHECK(fixture.selections == 0);
+  CHECK(SendMessageW(fixture.state.list, LB_GETTOPINDEX, 0, 0) == 7);
+  select_row(fixture.state, 9);
+  CHECK(SendMessageW(fixture.state.list, LB_GETCURSEL, 0, 0) == 9);
+}
+
+TEST_CASE("Ignore list refresh keeps a reordered selected row visible") {
+  IgnoreListFixture fixture;
+  fixture.populate();
+  auto& state = fixture.state;
+  const auto selected = state.rows[8].identity;
+  SUBCASE("selected row moves above the viewport") {
+    std::rotate(state.windows.begin(), state.windows.begin() + 8, state.windows.begin() + 9);
+  }
+  SUBCASE("selected row moves below the viewport") {
+    std::rotate(state.windows.begin() + 8, state.windows.begin() + 9, state.windows.end());
+  }
+  rebuild_rows(state);
+  const LRESULT index = SendMessageW(state.list, LB_GETCURSEL, 0, 0);
+  REQUIRE(index != LB_ERR);
+  CHECK(state.rows[static_cast<size_t>(index)].identity == selected);
+  RECT row{}, client{};
+  REQUIRE(SendMessageW(state.list, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&row)) != LB_ERR);
+  REQUIRE(GetClientRect(state.list, &client) != FALSE);
+  CHECK(row.top >= 0);
+  CHECK(row.bottom <= client.bottom);
+}
+
 TEST_CASE("Item menus do not expose the global config action") {
   HWND owner = CreateWindowExW(0, L"STATIC", L"Item menu scope regression", 0, 0, 0, 0, 0, nullptr,
                                nullptr, GetModuleHandleW(nullptr), nullptr);
